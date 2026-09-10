@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 import dayjs from "dayjs";
 import type { Job } from "@/types/job.type";
 import type { Vehicle } from "@/types/vehicle.type";
-import { Avatar, Tooltip, Select, Dropdown } from "antd";
+import { Avatar, Tooltip, Select, Dropdown, Input } from "antd";
 import type { MenuProps } from "antd";
 import {
   UserOutlined,
@@ -16,6 +16,8 @@ import {
   EnvironmentOutlined,
   ClockCircleOutlined,
   CarOutlined,
+  SearchOutlined,
+  CloseOutlined,
 } from "@ant-design/icons";
 import {
   calculateTimeRange,
@@ -168,6 +170,23 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [intervalMinutes, setIntervalMinutes] = useState(30);
+  const [driverSearch, setDriverSearch] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  const filteredRoutes = useMemo(() => {
+    const indexed = routes.map((route, originalIndex) => ({
+      route,
+      originalIndex,
+    }));
+    if (!driverSearch.trim()) return indexed;
+    const query = driverSearch.toLowerCase().trim();
+    return indexed.filter(({ route }) => {
+      const driverName = String(
+        route.team_member_name || `Driver ${route.team_member_id}`
+      ).toLowerCase();
+      return driverName.includes(query);
+    });
+  }, [routes, driverSearch]);
 
   const { startTime, endTime } = useMemo(
     () => calculateTimeRange(routes),
@@ -296,7 +315,46 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               className="sticky left-0 z-30 bg-gray-50 border-r border-gray-200 px-3 flex items-center justify-between font-medium text-gray-500 shadow-sm"
               style={{ width: DRIVER_COLUMN_WIDTH, minWidth: DRIVER_COLUMN_WIDTH }}
             >
-              <span className="text-xs font-semibold text-gray-600">Driver</span>
+              {isSearchOpen ? (
+                <Input
+                  size="small"
+                  placeholder="Search driver..."
+                  value={driverSearch}
+                  onChange={(e) => setDriverSearch(e.target.value)}
+                  autoFocus
+                  prefix={<SearchOutlined className="text-gray-400 text-xs" />}
+                  suffix={
+                    <CloseOutlined
+                      className="text-gray-400 hover:text-gray-600 cursor-pointer text-xs"
+                      onClick={() => {
+                        setDriverSearch("");
+                        setIsSearchOpen(false);
+                      }}
+                    />
+                  }
+                  className="text-xs max-w-[155px]"
+                />
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-gray-600">Driver</span>
+                  <Tooltip title="Search driver">
+                    <button
+                      type="button"
+                      className="p-1 text-gray-400 hover:text-gray-700 rounded hover:bg-gray-200/60 transition-colors flex items-center justify-center"
+                      onClick={() => setIsSearchOpen(true)}
+                    >
+                      <SearchOutlined className="text-xs" />
+                    </button>
+                  </Tooltip>
+                  {driverSearch && (
+                    <span
+                      className="w-2 h-2 rounded-full bg-blue-500 cursor-pointer"
+                      onClick={() => setIsSearchOpen(true)}
+                      title={`Filtered by: ${driverSearch}`}
+                    />
+                  )}
+                </div>
+              )}
               <Select
                 value={intervalMinutes}
                 onChange={setIntervalMinutes}
@@ -337,7 +395,21 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               ))}
             </div>
 
-            {routes.map((route, routeIndex) => {
+            {filteredRoutes.length === 0 ? (
+              <div
+                className="py-12 text-center text-xs text-gray-400 flex flex-col items-center justify-center gap-1.5"
+                style={{ marginLeft: DRIVER_COLUMN_WIDTH }}
+              >
+                <span>No drivers matching "{driverSearch}"</span>
+                <button
+                  className="text-blue-500 hover:underline text-xs font-medium"
+                  onClick={() => setDriverSearch("")}
+                >
+                  Clear filter
+                </button>
+              </div>
+            ) : (
+              filteredRoutes.map(({ route, originalIndex: routeIndex }) => {
               const routeColor = getRouteColor(routeIndex);
               const durationStr = getRouteDurationStr(route);
               // Compute grouped stops once for stop count and rendering
@@ -853,7 +925,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                   </div>
                 </div>
               );
-            })}
+            })
+            )}
           </div>
         </div>
       </div>
