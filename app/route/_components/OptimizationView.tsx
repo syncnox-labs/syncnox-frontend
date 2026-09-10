@@ -829,7 +829,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
             <div
               className={`h-full w-full ${
                 mapViewState === "fullscreen"
-                  ? "fixed inset-0 z-[9999] bg-white"
+                  ? "fixed inset-0 z-40 bg-white"
                   : "relative"
               }`}
             >
@@ -933,6 +933,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
             stopIndex={selectedDrawerJob.stopIndex}
             driverName={selectedDrawerJob.driverName}
             leg={selectedDrawerJob.leg}
+            isFullscreen={mapViewState === "fullscreen"}
             onClose={() => {
               setSelectedDrawerJob(null);
               setSelectedMarkerId(null);
