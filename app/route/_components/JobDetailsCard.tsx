@@ -44,6 +44,8 @@ interface JobDetailsCardProps {
   onClose: () => void;
   onRemoveJob?: () => void;
   onJobSaved?: (requiresReOptimization: boolean) => void;
+  onEditJob?: (job: Job) => void;
+  isFullscreen?: boolean;
 }
 
 /** Pickup / drop-off / depot / break badge shown in the card header. */
@@ -113,8 +115,10 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   onClose,
   onRemoveJob,
   onJobSaved,
+  onEditJob,
+  isFullscreen = false,
 }) => {
-  const { patchJobLocally } = useJobsStore();
+  const { patchJobLocally, jobs } = useJobsStore();
   const { modal } = App.useApp();
   const { fetchRoutes, selectedStatus } = useRouteStore();
   const [isUpdating, setIsUpdating] = useState(false);
@@ -503,7 +507,11 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   );
 
   return (
-    <div className="absolute top-3 right-3 z-50 w-88 h-[calc(78%-24px)] max-h-[600px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col overflow-hidden text-xs transition-all animate-in fade-in slide-in-from-right-4 duration-200">
+    <div
+      className={`fixed ${
+        isFullscreen ? "top-3 right-3 z-50" : "top-16 right-3 z-50"
+      } w-88 h-[calc(100vh-100px)] max-h-[620px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col overflow-hidden text-xs transition-all animate-in fade-in slide-in-from-right-4 duration-200`}
+    >
       {/* Header */}
       <div className="p-3.5 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
         <div className="flex items-center gap-2 min-w-0">
@@ -543,7 +551,20 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
               </>
             ) : (
               <button
-                onClick={() => setIsEditing(true)}
+                onClick={() => {
+                  if (onEditJob) {
+                    const targetJob =
+                      job ||
+                      jobs.find((j) => j.id === (stopData?.job_id || stopData?.id)) ||
+                      ({
+                        id: stopData?.job_id || stopData?.id,
+                        ...stopData,
+                      } as any);
+                    onEditJob(targetJob);
+                  } else {
+                    setIsEditing(true);
+                  }
+                }}
                 title="Edit job"
                 className="text-gray-400 hover:text-[#003220] transition-colors p-1 rounded hover:bg-gray-100 cursor-pointer"
               >

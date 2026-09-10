@@ -38,6 +38,38 @@ import { useTeamStore } from "@/store/team.store";
 import { CustomFieldDefinition } from "@/apis/custom-fields.api";
 import { DynamicCustomFieldsForm } from "@/components/DynamicCustomFieldsForm";
 import { useFieldConfig } from "@/hooks/useFieldConfig";
+import {
+  Calendar,
+  Clock,
+  Navigation,
+  Hash,
+  User,
+  Users,
+  Timer,
+  Fingerprint,
+  MapPin,
+  Building2,
+  Phone,
+  Mail,
+  Flag,
+  Repeat,
+  Tag as TagIcon,
+  FileText,
+  ArrowRightLeft,
+} from "lucide-react";
+
+const FormLabel = ({
+  icon: IconComponent,
+  label,
+}: {
+  icon?: any;
+  label: string;
+}) => (
+  <span className="inline-flex items-center gap-1.5 font-medium text-gray-700 text-xs">
+    {IconComponent && <IconComponent size={14} className="text-gray-400 shrink-0" />}
+    <span>{label}</span>
+  </span>
+);
 
 const parseTimeToDayjs = (timeVal: any) => {
   if (!timeVal) return undefined;
@@ -325,7 +357,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                   {getFieldConfig("scheduled_date").isVisible && (
                     <Col span={getFieldConfig("job_type").isVisible ? 12 : 24}>
                       <Form.Item
-                        label={getFieldConfig("scheduled_date").label}
+                        label={<FormLabel icon={Calendar} label={getFieldConfig("scheduled_date").label} />}
                         name="scheduled_date"
                         required={getFieldConfig("scheduled_date").isRequired}
                         rules={
@@ -341,7 +373,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                   {getFieldConfig("job_type").isVisible && (
                     <Col span={getFieldConfig("scheduled_date").isVisible ? 12 : 24}>
                       <Form.Item
-                        label={getFieldConfig("job_type").label}
+                        label={<FormLabel icon={ArrowRightLeft} label={getFieldConfig("job_type").label} />}
                         name="job_type"
                         required={getFieldConfig("job_type").isRequired}
                         rules={
@@ -377,7 +409,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                   {getFieldConfig("start_hour").isVisible && (
                     <Col span={getFieldConfig("end_hour").isVisible ? 12 : 24}>
                       <Form.Item
-                        label={getFieldConfig("start_hour").label}
+                        label={<FormLabel icon={Clock} label={getFieldConfig("start_hour").label} />}
                         name="start_hour"
                         required={getFieldConfig("start_hour").isRequired}
                         rules={
@@ -393,7 +425,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                   {getFieldConfig("end_hour").isVisible && (
                     <Col span={getFieldConfig("start_hour").isVisible ? 12 : 24}>
                       <Form.Item
-                        label={getFieldConfig("end_hour").label}
+                        label={<FormLabel icon={Clock} label={getFieldConfig("end_hour").label} />}
                         name="end_hour"
                         required={getFieldConfig("end_hour").isRequired}
                         rules={
@@ -414,7 +446,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 <Row gutter={16}>
                   <Col span={24}>
                     <Form.Item
-                      label={getFieldConfig("pickup_type").label}
+                      label={<FormLabel icon={Navigation} label={getFieldConfig("pickup_type").label} />}
                       name="pickup_type"
                       required={getFieldConfig("pickup_type").isRequired}
                       rules={
@@ -452,7 +484,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                     {showQuart && (
                       <Col span={12}>
                         <Form.Item
-                          label={quartCfg.label}
+                          label={<FormLabel icon={Hash} label={quartCfg.label} />}
                           name={fieldName}
                           required={quartCfg.isRequired}
                           rules={
@@ -466,7 +498,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                       </Col>
                     )}
                     <Col span={showQuart ? 12 : 24}>
-                      <Form.Item label="Assign Driver / Team" name="assigned_to">
+                      <Form.Item label={<FormLabel icon={Users} label="Assign Driver / Team" />} name="assigned_to">
                         <Select placeholder="Select" allowClear>
                           {teams.map((team) => (
                             <Select.Option key={team.id} value={team.id}>
@@ -485,7 +517,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 <Row gutter={16}>
                   <Col span={24}>
                     <Form.Item
-                      label={getFieldConfig("reach_before_minutes").label}
+                      label={<FormLabel icon={Timer} label={getFieldConfig("reach_before_minutes").label} />}
                       name="reach_before_minutes"
                       required={getFieldConfig("reach_before_minutes").isRequired}
                       rules={
@@ -507,7 +539,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                   {getFieldConfig("client_pick_up_time").isVisible && (
                     <Col span={getFieldConfig("client_id").isVisible ? 12 : 24}>
                       <Form.Item
-                        label={getFieldConfig("client_pick_up_time").label}
+                        label={<FormLabel icon={Clock} label={getFieldConfig("client_pick_up_time").label} />}
                         name="client_pick_up_time"
                         required={getFieldConfig("client_pick_up_time").isRequired}
                         rules={
@@ -523,7 +555,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                   {getFieldConfig("client_id").isVisible && (
                     <Col span={getFieldConfig("client_pick_up_time").isVisible ? 12 : 24}>
                       <Form.Item
-                        label={getFieldConfig("client_id").label}
+                        label={<FormLabel icon={Fingerprint} label={getFieldConfig("client_id").label} />}
                         name="client_id"
                         required={getFieldConfig("client_id").isRequired}
                         rules={
@@ -542,7 +574,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
               {/* Pick Up Address */}
               {getFieldConfig("pick_up_address").isVisible && (
                 <Form.Item
-                  label={getFieldConfig("pick_up_address").label}
+                  label={<FormLabel icon={MapPin} label={getFieldConfig("pick_up_address").label} />}
                   name="pick_up_address"
                   required={getFieldConfig("pick_up_address").isRequired}
                   rules={
@@ -570,7 +602,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
               {/* Drop Off Address */}
               {getFieldConfig("drop_off_address").isVisible && (
                 <Form.Item
-                  label={getFieldConfig("drop_off_address").label}
+                  label={<FormLabel icon={MapPin} label={getFieldConfig("drop_off_address").label} />}
                   name="drop_off_address"
                   required={getFieldConfig("drop_off_address").isRequired}
                   rules={
@@ -601,7 +633,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                   {getFieldConfig("client_name").isVisible && (
                     <Col span={getFieldConfig("client_phone").isVisible ? 12 : 24}>
                       <Form.Item
-                        label={getFieldConfig("client_name").label}
+                        label={<FormLabel icon={Building2} label={getFieldConfig("client_name").label} />}
                         name="client_name"
                         required={getFieldConfig("client_name").isRequired}
                         rules={
@@ -617,7 +649,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                   {getFieldConfig("client_phone").isVisible && (
                     <Col span={getFieldConfig("client_name").isVisible ? 12 : 24}>
                       <Form.Item
-                        label={getFieldConfig("client_phone").label}
+                        label={<FormLabel icon={Phone} label={getFieldConfig("client_phone").label} />}
                         name="client_phone"
                         required={getFieldConfig("client_phone").isRequired}
                         rules={
@@ -636,7 +668,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
               {/* Shuttle Notes */}
               {getFieldConfig("notes").isVisible && (
                 <Form.Item
-                  label={getFieldConfig("notes").label}
+                  label={<FormLabel icon={FileText} label={getFieldConfig("notes").label} />}
                   name="notes"
                   required={getFieldConfig("notes").isRequired}
                   rules={
@@ -656,7 +688,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 {getFieldConfig("scheduled_date").isVisible && (
                   <Col span={12}>
                     <Form.Item
-                      label={getFieldConfig("scheduled_date").label}
+                      label={<FormLabel icon={Calendar} label={getFieldConfig("scheduled_date").label} />}
                       name="scheduled_date"
                       required={getFieldConfig("scheduled_date").isRequired}
                       rules={
@@ -672,7 +704,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 {getFieldConfig("job_type").isVisible && (
                   <Col span={12}>
                     <Form.Item
-                      label={getFieldConfig("job_type").label}
+                      label={<FormLabel icon={ArrowRightLeft} label={getFieldConfig("job_type").label} />}
                       name="job_type"
                       required={getFieldConfig("job_type").isRequired}
                       rules={
@@ -692,7 +724,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 {getFieldConfig("priority_level").isVisible && (
                   <Col span={12}>
                     <Form.Item
-                      label={getFieldConfig("priority_level").label}
+                      label={<FormLabel icon={Flag} label={getFieldConfig("priority_level").label} />}
                       name="priority_level"
                       required={getFieldConfig("priority_level").isRequired}
                       rules={
@@ -706,7 +738,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                   </Col>
                 )}
                 <Col span={12}>
-                  <Form.Item label="Assign Drivers" name="assigned_to">
+                  <Form.Item label={<FormLabel icon={Users} label="Assign Drivers" />} name="assigned_to">
                     <Select placeholder="Select" allowClear>
                       {teams.map((team) => (
                         <Select.Option key={team.id} value={team.id}>
@@ -721,7 +753,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
               {/* Address */}
               {getFieldConfig("address_formatted").isVisible && (
                 <Form.Item
-                  label={getFieldConfig("address_formatted").label}
+                  label={<FormLabel icon={MapPin} label={getFieldConfig("address_formatted").label} />}
                   name="address_formatted"
                   required={getFieldConfig("address_formatted").isRequired}
                   rules={
@@ -754,7 +786,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item
-                      label="Latitude"
+                      label={<FormLabel icon={MapPin} label="Latitude" />}
                       name={["location", "lat"]}
                       required={getFieldConfig("location").isRequired}
                       rules={[
@@ -779,7 +811,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                   </Col>
                   <Col span={12}>
                     <Form.Item
-                      label="Longitude"
+                      label={<FormLabel icon={MapPin} label="Longitude" />}
                       name={["location", "lng"]}
                       required={getFieldConfig("location").isRequired}
                       rules={[
@@ -810,7 +842,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
               {/* Phone Number */}
               {getFieldConfig("phone_number").isVisible && (
                 <Form.Item
-                  label={getFieldConfig("phone_number").label}
+                  label={<FormLabel icon={Phone} label={getFieldConfig("phone_number").label} />}
                   required={getFieldConfig("phone_number").isRequired}
                   rules={
                     getFieldConfig("phone_number").isRequired
@@ -871,7 +903,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 {getFieldConfig("first_name").isVisible && (
                   <Col span={12}>
                     <Form.Item
-                      label={getFieldConfig("first_name").label}
+                      label={<FormLabel icon={User} label={getFieldConfig("first_name").label} />}
                       name="first_name"
                       required={getFieldConfig("first_name").isRequired}
                       rules={
@@ -887,7 +919,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 {getFieldConfig("last_name").isVisible && (
                   <Col span={12}>
                     <Form.Item
-                      label={getFieldConfig("last_name").label}
+                      label={<FormLabel icon={User} label={getFieldConfig("last_name").label} />}
                       name="last_name"
                       required={getFieldConfig("last_name").isRequired}
                       rules={
@@ -907,7 +939,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 {getFieldConfig("email").isVisible && (
                   <Col span={12}>
                     <Form.Item
-                      label={getFieldConfig("email").label}
+                      label={<FormLabel icon={Mail} label={getFieldConfig("email").label} />}
                       name="email"
                       required={getFieldConfig("email").isRequired}
                       rules={
@@ -923,7 +955,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 {getFieldConfig("business_name").isVisible && (
                   <Col span={12}>
                     <Form.Item
-                      label={getFieldConfig("business_name").label}
+                      label={<FormLabel icon={Building2} label={getFieldConfig("business_name").label} />}
                       name="business_name"
                       required={getFieldConfig("business_name").isRequired}
                       rules={
@@ -943,7 +975,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 {getFieldConfig("time_window_start").isVisible && (
                   <Col span={8}>
                     <Form.Item
-                      label={getFieldConfig("time_window_start").label}
+                      label={<FormLabel icon={Clock} label={getFieldConfig("time_window_start").label} />}
                       name="time_window_start"
                       required={getFieldConfig("time_window_start").isRequired}
                       rules={[
@@ -967,7 +999,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 {getFieldConfig("time_window_end").isVisible && (
                   <Col span={8}>
                     <Form.Item
-                      label={getFieldConfig("time_window_end").label}
+                      label={<FormLabel icon={Clock} label={getFieldConfig("time_window_end").label} />}
                       name="time_window_end"
                       required={getFieldConfig("time_window_end").isRequired}
                       rules={[
@@ -991,7 +1023,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 {getFieldConfig("service_duration").isVisible && (
                   <Col span={8}>
                     <Form.Item
-                      label={getFieldConfig("service_duration").label}
+                      label={<FormLabel icon={Timer} label={getFieldConfig("service_duration").label} />}
                       name="service_duration"
                       required={getFieldConfig("service_duration").isRequired}
                       rules={[
@@ -1017,7 +1049,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
               {/* Customer Preferences */}
               {getFieldConfig("customer_preferences").isVisible && (
                 <Form.Item
-                  label={getFieldConfig("customer_preferences").label}
+                  label={<FormLabel icon={FileText} label={getFieldConfig("customer_preferences").label} />}
                   name="customer_preferences"
                   required={getFieldConfig("customer_preferences").isRequired}
                   rules={
@@ -1033,7 +1065,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
               {/* Notes */}
               {getFieldConfig("additional_notes").isVisible && (
                 <Form.Item
-                  label={getFieldConfig("additional_notes").label}
+                  label={<FormLabel icon={FileText} label={getFieldConfig("additional_notes").label} />}
                   name="additional_notes"
                   required={getFieldConfig("additional_notes").isRequired}
                   rules={
@@ -1051,7 +1083,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 {getFieldConfig("recurrence_type").isVisible && (
                   <Col span={12}>
                     <Form.Item
-                      label={getFieldConfig("recurrence_type").label}
+                      label={<FormLabel icon={Repeat} label={getFieldConfig("recurrence_type").label} />}
                       name="recurrence_type"
                       required={getFieldConfig("recurrence_type").isRequired}
                       rules={
@@ -1067,7 +1099,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                 {getFieldConfig("payment_status").isVisible && (
                   <Col span={12}>
                     <Form.Item
-                      label={getFieldConfig("payment_status").label}
+                      label={<FormLabel icon={TagIcon} label={getFieldConfig("payment_status").label} />}
                       name="payment_status"
                       required={getFieldConfig("payment_status").isRequired}
                       rules={

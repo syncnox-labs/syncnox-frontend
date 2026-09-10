@@ -431,7 +431,7 @@ export default function JobsList() {
       {/* Edit Job Drawer */}
       <Drawer
         title={`Edit Job #${editJobData?.id || ""}`}
-        size={540 as any}
+        width={720}
         onClose={() => setEditJobData(null)}
         open={Boolean(editJobData)}
         destroyOnClose

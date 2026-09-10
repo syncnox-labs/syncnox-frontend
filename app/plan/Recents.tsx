@@ -190,10 +190,11 @@ const Recents = () => {
             </div>
             <Drawer
               onClose={() => setEditJobData(null)}
-              title="Edit Job"
+              title={`Edit Job #${editJobData?.id || ""}`}
               open={editJobData?.id !== undefined}
-              size="large"
+              width={720}
               placement="right"
+              destroyOnClose
             >
               <JobForm
                 onSubmit={() => setEditJobData(null)}
