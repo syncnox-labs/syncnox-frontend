@@ -102,6 +102,27 @@ export const transformFormToApi = (
     }
   }
 
+  // Clean up start_location & end_location if empty or missing valid lat/lng
+  if (
+    transformedValues.start_location &&
+    (transformedValues.start_location.lat === undefined ||
+      transformedValues.start_location.lat === null ||
+      transformedValues.start_location.lng === undefined ||
+      transformedValues.start_location.lng === null)
+  ) {
+    transformedValues.start_location = null;
+  }
+
+  if (
+    transformedValues.end_location &&
+    (transformedValues.end_location.lat === undefined ||
+      transformedValues.end_location.lat === null ||
+      transformedValues.end_location.lng === undefined ||
+      transformedValues.end_location.lng === null)
+  ) {
+    transformedValues.end_location = null;
+  }
+
   return transformedValues;
 };
 
