@@ -45,6 +45,7 @@ import {
   generateRoutePolylines,
   generateMapMarkers,
   getGroupedStopsCount,
+  isDriverMatch,
 } from "./optimizationView.utils";
 import { getRouteColor } from "@/utils/timeline.utils";
 import ResizeHandle from "@/components/ResizeHandle";
@@ -192,6 +193,24 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
   const [focusedRouteIndex, setFocusedRouteIndex] = useState<number | null>(
     null,
   );
+
+  // Driver search & exact match state — filters both Timeline and Map routes
+  const [driverSearch, setDriverSearch] = useState("");
+  const [exactMatch, setExactMatch] = useState(false);
+
+  const allowedRouteIndices = useMemo(() => {
+    if (!route.result?.routes) return null;
+    if (!driverSearch.trim()) return null;
+
+    const indices = new Set<number>();
+    route.result.routes.forEach((routeItem, index) => {
+      const driverName = routeItem.team_member_name || `Driver ${index + 1}`;
+      if (isDriverMatch(driverName, driverSearch, exactMatch)) {
+        indices.add(index);
+      }
+    });
+    return indices;
+  }, [route.result?.routes, driverSearch, exactMatch]);
 
   // Global Candidate & Job Search State — search UI is now inside the map (MapSearch component)
 
@@ -399,13 +418,24 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     }
   };
 
+  // Clear route focus if the focused route gets filtered out by driver search
+  useEffect(() => {
+    if (
+      focusedRouteIndex !== null &&
+      allowedRouteIndices !== null &&
+      !allowedRouteIndices.has(focusedRouteIndex)
+    ) {
+      clearFocus();
+    }
+  }, [focusedRouteIndex, allowedRouteIndices, clearFocus]);
+
   const routePolylines = useMemo(() => {
-    return generateRoutePolylines(route, focusedRouteIndex);
-  }, [route, focusedRouteIndex]);
+    return generateRoutePolylines(route, focusedRouteIndex, allowedRouteIndices);
+  }, [route, focusedRouteIndex, allowedRouteIndices]);
 
   const allMarkers = useMemo(() => {
-    return generateMapMarkers(route, jobs);
-  }, [route, jobs]);
+    return generateMapMarkers(route, jobs, allowedRouteIndices);
+  }, [route, jobs, allowedRouteIndices]);
 
   // While a route is focused only its own stops stay on the map.
   const markers = useMemo(() => {
@@ -919,6 +949,10 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                   onReOptimize={handleReOptimize}
                   focusedRouteIndex={focusedRouteIndex}
                   onFocusRoute={handleFocusRoute}
+                  driverSearch={driverSearch}
+                  onDriverSearchChange={setDriverSearch}
+                  exactMatch={exactMatch}
+                  onExactMatchChange={setExactMatch}
                 />
               </div>
             </div>

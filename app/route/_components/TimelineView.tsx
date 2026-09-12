@@ -4,6 +4,7 @@ import type { Job } from "@/types/job.type";
 import type { Vehicle } from "@/types/vehicle.type";
 import { Avatar, Tooltip, Select, Dropdown, Input } from "antd";
 import type { MenuProps } from "antd";
+import { isDriverMatch } from "./optimizationView.utils";
 import {
   UserOutlined,
   HomeFilled,
@@ -107,6 +108,10 @@ interface TimelineViewProps {
   /** Index of the route currently isolated on the map, or null for "show all". */
   focusedRouteIndex?: number | null;
   onFocusRoute?: (routeIndex: number) => void;
+  driverSearch?: string;
+  onDriverSearchChange?: (search: string) => void;
+  exactMatch?: boolean;
+  onExactMatchChange?: (exact: boolean) => void;
 }
 
 const INTERVAL_OPTIONS = [
@@ -167,11 +172,43 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   onReOptimize,
   focusedRouteIndex = null,
   onFocusRoute,
+  driverSearch: externalDriverSearch,
+  onDriverSearchChange,
+  exactMatch: externalExactMatch,
+  onExactMatchChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [intervalMinutes, setIntervalMinutes] = useState(30);
-  const [driverSearch, setDriverSearch] = useState("");
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  const [internalDriverSearch, setInternalDriverSearch] = useState("");
+  const [internalExactMatch, setInternalExactMatch] = useState(false);
+
+  const driverSearch = externalDriverSearch ?? internalDriverSearch;
+  const exactMatch = externalExactMatch ?? internalExactMatch;
+
+  const setDriverSearch = (val: string) => {
+    if (onDriverSearchChange) {
+      onDriverSearchChange(val);
+    } else {
+      setInternalDriverSearch(val);
+    }
+  };
+
+  const setExactMatch = (val: boolean) => {
+    if (onExactMatchChange) {
+      onExactMatchChange(val);
+    } else {
+      setInternalExactMatch(val);
+    }
+  };
+
+  const [isSearchOpen, setIsSearchOpen] = useState(Boolean(driverSearch));
+
+  useEffect(() => {
+    if (driverSearch) {
+      setIsSearchOpen(true);
+    }
+  }, [driverSearch]);
 
   const filteredRoutes = useMemo(() => {
     const indexed = routes.map((route, originalIndex) => ({
@@ -179,14 +216,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       originalIndex,
     }));
     if (!driverSearch.trim()) return indexed;
-    const query = driverSearch.toLowerCase().trim();
-    return indexed.filter(({ route }) => {
+    return indexed.filter(({ route, originalIndex }) => {
       const driverName = String(
-        route.team_member_name || `Driver ${route.team_member_id}`
-      ).toLowerCase();
-      return driverName.includes(query);
+        route.team_member_name || `Driver ${originalIndex + 1}`
+      );
+      return isDriverMatch(driverName, driverSearch, exactMatch);
     });
-  }, [routes, driverSearch]);
+  }, [routes, driverSearch, exactMatch]);
 
   const { startTime, endTime } = useMemo(
     () => calculateTimeRange(routes),
@@ -316,42 +352,87 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               style={{ width: DRIVER_COLUMN_WIDTH, minWidth: DRIVER_COLUMN_WIDTH }}
             >
               {isSearchOpen ? (
-                <Input
-                  size="small"
-                  placeholder="Search driver..."
-                  value={driverSearch}
-                  onChange={(e) => setDriverSearch(e.target.value)}
-                  autoFocus
-                  prefix={<SearchOutlined className="text-gray-400 text-xs" />}
-                  suffix={
-                    <CloseOutlined
-                      className="text-gray-400 hover:text-gray-600 cursor-pointer text-xs"
-                      onClick={() => {
-                        setDriverSearch("");
-                        setIsSearchOpen(false);
-                      }}
-                    />
-                  }
-                  className="text-xs max-w-[155px]"
-                />
+                <div className="flex items-center gap-1 flex-1 min-w-0 mr-1.5">
+                  <Input
+                    size="small"
+                    placeholder="Search driver..."
+                    value={driverSearch}
+                    onChange={(e) => setDriverSearch(e.target.value)}
+                    autoFocus
+                    prefix={<SearchOutlined className="text-gray-400 text-xs" />}
+                    suffix={
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Tooltip
+                          title={
+                            exactMatch
+                              ? "Exact match: ON (click to match partial)"
+                              : "Exact match: OFF (click to match exact word)"
+                          }
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setExactMatch(!exactMatch)}
+                            className={`px-1.5 py-0.5 text-[10px] font-semibold rounded transition-all cursor-pointer border-none outline-none select-none ${
+                              exactMatch
+                                ? "bg-[#003220] text-white shadow-xs"
+                                : "bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                            }`}
+                          >
+                            Exact
+                          </button>
+                        </Tooltip>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDriverSearch("");
+                            setIsSearchOpen(false);
+                          }}
+                          className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded p-0.5 transition-colors cursor-pointer border-none outline-none flex items-center justify-center"
+                          title="Clear search"
+                        >
+                          <CloseOutlined className="text-[11px]" />
+                        </button>
+                      </div>
+                    }
+                    className="text-xs w-full rounded-md border-gray-300 hover:border-emerald-600 focus:border-emerald-700"
+                  />
+                </div>
               ) : (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-semibold text-gray-600">Driver</span>
+                <div className="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0 mr-1.5">
+                  <span className="text-xs font-semibold text-gray-600 shrink-0">
+                    Driver
+                  </span>
                   <Tooltip title="Search driver">
                     <button
                       type="button"
-                      className="p-1 text-gray-400 hover:text-gray-700 rounded hover:bg-gray-200/60 transition-colors flex items-center justify-center"
+                      className="p-1 text-gray-400 hover:text-gray-700 rounded hover:bg-gray-200/60 transition-colors flex items-center justify-center border-none bg-transparent cursor-pointer"
                       onClick={() => setIsSearchOpen(true)}
                     >
                       <SearchOutlined className="text-xs" />
                     </button>
                   </Tooltip>
                   {driverSearch && (
-                    <span
-                      className="w-2 h-2 rounded-full bg-blue-500 cursor-pointer"
+                    <div
+                      className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 cursor-pointer flex items-center gap-1 truncate max-w-[120px] transition-colors hover:bg-emerald-100"
                       onClick={() => setIsSearchOpen(true)}
-                      title={`Filtered by: ${driverSearch}`}
-                    />
+                      title={`Filtered by: "${driverSearch}"${
+                        exactMatch ? " (Exact match)" : ""
+                      }`}
+                    >
+                      <span className="truncate">{driverSearch}</span>
+                      {exactMatch && (
+                        <span className="text-[8px] font-bold bg-[#003220] text-white px-1 rounded-full shrink-0">
+                          Exact
+                        </span>
+                      )}
+                      <CloseOutlined
+                        className="text-[9px] text-emerald-600 hover:text-emerald-900 shrink-0 ml-0.5"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDriverSearch("");
+                        }}
+                      />
+                    </div>
                   )}
                 </div>
               )}
@@ -360,8 +441,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                 onChange={setIntervalMinutes}
                 options={INTERVAL_OPTIONS}
                 size="small"
-                style={{ width: 85 }}
-                className="text-xs"
+                style={{ width: 78 }}
+                className="text-xs shrink-0"
               />
             </div>
 

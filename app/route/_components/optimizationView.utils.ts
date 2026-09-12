@@ -6,6 +6,32 @@ import { Job } from "@/types/job.type";
 /** Stroke colour used for routes that are not the focused one. */
 const DIMMED_ROUTE_COLOR = "#9ca3af";
 
+export const isDriverMatch = (
+  driverName: string,
+  searchQuery: string,
+  exactMatch: boolean,
+): boolean => {
+  const q = searchQuery.trim().toLowerCase();
+  if (!q) return true;
+  const name = driverName.trim().toLowerCase();
+
+  if (!exactMatch) {
+    return name.includes(q);
+  }
+
+  // 1. Exact full string match
+  if (name === q) return true;
+
+  // 2. Word boundary regex match (e.g. "driver 1" matches "Driver 1", "Driver 1 (van)", but NOT "Driver 12")
+  try {
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`\\b${escaped}\\b`, "i");
+    if (regex.test(driverName)) return true;
+  } catch {}
+
+  return false;
+};
+
 export const getGroupedStopsCount = (stops?: any[]): number => {
   if (!stops || stops.length === 0) return 0;
   const grouped: { lat: string | null; lon: string | null; type: string }[] = [];
@@ -42,6 +68,7 @@ export const getGroupedStopsCount = (stops?: any[]): number => {
 export const generateRoutePolylines = (
   route: Route,
   focusedRouteIndex?: number | null,
+  allowedRouteIndices?: Set<number> | null,
 ) => {
 
   if (!route?.result?.routes) return [];
@@ -50,6 +77,13 @@ export const generateRoutePolylines = (
     .map((routeItem, index) => ({ routeItem, index }))
     .filter(({ routeItem, index }) => {
       if (!routeItem.route_polyline) return false;
+      if (
+        allowedRouteIndices !== null &&
+        allowedRouteIndices !== undefined &&
+        !allowedRouteIndices.has(index)
+      ) {
+        return false;
+      }
       if (
         focusedRouteIndex !== null &&
         focusedRouteIndex !== undefined &&
@@ -77,10 +111,21 @@ export type MarkerJobData = Pick<
   "id" | "address_formatted" | "status" | "location"
 >;
 
-export const generateMapMarkers = (route: Route, jobs: Job[]) => {
+export const generateMapMarkers = (
+  route: Route,
+  jobs: Job[],
+  allowedRouteIndices?: Set<number> | null,
+) => {
   if (!route?.result?.routes) return [];
   const jobsMap = new Map(jobs.map((j) => [Number(j.id), j]));
   return route.result.routes.flatMap((routeItem, index) => {
+    if (
+      allowedRouteIndices !== null &&
+      allowedRouteIndices !== undefined &&
+      !allowedRouteIndices.has(index)
+    ) {
+      return [];
+    }
     const color = getRouteColor(index);
 
     // Group stops by (lat.toFixed(4), lng.toFixed(4), stop_type)
