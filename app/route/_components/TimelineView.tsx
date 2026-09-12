@@ -160,6 +160,36 @@ const getRouteDurationStr = (route: any): string => {
 
 const DRIVER_COLUMN_WIDTH = 265;
 
+interface DriverGroup {
+  driverKey: string;
+  driverName: string;
+  routes: Array<{
+    route: any;
+    originalIndex: number;
+  }>;
+}
+
+const getVehicleCapacity = (v?: Vehicle): number | null => {
+  if (!v) return null;
+  if (Array.isArray(v.load_constraints)) {
+    for (const c of v.load_constraints as any[]) {
+      if (c && typeof c === "object") {
+        const ctype = String(c.constraint_type || "").toLowerCase();
+        const unit = String(c.unit || "").toLowerCase();
+        if (ctype === "capacity" || ctype === "seats" || unit.includes("seat")) {
+          const val = Number(c.max_value);
+          if (val > 0) return val;
+        }
+      }
+    }
+  }
+  const vtype = String(v.type || "").toLowerCase();
+  const typeCaps: Record<string, number> = {
+    car: 4, van: 8, bus: 30, small_truck: 2, truck: 2, scooter: 1, bike: 1, foot: 1,
+  };
+  return typeCaps[vtype] || null;
+};
+
 const TimelineView: React.FC<TimelineViewProps> = ({
   routes,
   jobs = [],
@@ -223,6 +253,34 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       return isDriverMatch(driverName, driverSearch, exactMatch);
     });
   }, [routes, driverSearch, exactMatch]);
+
+  const driverGroups = useMemo(() => {
+    const groupsMap = new Map<string, DriverGroup>();
+
+    filteredRoutes.forEach(({ route, originalIndex }) => {
+      const key =
+        route.team_member_id != null
+          ? `driver-id-${route.team_member_id}`
+          : route.team_member_name
+          ? `driver-name-${route.team_member_name.toLowerCase().trim()}`
+          : `driver-index-${originalIndex}`;
+
+      const driverName =
+        route.team_member_name || `Driver ${route.team_member_id || originalIndex + 1}`;
+
+      if (!groupsMap.has(key)) {
+        groupsMap.set(key, {
+          driverKey: key,
+          driverName,
+          routes: [],
+        });
+      }
+
+      groupsMap.get(key)!.routes.push({ route, originalIndex });
+    });
+
+    return Array.from(groupsMap.values());
+  }, [filteredRoutes]);
 
   const { startTime, endTime } = useMemo(
     () => calculateTimeRange(routes),
@@ -297,7 +355,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
     // Calculate vertical Y scroll offset to bring driver row into view
     let targetScrollTop = container.scrollTop;
-    const rowEl = container.querySelector(`[data-route-index="${rIdx}"]`) as HTMLElement;
+    const rowEl = (container.querySelector<HTMLElement>(`[data-route-index="${rIdx}"]`) ||
+      Array.from(container.querySelectorAll<HTMLElement>('[data-route-indices]')).find(el => 
+        (el.getAttribute('data-route-indices') || '').split(',').includes(String(rIdx))
+      ));
     if (rowEl) {
       const rowTop = rowEl.offsetTop;
       const rowHeight = rowEl.offsetHeight;
@@ -476,537 +537,626 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               ))}
             </div>
 
-            {filteredRoutes.length === 0 ? (
+            {driverGroups.length === 0 ? (
               <div
-                className="py-12 text-center text-xs text-gray-400 flex flex-col items-center justify-center gap-1.5"
-                style={{ marginLeft: DRIVER_COLUMN_WIDTH }}
+                className="p-8 text-center text-gray-400 text-sm flex items-center justify-center font-medium"
+                style={{ minHeight: 120 }}
               >
-                <span>No drivers matching "{driverSearch}"</span>
-                <button
-                  className="text-blue-500 hover:underline text-xs font-medium"
-                  onClick={() => setDriverSearch("")}
-                >
-                  Clear filter
-                </button>
+                No drivers found matching "{driverSearch}"
               </div>
             ) : (
-              filteredRoutes.map(({ route, originalIndex: routeIndex }) => {
-              const routeColor = getRouteColor(routeIndex);
-              const durationStr = getRouteDurationStr(route);
-              // Compute grouped stops once for stop count and rendering
-              const groupedStops = groupStopsByLocation(route.stops || []);
-              const totalGroupedStopsCount = groupedStops.filter(
-                (g) => g.representative.stop_type !== "depot" &&
-                        g.representative.stop_type !== "depot_start" &&
-                        g.representative.stop_type !== "depot_end"
-              ).length;
-              // Rows outside the focus fade back but stay clickable, so the
-              // dispatcher can hop straight from one driver to another.
-              const isDimmed =
-                focusedRouteIndex !== null && focusedRouteIndex !== routeIndex;
+              driverGroups.map((driverGroup) => {
+                const primaryRoute = driverGroup.routes[0].route;
+                const primaryIndex = driverGroup.routes[0].originalIndex;
 
-              // Look up vehicle details for this route
-              const routeVehicle = route.vehicle_id
-                ? vehiclesMap.get(Number(route.vehicle_id))
-                : undefined;
+                const isGroupFocused =
+                  focusedRouteIndex !== null &&
+                  driverGroup.routes.some((r) => r.originalIndex === focusedRouteIndex);
+                const isDimmed = focusedRouteIndex !== null && !isGroupFocused;
 
-              const getVehicleCapacity = (v?: Vehicle): number | null => {
-                if (!v) return null;
-                if (Array.isArray(v.load_constraints)) {
-                  for (const c of v.load_constraints as any[]) {
-                    if (c && typeof c === "object") {
-                      const ctype = String(c.constraint_type || "").toLowerCase();
-                      const unit = String(c.unit || "").toLowerCase();
-                      if (ctype === "capacity" || ctype === "seats" || unit.includes("seat")) {
-                        const val = Number(c.max_value);
-                        if (val > 0) return val;
-                      }
-                    }
-                  }
-                }
-                const vtype = String(v.type || "").toLowerCase();
-                const typeCaps: Record<string, number> = {
-                  car: 4, van: 8, bus: 30, small_truck: 2, truck: 2, scooter: 1, bike: 1, foot: 1,
-                };
-                return typeCaps[vtype] || null;
-              };
+                const totalDistanceMeters = driverGroup.routes.reduce(
+                  (sum, r) => sum + (r.route.total_distance_meters || 0),
+                  0,
+                );
 
-              const vehicleCapacity = getVehicleCapacity(routeVehicle);
+                let totalGroupedStopsCount = 0;
+                driverGroup.routes.forEach((r) => {
+                  const gStops = groupStopsByLocation(r.route.stops || []);
+                  totalGroupedStopsCount += gStops.filter(
+                    (g) =>
+                      g.representative.stop_type !== "depot" &&
+                      g.representative.stop_type !== "depot_start" &&
+                      g.representative.stop_type !== "depot_end",
+                  ).length;
+                });
 
-              const vehicleLabel = routeVehicle
-                ? [
-                    routeVehicle.name,
-                    routeVehicle.type ? `(${routeVehicle.type.replace("_", " ")})` : null,
-                    vehicleCapacity ? `· ${vehicleCapacity} seats` : null,
-                    routeVehicle.license_plate ? `· ${routeVehicle.license_plate}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" ")
-                : null;
+                const vehicleLabels = Array.from(
+                  new Set(
+                    driverGroup.routes
+                      .map((r) => {
+                        const v = r.route.vehicle_id
+                          ? vehiclesMap.get(Number(r.route.vehicle_id))
+                          : undefined;
+                        if (!v) return null;
+                        const cap = getVehicleCapacity(v);
+                        return [
+                          v.name,
+                          v.type ? `(${v.type.replace("_", " ")})` : null,
+                          cap ? `· ${cap} seats` : null,
+                          v.license_plate ? `· ${v.license_plate}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" ");
+                      })
+                      .filter((label): label is string => Boolean(label)),
+                  ),
+                ).join(", ");
 
-              // Pre-calculate cumulative running occupancy per stop in route
-              const occupancyMap = new Map<number, number>();
-              let runningLoad = 0;
-              (route.stops || []).forEach((s: any, idx: number) => {
-                const isPickup = s.stop_type === "pickup";
-                const isDropoff = s.stop_type === "dropoff" || s.stop_type === "drop_off";
-                if (isPickup) {
-                  runningLoad += (s.passenger_count || 1);
-                } else if (isDropoff) {
-                  runningLoad = Math.max(0, runningLoad - (s.passenger_count || 1));
-                }
-                occupancyMap.set(idx, runningLoad);
-              });
+                const totalDurationSeconds = driverGroup.routes.reduce(
+                  (sum, r) => sum + (r.route.total_duration_seconds || 0),
+                  0,
+                );
+                const durationStr =
+                  totalDurationSeconds > 0
+                    ? formatDurationSeconds(totalDurationSeconds)
+                    : getRouteDurationStr(primaryRoute);
 
-              return (
-                <div
-                  key={routeIndex}
-                  data-route-index={routeIndex}
-                  className="flex border-b border-gray-100 hover:bg-gray-50 transition-colors"
-                  style={{ height: ROW_HEIGHT }}
-                >
-                  {/* Sticky Driver Info */}
+                const routeIndicesStr = driverGroup.routes
+                  .map((r) => r.originalIndex)
+                  .join(",");
+
+                return (
                   <div
-                    className="sticky left-0 z-10 bg-white border-r border-gray-200 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)] cursor-pointer"
-                    style={{ width: DRIVER_COLUMN_WIDTH, minWidth: DRIVER_COLUMN_WIDTH }}
-                    onClick={() => onFocusRoute?.(routeIndex)}
-                    title={
-                      focusedRouteIndex === routeIndex
-                        ? "Showing only this route — press Esc to show all"
-                        : "Show only this driver's route"
-                    }
+                    key={driverGroup.driverKey}
+                    data-driver-key={driverGroup.driverKey}
+                    data-route-indices={routeIndicesStr}
+                    data-route-index={primaryIndex}
+                    className="flex border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                    style={{ height: ROW_HEIGHT }}
                   >
-                    {/* Opacity lives on an inner wrapper so the sticky column
-                        stays opaque over the timeline when scrolled sideways. */}
+                    {/* Sticky Driver Info */}
                     <div
-                      className="h-full px-3 flex items-center gap-2.5 transition-opacity"
-                      style={{ opacity: isDimmed ? 0.4 : 1 }}
+                      className="sticky left-0 z-10 bg-white border-r border-gray-200 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)] cursor-pointer"
+                      style={{
+                        width: DRIVER_COLUMN_WIDTH,
+                        minWidth: DRIVER_COLUMN_WIDTH,
+                      }}
+                      onClick={() => onFocusRoute?.(primaryIndex)}
+                      title={
+                        isGroupFocused
+                          ? "Showing this driver's route — press Esc to show all"
+                          : "Show only this driver's route"
+                      }
                     >
-                      <Avatar
-                        icon={<UserOutlined />}
-                        style={{ backgroundColor: routeColor }}
-                        className="text-white shrink-0"
-                        size="default"
-                      />
-                      <div className="flex flex-col overflow-hidden flex-1 min-w-0">
-                        <span className="font-semibold truncate text-gray-800 text-xs">
-                          {route.team_member_name ||
-                            `Driver ${route.team_member_id}`}
-                        </span>
-                        {vehicleLabel && (
-                          <span className="text-[10px] text-gray-900 font-medium truncate">
-                            {vehicleLabel}
-                          </span>
-                        )}
-                        <span className="text-[11px] text-gray-400 truncate">
-                          {Math.round(route.total_distance_meters / 1000)} km
-                          {durationStr ? ` • ${durationStr}` : ""}
-                          {` • ${totalGroupedStopsCount} stop${totalGroupedStopsCount !== 1 ? "s" : ""}`}
-                        </span>
-                      </div>
-
-                      {/* ••• Menu */}
-                      <Dropdown
-                        menu={{ items: getRouteMenuItems(routeIndex) }}
-                        trigger={["click"]}
-                        placement="bottomRight"
+                      <div
+                        className="h-full px-3 flex items-center gap-2.5 transition-opacity"
+                        style={{ opacity: isDimmed ? 0.4 : 1 }}
                       >
-                        <div
-                          className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-100 cursor-pointer transition-colors shrink-0"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MoreOutlined className="text-gray-500 text-base" />
+                        <Avatar
+                          icon={<UserOutlined />}
+                          className="bg-gray-100 text-gray-500 shrink-0"
+                          size="default"
+                        />
+                        <div className="flex flex-col overflow-hidden flex-1 min-w-0">
+                          <span className="font-semibold truncate text-gray-800 text-xs">
+                            {driverGroup.driverName}
+                          </span>
+                          {vehicleLabels && (
+                            <span className="text-[10px] text-gray-900 font-medium truncate">
+                              {vehicleLabels}
+                            </span>
+                          )}
+                          <span className="text-[11px] text-gray-400 truncate">
+                            {Math.round(totalDistanceMeters / 1000)} km
+                            {durationStr ? ` • ${durationStr}` : ""}
+                            {` • ${totalGroupedStopsCount} stop${
+                              totalGroupedStopsCount !== 1 ? "s" : ""
+                            }`}
+                          </span>
                         </div>
-                      </Dropdown>
-                    </div>
-                  </div>
 
-                  {/* Timeline Track */}
-                  <div
-                    className="relative z-0 transition-opacity"
-                    style={{
-                      width: timelineWidth,
-                      opacity: isDimmed ? 0.3 : 1,
-                    }}
-                  >
-                    {/* Connection Lines (Segments) */}
-                    {route.stops?.map((stop: any, index: number) => {
-                      if (index === route.stops.length - 1) return null; // Skip last stop
-
-                      const nextStop = route.stops[index + 1];
-                      const startPos = getPosition(
-                        stop.arrival_time,
-                        startTime,
-                        pixelsPerMinute,
-                      );
-                      const endPos = getPosition(
-                        nextStop.arrival_time,
-                        startTime,
-                        pixelsPerMinute,
-                      );
-                      const width = endPos - startPos;
-
-                      const distanceKm =
-                        (stop.distance_to_next_stop_meters ?? 0) / 1000;
-                      const timeMin = Math.round(
-                        (stop.time_to_next_stop_seconds ?? 0) / 60,
-                      );
-
-                      return (
-                        <Tooltip
-                          key={`link-${index}`}
-                          title={`${timeMin} min, ${distanceKm.toFixed(2)} km`}
+                        {/* ••• Menu */}
+                        <Dropdown
+                          menu={{ items: getRouteMenuItems(primaryIndex) }}
+                          trigger={["click"]}
+                          placement="bottomRight"
                         >
                           <div
-                            className="absolute top-1/2 left-0 h-0.5 hover:opacity-100 transition-opacity cursor-pointer"
-                            style={{
-                              height: "5px",
-                              backgroundColor: routeColor,
-                              opacity: 0.3,
-                              left: startPos,
-                              width: width,
-                              transform: "translateY(-50%)",
-                            }}
-                          />
-                        </Tooltip>
-                      );
-                    })}
+                            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-100 cursor-pointer transition-colors shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreOutlined className="text-gray-500 text-base" />
+                          </div>
+                        </Dropdown>
+                      </div>
+                    </div>
 
-                    {/* Break Time Block */}
-                    {route.break_info &&
-                      (() => {
-                        const breakStartPos = getPosition(
-                          route.break_info.start_time,
-                          startTime,
-                          pixelsPerMinute,
+                    {/* Timeline Track */}
+                    <div
+                      className="relative z-0 transition-opacity"
+                      style={{
+                        width: timelineWidth,
+                        opacity: isDimmed ? 0.3 : 1,
+                      }}
+                    >
+                      {driverGroup.routes.map(({ route, originalIndex: routeIndex }) => {
+                        const routeColor = getRouteColor(routeIndex);
+                        const groupedStops = groupStopsByLocation(
+                          route.stops || [],
                         );
-                        const breakEndPos = getPosition(
-                          route.break_info.end_time,
-                          startTime,
-                          pixelsPerMinute,
-                        );
-                        const breakWidth = breakEndPos - breakStartPos;
 
-                        if (breakWidth <= 0) return null;
+                        const occupancyMap = new Map<number, number>();
+                        let runningLoad = 0;
+                        (route.stops || []).forEach((s: any, idx: number) => {
+                          const isPickup = s.stop_type === "pickup";
+                          const isDropoff =
+                            s.stop_type === "dropoff" ||
+                            s.stop_type === "drop_off";
+                          if (isPickup) {
+                            runningLoad += s.passenger_count || 1;
+                          } else if (isDropoff) {
+                            runningLoad = Math.max(
+                              0,
+                              runningLoad - (s.passenger_count || 1),
+                            );
+                          }
+                          occupancyMap.set(idx, runningLoad);
+                        });
 
                         return (
-                          <Tooltip
-                            title={
-                              <div>
-                                <div className="font-semibold">☕ Break</div>
-                                <div>
-                                  Duration: {route.break_info.duration_minutes}{" "}
-                                  min
-                                </div>
-                                {route.break_info.location
-                                  ?.address_formatted && (
-                                  <div className="text-xs">
-                                    📍{" "}
-                                    {
-                                      route.break_info.location
-                                        .address_formatted
+                          <React.Fragment key={`route-${routeIndex}`}>
+                            {/* Connection Lines (Segments) */}
+                            {route.stops?.map((stop: any, index: number) => {
+                              if (index === route.stops.length - 1) return null;
+
+                              const nextStop = route.stops[index + 1];
+                              const startPos = getPosition(
+                                stop.arrival_time,
+                                startTime,
+                                pixelsPerMinute,
+                              );
+                              const endPos = getPosition(
+                                nextStop.arrival_time,
+                                startTime,
+                                pixelsPerMinute,
+                              );
+                              const width = endPos - startPos;
+
+                              const distanceKm =
+                                (stop.distance_to_next_stop_meters ?? 0) /
+                                1000;
+                              const timeMin = Math.round(
+                                (stop.time_to_next_stop_seconds ?? 0) / 60,
+                              );
+
+                              return (
+                                <Tooltip
+                                  key={`link-${routeIndex}-${index}`}
+                                  title={`${timeMin} min, ${distanceKm.toFixed(
+                                    2,
+                                  )} km`}
+                                >
+                                  <div
+                                    className="absolute top-1/2 left-0 h-0.5 hover:opacity-100 transition-opacity cursor-pointer"
+                                    style={{
+                                      height: "5px",
+                                      backgroundColor: routeColor,
+                                      opacity: 0.3,
+                                      left: startPos,
+                                      width: width,
+                                      transform: "translateY(-50%)",
+                                    }}
+                                  />
+                                </Tooltip>
+                              );
+                            })}
+
+                            {/* Break Time Block */}
+                            {route.break_info &&
+                              (() => {
+                                const breakStartPos = getPosition(
+                                  route.break_info.start_time,
+                                  startTime,
+                                  pixelsPerMinute,
+                                );
+                                const breakEndPos = getPosition(
+                                  route.break_info.end_time,
+                                  startTime,
+                                  pixelsPerMinute,
+                                );
+                                const breakWidth = breakEndPos - breakStartPos;
+
+                                if (breakWidth <= 0) return null;
+
+                                return (
+                                  <Tooltip
+                                    key={`break-${routeIndex}`}
+                                    title={
+                                      <div>
+                                        <div className="font-semibold">
+                                          ☕ Break
+                                        </div>
+                                        <div>
+                                          Duration:{" "}
+                                          {route.break_info.duration_minutes}{" "}
+                                          min
+                                        </div>
+                                        {route.break_info.location
+                                          ?.address_formatted && (
+                                          <div className="text-xs">
+                                            📍{" "}
+                                            {
+                                              route.break_info.location
+                                                .address_formatted
+                                            }
+                                          </div>
+                                        )}
+                                      </div>
                                     }
-                                  </div>
-                                )}
-                              </div>
-                            }
-                          >
-                            <div
-                              className="absolute top-1/2 -translate-y-1/2 h-6 border border-gray-400 cursor-pointer opacity-80 hover:opacity-100 transition-opacity flex items-center justify-center"
-                              style={{
-                                left: breakStartPos,
-                                width: breakWidth,
-                                backgroundColor: "#8c8c8c",
-                                minWidth: 24,
-                              }}
-                            >
-                              <span className="text-white text-xs">☕</span>
-                            </div>
-                          </Tooltip>
-                        );
-                      })()}
-
-                    {/* Idle Time Blocks */}
-                    {route.idle_blocks?.map((idle: any, idleIndex: number) => {
-                      const idleStartPos = getPosition(
-                        idle.start_time,
-                        startTime,
-                        pixelsPerMinute,
-                      );
-                      const idleEndPos = getPosition(
-                        idle.end_time,
-                        startTime,
-                        pixelsPerMinute,
-                      );
-                      const idleWidth = idleEndPos - idleStartPos;
-
-                      if (idleWidth <= 0) return null;
-
-                      return (
-                        <Tooltip
-                          key={`idle-${idleIndex}`}
-                          title={
-                            <div>
-                              <div className="font-semibold">⏳ Idle Time</div>
-                              <div>Waiting: {idle.duration_minutes} min</div>
-                              {idle.location?.address_formatted && (
-                                <div className="text-xs">
-                                  📍 {idle.location.address_formatted}
-                                </div>
-                              )}
-                            </div>
-                          }
-                        >
-                          <div
-                            className="absolute top-1/2 -translate-y-1/2 h-6 border border-gray-300 cursor-pointer opacity-60 hover:opacity-100 transition-opacity"
-                            style={{
-                              left: idleStartPos,
-                              width: idleWidth,
-                              backgroundColor: "#f5f5f5",
-                              backgroundImage: `repeating-linear-gradient(
-                                  45deg,
-                                  transparent,
-                                  transparent 3px,
-                                  rgba(0,0,0,0.08) 3px,
-                                  rgba(0,0,0,0.08) 6px
-                                )`,
-                            }}
-                          />
-                        </Tooltip>
-                      );
-                    })}
-
-                    {/* Stops — rendered from grouped stops to collapse co-located candidates */}
-                    {(() => {
-                      let jobStopCounter = 1;
-
-                      return groupedStops.map((group, groupIndex) => {
-                        const stop = group.representative;
-                        const count = group.candidateCount;
-                        const arrivalTime = dayjs(stop.arrival_time);
-                        const serviceDuration =
-                          stop.service_duration_minutes || 0;
-                        const departureTime = arrivalTime.add(
-                          serviceDuration,
-                          "minute",
-                        );
-
-                        const left = getPosition(
-                          stop.arrival_time,
-                          startTime,
-                          pixelsPerMinute,
-                        );
-
-                        // Calculate block width based on service duration
-                        const blockWidth = serviceDuration * pixelsPerMinute;
-
-                        const isDepot = stop.stop_type === "depot" ||
-                                        stop.stop_type === "depot_start" ||
-                                        stop.stop_type === "depot_end";
-
-                        let displayIndex = 0;
-                        if (!isDepot) {
-                          displayIndex = jobStopCounter++;
-                        }
-
-                        // Worker-shuttle routes use "pickup"/"dropoff" instead of
-                        // the generic "job" stop type.
-                        const isPickup = stop.stop_type === "pickup";
-                        const isDropoff =
-                          stop.stop_type === "dropoff" ||
-                          stop.stop_type === "drop_off";
-                        const isJob =
-                          stop.stop_type === "job" || isPickup || isDropoff;
-                        const stopTypeLabel = isPickup
-                          ? "Pickup"
-                          : isDropoff
-                            ? "Drop-off"
-                            : null;
-
-                        let jobStatus = "assigned";
-                        if (isJob) {
-                          const mapStatus = stop.job_id ? jobsMap.get(Number(stop.job_id)) : undefined;
-                          jobStatus = mapStatus || stop.job?.status || stop.status || "assigned";
-                        }
-
-                        let blockBgColor = routeColor;
-                        let blockBorderColor = routeColor;
-                        let blockTextColor = "white";
-
-                        if (isJob) {
-                          const isStopDone = isPickup
-                            ? (jobStatus === "in_transit" || jobStatus === "completed" || jobStatus === "success")
-                            : (jobStatus === "completed" || jobStatus === "success");
-
-                          if (isStopDone) {
-                            blockBgColor = routeColor;
-                            blockBorderColor = routeColor;
-                            blockTextColor = "white";
-                          } else if (jobStatus === "failed") {
-                            blockBgColor = "#f5222d"; // Red
-                            blockBorderColor = "#f5222d";
-                            blockTextColor = "white";
-                          } else if (jobStatus === "skipped") {
-                            blockBgColor = "#8c8c8c"; // Gray
-                            blockBorderColor = "#8c8c8c";
-                            blockTextColor = "white";
-                          } else {
-                            blockBgColor = "white";
-                            blockBorderColor = routeColor;
-                            blockTextColor = routeColor;
-                          }
-                        }
-
-                        const lastRawIndex = group.firstRawIndex + group.candidateCount - 1;
-                        const currentOccupancy = occupancyMap.get(lastRawIndex) ?? 0;
-
-                        // Build tooltip content — show all candidates if grouped with clickable links
-                        const tooltipContent = (
-                          <div className="pointer-events-auto select-none space-y-1">
-                            <div className="font-semibold flex items-center gap-1.5">
-                              {isDepot ? (
-                                <HomeFilled className="text-amber-400 text-sm shrink-0" />
-                              ) : (
-                                <EnvironmentOutlined className="text-red-400 text-sm shrink-0" />
-                              )}
-                              <span>
-                                {isDepot
-                                  ? (stop.stop_type === "depot_start" ? "Depot (Start)" : stop.stop_type === "depot_end" ? "Depot (End)" : "Depot")
-                                  : (stop.address_formatted || `#${stop.job_id}`)}
-                              </span>
-                            </div>
-                            {stopTypeLabel && (
-                              <div className="text-xs font-semibold uppercase opacity-80 flex items-center gap-1.5">
-                                <UserOutlined className="text-xs shrink-0" />
-                                <span>{stopTypeLabel}</span>
-                                {count > 1 && (
-                                  <span className="bg-white/20 rounded px-1 lowercase">
-                                    ×{count} candidates
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            {isJob && (
-                              <div className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
-                                <CarOutlined className="text-xs shrink-0" />
-                                <span>Occupancy: {currentOccupancy} {vehicleCapacity ? `/ ${vehicleCapacity}` : ""} seats</span>
-                              </div>
-                            )}
-                            {isJob && group.rawStops.length > 0 && (
-                              <div className="text-xs max-h-36 overflow-y-auto space-y-1 custom-scrollbar pr-1 pt-0.5">
-                                {group.rawStops.map((s: any, i: number) => {
-                                  const candName = getCandidateName(s);
-                                  return (
+                                  >
                                     <div
-                                      key={i}
-                                      className="cursor-pointer text-sky-200 hover:text-white hover:underline transition-colors py-0.5 flex items-center gap-1.5"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        onStopClick?.(s, routeIndex, displayIndex);
+                                      className="absolute top-1/2 -translate-y-1/2 h-6 border border-gray-400 cursor-pointer opacity-80 hover:opacity-100 transition-opacity flex items-center justify-center"
+                                      style={{
+                                        left: breakStartPos,
+                                        width: breakWidth,
+                                        backgroundColor: "#8c8c8c",
+                                        minWidth: 24,
                                       }}
                                     >
-                                      <FileTextOutlined className="text-sky-300 text-xs shrink-0" />
-                                      <span>#{s.job_id} {candName ? `(${candName})` : ""}</span>
+                                      <span className="text-white text-xs">
+                                        ☕
+                                      </span>
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                            <div className="text-xs text-white font-bold flex items-center gap-1.5 pt-0.5">
-                              <ClockCircleOutlined className="text-amber-300 text-xs shrink-0" />
-                              <span>ETA: {arrivalTime.isValid() ? arrivalTime.format("HH:mm") : "--:--"}</span>
-                            </div>
-                            {serviceDuration > 0 && (
-                              <div className="text-xs text-gray-200 pl-5 space-y-0.5">
-                                <div>
-                                  Departure:{" "}
-                                  {departureTime.isValid()
-                                    ? departureTime.format("HH:mm")
-                                    : "--:--"}
-                                </div>
-                                <div>Service: {serviceDuration} min</div>
-                              </div>
-                            )}
-                          </div>
-                        );
+                                  </Tooltip>
+                                );
+                              })()}
 
-                        // For jobs with service duration, show as a bar
-                        if (isJob && serviceDuration > 0) {
-                          return (
-                            <Tooltip
-                              key={groupIndex}
-                              title={tooltipContent}
-                              overlayInnerStyle={{ pointerEvents: "auto" }}
-                            >
-                              <div
-                                className="absolute top-1/2 -translate-y-1/2 h-8 flex items-center justify-center shadow-md transition-all hover:scale-105 cursor-pointer z-10 border-2"
-                                style={{
-                                  left: left,
-                                  width: Math.max(blockWidth, 28),
-                                  backgroundColor: blockBgColor,
-                                  borderColor: blockBorderColor,
-                                }}
-                                onClick={() =>
-                                  onStopClick?.(
-                                    group.rawStops[0],
-                                    routeIndex,
-                                    displayIndex,
-                                  )
+                            {/* Idle Time Blocks */}
+                            {route.idle_blocks?.map(
+                              (idle: any, idleIndex: number) => {
+                                const idleStartPos = getPosition(
+                                  idle.start_time,
+                                  startTime,
+                                  pixelsPerMinute,
+                                );
+                                const idleEndPos = getPosition(
+                                  idle.end_time,
+                                  startTime,
+                                  pixelsPerMinute,
+                                );
+                                const idleWidth = idleEndPos - idleStartPos;
+
+                                if (idleWidth <= 0) return null;
+
+                                return (
+                                  <Tooltip
+                                    key={`idle-${routeIndex}-${idleIndex}`}
+                                    title={
+                                      <div>
+                                        <div className="font-semibold">
+                                          ⏳ Idle Time
+                                        </div>
+                                        <div>
+                                          Waiting: {idle.duration_minutes} min
+                                        </div>
+                                        {idle.location?.address_formatted && (
+                                          <div className="text-xs">
+                                            📍 {idle.location.address_formatted}
+                                          </div>
+                                        )}
+                                      </div>
+                                    }
+                                  >
+                                    <div
+                                      className="absolute top-1/2 -translate-y-1/2 h-6 border border-gray-300 cursor-pointer opacity-60 hover:opacity-100 transition-opacity"
+                                      style={{
+                                        left: idleStartPos,
+                                        width: idleWidth,
+                                        backgroundColor: "#f5f5f5",
+                                        backgroundImage: `repeating-linear-gradient(
+                                            45deg,
+                                            transparent,
+                                            transparent 3px,
+                                            rgba(0,0,0,0.08) 3px,
+                                            rgba(0,0,0,0.08) 6px
+                                          )`,
+                                      }}
+                                    />
+                                  </Tooltip>
+                                );
+                              },
+                            )}
+
+                            {/* Stops — rendered from grouped stops */}
+                            {(() => {
+                              let jobStopCounter = 1;
+
+                              return groupedStops.map((group, groupIndex) => {
+                                const stop = group.representative;
+                                const count = group.candidateCount;
+                                const arrivalTime = dayjs(stop.arrival_time);
+                                const serviceDuration =
+                                  stop.service_duration_minutes || 0;
+                                const departureTime = arrivalTime.add(
+                                  serviceDuration,
+                                  "minute",
+                                );
+
+                                const left = getPosition(
+                                  stop.arrival_time,
+                                  startTime,
+                                  pixelsPerMinute,
+                                );
+
+                                const blockWidth =
+                                  serviceDuration * pixelsPerMinute;
+
+                                const isDepot =
+                                  stop.stop_type === "depot" ||
+                                  stop.stop_type === "depot_start" ||
+                                  stop.stop_type === "depot_end";
+
+                                let displayIndex = 0;
+                                if (!isDepot) {
+                                  displayIndex = jobStopCounter++;
                                 }
-                              >
-                                <span className="text-xs font-bold" style={{ color: blockTextColor }}>
-                                  {displayIndex}
-                                </span>
-                              </div>
-                            </Tooltip>
-                          );
-                        }
 
-                        // For depot and jobs without service duration, show as marker
-                        return (
-                          <Tooltip
-                            key={groupIndex}
-                            title={tooltipContent}
-                            overlayInnerStyle={{ pointerEvents: "auto" }}
-                          >
-                            <div
-                              className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md transition-all hover:scale-110 cursor-pointer ${
-                                isDepot
-                                  ? "w-8 h-8 rounded-lg bg-linear-to-br from-slate-700 to-slate-900 border-slate-600 z-10 shadow-lg text-white"
-                                  : "w-8 h-8 rounded z-0"
-                              }`}
-                              style={{
-                                left: left - 14,
-                                backgroundColor: isDepot ? undefined : blockBgColor,
-                                borderColor: isDepot ? undefined : blockBorderColor,
-                              }}
-                              onClick={() =>
-                                onStopClick?.(
-                                  group.rawStops[0],
-                                  routeIndex,
-                                  displayIndex,
-                                )
-                              }
-                            >
-                              {isDepot ? (
-                                <HomeFilled className="text-white text-base" />
-                              ) : (
-                                <span
-                                  className="text-xs font-bold"
-                                  style={{ color: blockTextColor }}
-                                >
-                                  {displayIndex}
-                                </span>
-                              )}
-                            </div>
-                          </Tooltip>
+                                const isPickup = stop.stop_type === "pickup";
+                                const isDropoff =
+                                  stop.stop_type === "dropoff" ||
+                                  stop.stop_type === "drop_off";
+                                const isJob =
+                                  stop.stop_type === "job" ||
+                                  isPickup ||
+                                  isDropoff;
+                                const stopTypeLabel = isPickup
+                                  ? "Pickup"
+                                  : isDropoff
+                                    ? "Drop-off"
+                                    : null;
+
+                                let jobStatus = "assigned";
+                                if (isJob) {
+                                  const mapStatus = stop.job_id
+                                    ? jobsMap.get(Number(stop.job_id))
+                                    : undefined;
+                                  jobStatus =
+                                    mapStatus ||
+                                    stop.job?.status ||
+                                    stop.status ||
+                                    "assigned";
+                                }
+
+                                let blockBgColor = routeColor;
+                                let blockBorderColor = routeColor;
+                                let blockTextColor = "white";
+
+                                if (isJob) {
+                                  const isStopDone = isPickup
+                                    ? jobStatus === "in_transit" ||
+                                      jobStatus === "completed" ||
+                                      jobStatus === "success"
+                                    : jobStatus === "completed" ||
+                                      jobStatus === "success";
+
+                                  if (isStopDone) {
+                                    blockBgColor = routeColor;
+                                    blockBorderColor = routeColor;
+                                    blockTextColor = "white";
+                                  } else if (jobStatus === "failed") {
+                                    blockBgColor = "#f5222d";
+                                    blockBorderColor = "#f5222d";
+                                    blockTextColor = "white";
+                                  } else if (jobStatus === "skipped") {
+                                    blockBgColor = "#8c8c8c";
+                                    blockBorderColor = "#8c8c8c";
+                                    blockTextColor = "white";
+                                  } else {
+                                    blockBgColor = "white";
+                                    blockBorderColor = routeColor;
+                                    blockTextColor = routeColor;
+                                  }
+                                }
+
+                                const routeVehicle = route.vehicle_id
+                                  ? vehiclesMap.get(Number(route.vehicle_id))
+                                  : undefined;
+                                const vehicleCapacity =
+                                  getVehicleCapacity(routeVehicle);
+
+                                const lastRawIndex =
+                                  group.firstRawIndex +
+                                  group.candidateCount -
+                                  1;
+                                const currentOccupancy =
+                                  occupancyMap.get(lastRawIndex) ?? 0;
+
+                                const tooltipContent = (
+                                  <div className="pointer-events-auto select-none space-y-1">
+                                    <div className="font-semibold flex items-center gap-1.5">
+                                      {isDepot ? (
+                                        <HomeFilled className="text-amber-400 text-sm shrink-0" />
+                                      ) : (
+                                        <EnvironmentOutlined className="text-red-400 text-sm shrink-0" />
+                                      )}
+                                      <span>
+                                        {isDepot
+                                          ? stop.stop_type === "depot_start"
+                                            ? "Depot (Start)"
+                                            : stop.stop_type === "depot_end"
+                                              ? "Depot (End)"
+                                              : "Depot"
+                                          : stop.address_formatted ||
+                                            `#${stop.job_id}`}
+                                      </span>
+                                    </div>
+                                    {stopTypeLabel && (
+                                      <div className="text-xs font-semibold uppercase opacity-80 flex items-center gap-1.5">
+                                        <UserOutlined className="text-xs shrink-0" />
+                                        <span>{stopTypeLabel}</span>
+                                        {count > 1 && (
+                                          <span className="bg-white/20 rounded px-1 lowercase">
+                                            ×{count} candidates
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                    {isJob && (
+                                      <div className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
+                                        <CarOutlined className="text-xs shrink-0" />
+                                        <span>
+                                          Occupancy: {currentOccupancy}{" "}
+                                          {vehicleCapacity
+                                            ? `/ ${vehicleCapacity}`
+                                            : ""}{" "}
+                                          seats
+                                        </span>
+                                      </div>
+                                    )}
+                                    {isJob && group.rawStops.length > 0 && (
+                                      <div className="text-xs max-h-36 overflow-y-auto space-y-1 custom-scrollbar pr-1 pt-0.5">
+                                        {group.rawStops.map(
+                                          (s: any, i: number) => {
+                                            const candName =
+                                              getCandidateName(s);
+                                            return (
+                                              <div
+                                                key={i}
+                                                className="cursor-pointer text-sky-200 hover:text-white hover:underline transition-colors py-0.5 flex items-center gap-1.5"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  onStopClick?.(
+                                                    s,
+                                                    routeIndex,
+                                                    displayIndex,
+                                                  );
+                                                }}
+                                              >
+                                                <FileTextOutlined className="text-sky-300 text-xs shrink-0" />
+                                                <span>
+                                                  #{s.job_id}{" "}
+                                                  {candName
+                                                    ? `(${candName})`
+                                                    : ""}
+                                                </span>
+                                              </div>
+                                            );
+                                          },
+                                        )}
+                                      </div>
+                                    )}
+                                    <div className="text-xs text-white font-bold flex items-center gap-1.5 pt-0.5">
+                                      <ClockCircleOutlined className="text-amber-300 text-xs shrink-0" />
+                                      <span>
+                                        ETA:{" "}
+                                        {arrivalTime.isValid()
+                                          ? arrivalTime.format("HH:mm")
+                                          : "--:--"}
+                                      </span>
+                                    </div>
+                                    {serviceDuration > 0 && (
+                                      <div className="text-xs text-gray-200 pl-5 space-y-0.5">
+                                        <div>
+                                          Departure:{" "}
+                                          {departureTime.isValid()
+                                            ? departureTime.format("HH:mm")
+                                            : "--:--"}
+                                        </div>
+                                        <div>Service: {serviceDuration} min</div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+
+                                if (isJob && serviceDuration > 0) {
+                                  return (
+                                    <Tooltip
+                                      key={`stop-${routeIndex}-${groupIndex}`}
+                                      title={tooltipContent}
+                                      overlayInnerStyle={{
+                                        pointerEvents: "auto",
+                                      }}
+                                    >
+                                      <div
+                                        className="absolute top-1/2 -translate-y-1/2 h-8 flex items-center justify-center shadow-md transition-all hover:scale-105 cursor-pointer z-10 border-2"
+                                        style={{
+                                          left: left,
+                                          width: Math.max(blockWidth, 28),
+                                          backgroundColor: blockBgColor,
+                                          borderColor: blockBorderColor,
+                                        }}
+                                        onClick={() =>
+                                          onStopClick?.(
+                                            group.rawStops[0],
+                                            routeIndex,
+                                            displayIndex,
+                                          )
+                                        }
+                                      >
+                                        <span
+                                          className="text-xs font-bold"
+                                          style={{ color: blockTextColor }}
+                                        >
+                                          {displayIndex}
+                                        </span>
+                                      </div>
+                                    </Tooltip>
+                                  );
+                                }
+
+                                return (
+                                  <Tooltip
+                                    key={`stop-${routeIndex}-${groupIndex}`}
+                                    title={tooltipContent}
+                                    overlayInnerStyle={{
+                                      pointerEvents: "auto",
+                                    }}
+                                  >
+                                    <div
+                                      className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md transition-all hover:scale-110 cursor-pointer ${
+                                        isDepot
+                                          ? "w-8 h-8 rounded-lg bg-linear-to-br from-slate-700 to-slate-900 border-slate-600 z-10 shadow-lg text-white"
+                                          : "w-8 h-8 rounded z-0"
+                                      }`}
+                                      style={{
+                                        left: left - 14,
+                                        backgroundColor: isDepot
+                                          ? undefined
+                                          : blockBgColor,
+                                        borderColor: isDepot
+                                          ? undefined
+                                          : blockBorderColor,
+                                      }}
+                                      onClick={() =>
+                                        onStopClick?.(
+                                          group.rawStops[0],
+                                          routeIndex,
+                                          displayIndex,
+                                        )
+                                      }
+                                    >
+                                      {isDepot ? (
+                                        <HomeFilled className="text-white text-base" />
+                                      ) : (
+                                        <span
+                                          className="text-xs font-bold"
+                                          style={{ color: blockTextColor }}
+                                        >
+                                          {displayIndex}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </Tooltip>
+                                );
+                              });
+                            })()}
+                          </React.Fragment>
                         );
-                      });
-                    })()}
+                      })}
+                    </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })
             )}
           </div>
         </div>
