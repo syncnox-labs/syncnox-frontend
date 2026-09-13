@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import { AllRoutes, Route } from "@/types/routes.type";
-import { fetchRoutes, deleteOptimizationRequest } from "@/apis/routes.api";
+import { fetchRoutes, deleteOptimizationRequest, deleteRouteApi, deleteRoutesBulkApi } from "@/apis/routes.api";
 
 interface RouteStore {
   routes: AllRoutes[];
@@ -18,6 +18,7 @@ interface RouteStore {
   updateRoute: (route: Route) => void;
   updateStopStatusLocally: (routeId: number, stopId: number, stopStatus: string) => void;
   deleteRoute: (id: number) => Promise<void>;
+  deleteRoutesBulk: (ids: number[]) => Promise<void>;
 }
 
 export const useRouteStore = create(
@@ -100,7 +101,7 @@ export const useRouteStore = create(
       },
       deleteRoute: async (id: number) => {
         try {
-          await deleteOptimizationRequest(id);
+          await deleteRouteApi(id);
           set((state) => {
             state.routes = state.routes.filter((r) => r.id !== id);
             if (state.currentRoute?.id === id) {
@@ -108,7 +109,32 @@ export const useRouteStore = create(
             }
           });
         } catch (error) {
-          console.error("Failed to delete route:", error);
+          try {
+            await deleteOptimizationRequest(id);
+            set((state) => {
+              state.routes = state.routes.filter((r) => r.id !== id);
+              if (state.currentRoute?.id === id) {
+                state.currentRoute = null;
+              }
+            });
+          } catch (err) {
+            console.error("Failed to delete route:", err);
+            throw err;
+          }
+        }
+      },
+      deleteRoutesBulk: async (ids: number[]) => {
+        try {
+          await deleteRoutesBulkApi(ids);
+          set((state) => {
+            const idSet = new Set(ids);
+            state.routes = state.routes.filter((r) => !idSet.has(r.id));
+            if (state.currentRoute && idSet.has(state.currentRoute.id)) {
+              state.currentRoute = null;
+            }
+          });
+        } catch (error) {
+          console.error("Failed to bulk delete routes:", error);
           throw error;
         }
       },
