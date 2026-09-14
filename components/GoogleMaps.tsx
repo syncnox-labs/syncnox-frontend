@@ -56,6 +56,8 @@ interface MarkerData {
   sequenceNumber?: number;
   color?: string;
   isDepot?: boolean;
+  /** "start" | "end" | "depot" — which route endpoint this depot marker is. */
+  depotKind?: string;
   draggable?: boolean;
   /** Index of the route this marker belongs to, used for route focus filtering. */
   routeIndex?: number;
@@ -366,12 +368,21 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
           bouncingMarkerId !== null &&
           String(bouncingMarkerId) === String(marker.id);
 
+        const depotLabel = marker.isDepot
+          ? marker.depotKind === "start"
+            ? "Start"
+            : marker.depotKind === "end"
+              ? "End"
+              : "Depot"
+          : undefined;
+
         const icon = createCustomMarkerIcon(
           markerNumber,
           status,
           isSelected,
           marker.color,
           marker.isDepot,
+          depotLabel,
         );
 
         return (

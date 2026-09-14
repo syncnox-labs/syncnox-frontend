@@ -52,27 +52,27 @@ interface JobDetailsCardProps {
 const STOP_TYPE_BADGES: Record<string, { label: string; className: string }> = {
   pickup: {
     label: "Pickup",
-    className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    className: "bg-emerald-100 text-emerald-900 border-emerald-400 font-extrabold",
   },
   dropoff: {
     label: "Drop-off",
-    className: "bg-sky-50 text-sky-700 border-sky-200",
+    className: "bg-blue-100 text-blue-900 border-blue-400 font-extrabold",
   },
   drop_off: {
     label: "Drop-off",
-    className: "bg-sky-50 text-sky-700 border-sky-200",
+    className: "bg-blue-100 text-blue-900 border-blue-400 font-extrabold",
   },
   depot: {
     label: "Depot",
-    className: "bg-slate-100 text-slate-700 border-slate-200",
+    className: "bg-amber-100 text-amber-900 border-amber-400 font-extrabold",
   },
   depot_start: {
     label: "Depot Start",
-    className: "bg-slate-100 text-slate-700 border-slate-200",
+    className: "bg-amber-100 text-amber-900 border-amber-400 font-extrabold",
   },
   depot_end: {
     label: "Depot End",
-    className: "bg-slate-100 text-slate-700 border-slate-200",
+    className: "bg-amber-100 text-amber-900 border-amber-400 font-extrabold",
   },
   break: {
     label: "Break",
@@ -522,7 +522,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
           </div>
           {stopBadge && !isDepotStop && (
             <span
-              className={`shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 border rounded ${stopBadge.className}`}
+              className={`shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 border rounded-none ${stopBadge.className}`}
             >
               {stopBadge.label}
             </span>

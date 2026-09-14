@@ -51,6 +51,14 @@ export const deleteOptimizationRequest = async (id: number): Promise<void> => {
   await apiClient.delete(`optimization/requests/${id}`);
 };
 
+export const deleteRouteApi = async (id: number): Promise<void> => {
+  await apiClient.delete(`routes/${id}`);
+};
+
+export const deleteRoutesBulkApi = async (ids: number[]): Promise<void> => {
+  await apiClient.post("routes/bulk-delete", ids);
+};
+
 /** Re-run the full optimization for a request (after job edits). Deletes old routes. */
 export const reOptimizeRequest = async (id: number): Promise<Route> => {
   const response = await apiClient.post<Route>(`optimization/requests/${id}/re-optimize`);

@@ -14,6 +14,7 @@ export const createCustomMarkerIcon = (
   isSelected: boolean = false,
   colorOverride?: string,
   isDepot: boolean = false,
+  depotLabel: string = "Depot",
 ): google.maps.Icon => {
   let fillColor = "";
   let strokeColor = "";
@@ -83,8 +84,9 @@ export const createCustomMarkerIcon = (
       ${
         isDepot
           ? `<rect x="2" y="2" width="28" height="28" rx="6" fill="${fillColor}" filter="url(#shadow)"/>
-           <!-- House Icon -->
-           <path d="M16 8L8 15V24H12V20H20V24H24V15L16 8Z" fill="${textColor}"/>`
+           <!-- Start / End label so users know where the route begins/ends -->
+           <text x="16" y="17" font-family="Arial, sans-serif" font-size="7"
+             font-weight="bold" fill="${textColor}" text-anchor="middle" dominant-baseline="central">${depotLabel}</text>`
           : `<path 
             d="M16 0C9.4 0 4 5.4 4 12c0 8 12 24 12 24s12-16 12-24c0-6.6-5.4-12-12-12z" 
             fill="${fillColor}"

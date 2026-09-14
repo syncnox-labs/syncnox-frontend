@@ -215,6 +215,15 @@ export const generateMapMarkers = (
         jobData: job,
         sequenceNumber: isDepot ? undefined : displayIndex,
         isDepot: isDepot,
+        // Route start/end hint so the map can draw a "Start"/"End" marker
+        // (instead of a generic house icon) on the driver's first/last stops.
+        depotKind: isDepot
+          ? stop.stop_type === "depot_start"
+            ? "start"
+            : stop.stop_type === "depot_end"
+              ? "end"
+              : "depot"
+          : undefined,
         color: color,
         routeIndex: index,
       };

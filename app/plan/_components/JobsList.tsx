@@ -362,6 +362,7 @@ export default function JobsList() {
           </Button>
 
           <Button
+            danger
             icon={<DeleteOutlined />}
             disabled={selectedJobIds.length === 0}
             onClick={handleDeleteJobsRequest}

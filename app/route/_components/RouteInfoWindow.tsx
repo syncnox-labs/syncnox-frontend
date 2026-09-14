@@ -4,6 +4,9 @@ import {
   ClockCircleOutlined,
   EnvironmentOutlined,
   CheckCircleOutlined,
+  UserAddOutlined,
+  UserDeleteOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 import { Job, JobStatus } from "@/types/job.type";
 import { STATUS_COLORS } from "@/utils/jobs.utils";
@@ -40,6 +43,7 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({ marker, onRemoveJob, 
 
   const stopType = String((jobData as any)?.stop_type || "").toLowerCase();
   const isPickupStop = stopType === "pickup";
+  const isDropoffStop = stopType === "dropoff" || stopType === "drop_off";
 
   const handleUpdateJobStatus = async (status: string) => {
     if (!jobData?.id) return;
@@ -101,23 +105,74 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({ marker, onRemoveJob, 
   };
 
   return (
-    <div className="min-w-[240px] max-w-[320px] bg-white text-gray-800">
-      {/* Address */}
-      <div className="flex gap-3 mb-3 items-start">
-        <EnvironmentOutlined className="text-[#003220] text-lg shrink-0 mt-0.5" />
-        <Text className="text-sm text-gray-700 leading-snug font-medium">
-          {title || jobData?.address_formatted || "Unknown Address"}
-        </Text>
+    <div className="min-w-[270px] max-w-[320px] bg-white text-slate-800 p-1">
+      {/* Header: Pickup / Drop-off Badge & Status */}
+      <div className="mb-2 pb-1.5 border-b border-slate-200 flex items-center justify-between">
+        {isPickupStop ? (
+          <span className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-400">
+            <UserAddOutlined className="text-emerald-700 font-bold" />
+            PICKUP
+          </span>
+        ) : isDropoffStop ? (
+          <span className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider bg-blue-100 text-blue-900 border border-blue-400">
+            <UserDeleteOutlined className="text-blue-700 font-bold" />
+            DROP-OFF
+          </span>
+        ) : null}
+
+        {status && (
+          <Tag
+            color={STATUS_COLORS[status]}
+            className="mr-0 ml-auto capitalize border-none px-2 py-0.5 text-xs font-semibold shrink-0"
+            style={{ borderRadius: "0px" }}
+          >
+            {status.replace("_", " ")}
+          </Tag>
+        )}
       </div>
 
-      {/* Time & Status Row */}
-      <div className="flex justify-between items-center">
-        {/* Left: Time Info */}
-        <div className="flex gap-3 items-start">
-          <ClockCircleOutlined className="text-gray-400 text-lg shrink-0 mt-0.5" />
-          <div className="flex flex-col">
+      {/* Address */}
+      <div className="flex gap-2.5 mb-2.5 items-start select-text">
+        {isPickupStop ? (
+          <EnvironmentOutlined className="text-emerald-600 text-base shrink-0 mt-0.5" />
+        ) : (
+          <EnvironmentOutlined className="text-blue-600 text-base shrink-0 mt-0.5" />
+        )}
+        <div className="flex flex-col flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 select-none">
+              {isPickupStop ? "Pickup Address" : isDropoffStop ? "Drop-off Address" : "Address"}
+            </span>
+            {(title || jobData?.address_formatted) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const textToCopy = String(title || jobData?.address_formatted || "");
+                  navigator.clipboard.writeText(textToCopy);
+                  message.success("Address copied to clipboard");
+                }}
+                className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer transition-colors border-none bg-transparent flex items-center gap-1 text-[10px] font-semibold select-none"
+                title="Copy address"
+              >
+                <CopyOutlined className="text-xs" />
+                <span>Copy</span>
+              </button>
+            )}
+          </div>
+          <Text className="text-xs text-slate-900 leading-snug font-bold select-text cursor-text break-words">
+            {title || jobData?.address_formatted || "Unknown Address"}
+          </Text>
+        </div>
+      </div>
+
+      {/* Time Info */}
+      <div className="flex justify-center items-center bg-slate-50 border border-slate-200 p-2 text-center">
+        <div className="flex gap-2 items-center justify-center">
+          <ClockCircleOutlined className="text-slate-500 text-xs shrink-0" />
+          <div className="flex flex-col items-center">
             {description && (
-              <Text className="text-sm text-gray-900 font-semibold leading-snug">
+              <Text className="text-xs text-slate-900 font-bold leading-snug">
                 {description}
               </Text>
             )}
@@ -126,22 +181,12 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({ marker, onRemoveJob, 
               jobData.time_window_start &&
               "time_window_end" in jobData &&
               jobData.time_window_end && (
-                <Text className="text-xs text-gray-500 leading-tight">
-                  {jobData.time_window_start} - {jobData.time_window_end}
+                <Text className="text-[11px] text-slate-600 leading-tight">
+                  Window: {jobData.time_window_start} - {jobData.time_window_end}
                 </Text>
               )}
           </div>
         </div>
-
-        {/* Right: Status */}
-        {status && (
-          <Tag
-            color={STATUS_COLORS[status]}
-            className="mr-0 ml-2 capitalize border-none px-2 py-0.5 text-xs font-semibold rounded-md shrink-0"
-          >
-            {status.replace("_", " ")}
-          </Tag>
-        )}
       </div>
       {jobData && (
         <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-2">

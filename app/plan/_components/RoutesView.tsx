@@ -2,7 +2,7 @@
 import BaseTable from "@/components/Table/BaseTable";
 import { AllRoutes } from "@/types/routes.type";
 import { useRouteStore } from "@/store/routes.store";
-import { Typography, Progress, Button, Select, Flex, Popover, Checkbox } from "antd";
+import { Typography, Progress, Button, Select, Flex, Popover, Checkbox, Modal, message } from "antd";
 import { ColDef } from "ag-grid-community";
 import { useRouter } from "next/navigation";
 import StatusBadge from "@/components/Jobs/StatusBanner";
@@ -10,7 +10,7 @@ import { useState } from "react";
 import { createActionsColumn } from "@/components/Table/ActionsColumn";
 import Link from "next/link";
 import { useIndexStore } from "@/store/index.store";
-import { FilterFilled } from "@ant-design/icons";
+import { FilterFilled, DeleteOutlined, ExclamationCircleFilled } from "@ant-design/icons";
 
 const { Title } = Typography;
 
@@ -136,9 +136,36 @@ const DistanceHeader = (props: any) => {
 export default function RoutesView() {
   const router = useRouter();
   const { setCurrentTab } = useIndexStore();
-  const { routes, isLoading, deleteRoute, selectedStatus, setSelectedStatus } =
+  const { routes, isLoading, deleteRoute, deleteRoutesBulk, selectedStatus, setSelectedStatus } =
     useRouteStore();
   const [distanceUnit, setDistanceUnit] = useState<"km" | "mi">("km");
+  const [selectedRouteIds, setSelectedRouteIds] = useState<number[]>([]);
+
+  const handleDeleteRoutesRequest = () => {
+    if (selectedRouteIds.length === 0) return;
+    const count = selectedRouteIds.length;
+    Modal.confirm({
+      title: "Delete Routes",
+      icon: <ExclamationCircleFilled />,
+      content: `Are you sure you want to delete ${count} selected route(s)? All data associated with these routes will be permanently deleted.`,
+      okText: "Delete",
+      okType: "danger",
+      okButtonProps: { danger: true, style: { borderRadius: 0 } },
+      cancelText: "Cancel",
+      cancelButtonProps: { style: { borderRadius: 0 } },
+      onOk: async () => {
+        try {
+          await deleteRoutesBulk(selectedRouteIds);
+          message.success(`Successfully deleted ${count} route(s)`);
+          setSelectedRouteIds([]);
+        } catch (err) {
+          message.error("Failed to delete routes");
+          console.error(err);
+        }
+      },
+    });
+  };
+
   const columns: ColDef<AllRoutes>[] = [
     {
       headerName: "Name",
@@ -258,24 +285,49 @@ export default function RoutesView() {
           key: "delete",
           label: "Delete",
           type: "delete",
-          onClick: async (route: AllRoutes) => {
-            await deleteRoute(route.id);
+          onClick: (route: AllRoutes) => {
+            Modal.confirm({
+              title: "Delete Route",
+              icon: <ExclamationCircleFilled />,
+              content: `Are you sure you want to delete route "${route.name || route.id}"? All associated data will be permanently deleted.`,
+              okText: "Delete",
+              okType: "danger",
+              okButtonProps: { danger: true, style: { borderRadius: 0 } },
+              cancelText: "Cancel",
+              cancelButtonProps: { style: { borderRadius: 0 } },
+              onOk: async () => {
+                try {
+                  await deleteRoute(route.id);
+                  message.success("Route deleted successfully");
+                } catch (err) {
+                  message.error("Failed to delete route");
+                  console.error(err);
+                }
+              },
+            });
           },
         },
       ],
       entityName: "Route",
     }),
   ];
+
   return (
     <div className="flex flex-col h-full">
       <Flex justify="space-between" gap={36} align="center" className="my-4">
         <Title level={4} className="m-0 pt-2">
           Routes
         </Title>
-        <Flex gap={8}>
+        <Flex gap={8} align="center">
           <Link href="/plan" onClick={() => setCurrentTab("jobs")}>
-            <Button >Create New Route</Button>
+            <Button>Create New Route</Button>
           </Link>
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            disabled={selectedRouteIds.length === 0}
+            onClick={handleDeleteRoutesRequest}
+          />
         </Flex>
       </Flex>
       <div className="flex-1 min-h-0 mt-2">
@@ -287,6 +339,12 @@ export default function RoutesView() {
           emptyMessage="No routes to show"
           pagination={true}
           containerStyle={{ height: "100%" }}
+          onSelectionChanged={(event) => {
+            if (event.api) {
+              const selectedRows = event.api.getSelectedRows().map((r: AllRoutes) => r.id);
+              setSelectedRouteIds(selectedRows);
+            }
+          }}
         />
       </div>
     </div>
