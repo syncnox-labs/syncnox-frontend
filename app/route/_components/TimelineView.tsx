@@ -22,6 +22,9 @@ import {
   SearchOutlined,
   CloseOutlined,
   CopyOutlined,
+  DeleteOutlined,
+  UndoOutlined,
+  LockOutlined,
 } from "@ant-design/icons";
 import {
   calculateTimeRange,
@@ -115,6 +118,9 @@ interface TimelineViewProps {
   onDriverSearchChange?: (search: string) => void;
   exactMatch?: boolean;
   onExactMatchChange?: (exact: boolean) => void;
+  pendingDeletedJobIds?: Set<number>;
+  onDeleteJob?: (jobId: number) => void;
+  onUndoDeleteJob?: (jobId: number) => void;
 }
 
 const INTERVAL_OPTIONS = [
@@ -209,6 +215,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   onDriverSearchChange,
   exactMatch: externalExactMatch,
   onExactMatchChange,
+  pendingDeletedJobIds = new Set<number>(),
+  onDeleteJob,
+  onUndoDeleteJob,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [intervalMinutes, setIntervalMinutes] = useState(30);
@@ -1094,22 +1103,78 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         <div className="text-xs max-h-36 overflow-y-auto space-y-1.5 custom-scrollbar pr-0.5">
                                           {group.rawStops.map((s: any, i: number) => {
                                             const candName = getCandidateName(s);
+                                            const rawJobId = s.job_id || s.id || s.job?.id;
+                                            const numJobId = rawJobId ? Number(rawJobId) : null;
+                                            const isPendingDelete = numJobId ? pendingDeletedJobIds.has(numJobId) : false;
+                                            const isFinished = s.status === "COMPLETED" || s.status === "FAILED" || s.status === "completed" || s.status === "failed";
+
+                                            if (isPendingDelete) {
+                                              return (
+                                                <div
+                                                  key={i}
+                                                  className="bg-red-50 text-red-800 border border-dashed border-red-300 px-2 py-1.5 transition-all flex items-center justify-between text-xs font-semibold overflow-hidden opacity-75"
+                                                >
+                                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                                    <FileTextOutlined className="text-red-500 text-xs shrink-0" />
+                                                    <span className="font-bold text-red-900 shrink-0">#{s.job_id || numJobId}</span>
+                                                    {candName && (
+                                                      <span className="text-red-700 font-medium truncate shrink" title={candName}>({candName})</span>
+                                                    )}
+                                                    <span className="ml-1 text-[10px] font-extrabold uppercase bg-red-100 text-red-700 px-1 py-0.2 border border-red-300 shrink-0">
+                                                      Pending Delete
+                                                    </span>
+                                                  </div>
+                                                  {onUndoDeleteJob && numJobId && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onUndoDeleteJob(numJobId);
+                                                      }}
+                                                      className="ml-2 text-xs font-bold text-red-700 hover:text-red-900 hover:bg-red-100 px-1.5 py-0.5 border border-red-300 transition-colors flex items-center gap-1 shrink-0 cursor-pointer bg-white"
+                                                      title="Undo staged deletion"
+                                                    >
+                                                      <UndoOutlined /> Undo
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              );
+                                            }
+
                                             return (
                                               <div
                                                 key={i}
-                                                className="cursor-pointer bg-slate-50 hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 border border-slate-200 hover:border-emerald-400 px-2 py-1.5 transition-all flex items-center justify-between text-xs font-semibold overflow-hidden"
+                                                className="cursor-pointer bg-slate-50 hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 border border-slate-200 hover:border-emerald-400 px-2 py-1.5 transition-all flex items-center justify-between text-xs font-semibold overflow-hidden group/jobrow"
                                                 onClick={(e) => {
                                                   e.stopPropagation();
                                                   onStopClick?.(s, routeIndex, displayIndex);
                                                 }}
                                               >
-                                                <div className="flex items-center gap-1.5 min-w-0 w-full">
+                                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
                                                   <FileTextOutlined className="text-slate-500 text-xs shrink-0" />
-                                                  <span className="font-bold text-slate-900 shrink-0">#{s.job_id}</span>
+                                                  <span className="font-bold text-slate-900 shrink-0">#{s.job_id || numJobId}</span>
                                                   {candName && (
                                                     <span className="text-slate-600 font-medium truncate shrink" title={candName}>({candName})</span>
                                                   )}
+                                                  {isFinished && (
+                                                    <span className="ml-1 text-[10px] font-extrabold uppercase bg-slate-200 text-slate-700 px-1 py-0.2 border border-slate-300 shrink-0 flex items-center gap-1">
+                                                      <LockOutlined className="text-[10px]" /> Finished
+                                                    </span>
+                                                  )}
                                                 </div>
+                                                {!isFinished && onDeleteJob && numJobId && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      onDeleteJob(numJobId);
+                                                    }}
+                                                    className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors border-none bg-transparent flex items-center shrink-0 cursor-pointer opacity-80 group-hover/jobrow:opacity-100"
+                                                    title="Stage job for deletion"
+                                                  >
+                                                    <DeleteOutlined className="text-xs" />
+                                                  </button>
+                                                )}
                                               </div>
                                             );
                                           })}
@@ -1145,7 +1210,59 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   </div>
                                 );
 
-                                if (isJob && serviceDuration > 0) {
+                                  const isGroupPendingDelete =
+                                    isJob &&
+                                    group.rawStops.length > 0 &&
+                                    group.rawStops.every((s: any) => {
+                                      const rawId = s.job_id || s.id || s.job?.id;
+                                      return rawId && pendingDeletedJobIds.has(Number(rawId));
+                                    });
+
+                                  if (isJob && serviceDuration > 0) {
+                                    return (
+                                      <Tooltip
+                                        key={`stop-${routeIndex}-${groupIndex}`}
+                                        title={tooltipContent}
+                                        color="#ffffff"
+                                        overlayStyle={{ maxWidth: "none" }}
+                                        overlayInnerStyle={{
+                                          maxWidth: "none",
+                                          pointerEvents: "auto",
+                                          padding: "10px",
+                                          borderRadius: "0px",
+                                          boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.05)",
+                                          border: "1px solid #cbd5e1",
+                                        }}
+                                      >
+                                        <div
+                                          className={`absolute top-1/2 -translate-y-1/2 h-8 flex items-center justify-center shadow-md transition-all hover:scale-105 cursor-pointer z-10 border-2 ${
+                                            isGroupPendingDelete ? "opacity-35 border-dashed border-red-500 bg-red-100" : ""
+                                          }`}
+                                          style={{
+                                            left: left,
+                                            width: Math.max(blockWidth, 28),
+                                            backgroundColor: isGroupPendingDelete ? undefined : blockBgColor,
+                                            borderColor: isGroupPendingDelete ? undefined : blockBorderColor,
+                                          }}
+                                          onClick={() =>
+                                            onStopClick?.(
+                                              group.rawStops[0],
+                                              routeIndex,
+                                              displayIndex,
+                                            )
+                                          }
+                                        >
+                                          <span
+                                            className="text-xs font-bold"
+                                            style={{ color: isGroupPendingDelete ? "#dc2626" : blockTextColor }}
+                                          >
+                                            {displayIndex}
+                                          </span>
+                                        </div>
+                                      </Tooltip>
+                                    );
+                                  }
+
                                   return (
                                     <Tooltip
                                       key={`stop-${routeIndex}-${groupIndex}`}
@@ -1162,12 +1279,25 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       }}
                                     >
                                       <div
-                                        className="absolute top-1/2 -translate-y-1/2 h-8 flex items-center justify-center shadow-md transition-all hover:scale-105 cursor-pointer z-10 border-2"
+                                        className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md transition-all hover:scale-110 cursor-pointer ${
+                                          isGroupPendingDelete
+                                            ? "w-8 h-8 z-0 opacity-35 border-dashed border-red-500 bg-red-100"
+                                            : isDepot
+                                              ? "px-2 h-6 bg-slate-900 border-slate-700 z-10 shadow-lg text-white"
+                                              : "w-8 h-8 z-0"
+                                        }`}
                                         style={{
-                                          left: left,
-                                          width: Math.max(blockWidth, 28),
-                                          backgroundColor: blockBgColor,
-                                          borderColor: blockBorderColor,
+                                          left: left - 14,
+                                          backgroundColor: isGroupPendingDelete
+                                            ? undefined
+                                            : isDepot
+                                              ? undefined
+                                              : blockBgColor,
+                                          borderColor: isGroupPendingDelete
+                                            ? undefined
+                                            : isDepot
+                                              ? undefined
+                                              : blockBorderColor,
                                         }}
                                         onClick={() =>
                                           onStopClick?.(
@@ -1177,71 +1307,22 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           )
                                         }
                                       >
-                                        <span
-                                          className="text-xs font-bold"
-                                          style={{ color: blockTextColor }}
-                                        >
-                                          {displayIndex}
-                                        </span>
+                                        {isDepot ? (
+                                          <span className="flex items-center gap-1 text-[10px] font-bold text-white">
+                                            <HomeFilled className="text-white text-xs" />
+                                            {depotLabel}
+                                          </span>
+                                        ) : (
+                                          <span
+                                            className="text-xs font-bold"
+                                            style={{ color: isGroupPendingDelete ? "#dc2626" : blockTextColor }}
+                                          >
+                                            {displayIndex}
+                                          </span>
+                                        )}
                                       </div>
                                     </Tooltip>
                                   );
-                                }
-
-                                return (
-                                  <Tooltip
-                                    key={`stop-${routeIndex}-${groupIndex}`}
-                                    title={tooltipContent}
-                                    color="#ffffff"
-                                    overlayStyle={{ maxWidth: "none" }}
-                                    overlayInnerStyle={{
-                                      maxWidth: "none",
-                                      pointerEvents: "auto",
-                                      padding: "10px",
-                                      borderRadius: "0px",
-                                      boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.05)",
-                                      border: "1px solid #cbd5e1",
-                                    }}
-                                  >
-                                    <div
-                                      className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md transition-all hover:scale-110 cursor-pointer ${
-                                        isDepot
-                                          ? "px-2 h-6 bg-slate-900 border-slate-700 z-10 shadow-lg text-white"
-                                          : "w-8 h-8 z-0"
-                                      }`}
-                                      style={{
-                                        left: left - 14,
-                                        backgroundColor: isDepot
-                                          ? undefined
-                                          : blockBgColor,
-                                        borderColor: isDepot
-                                          ? undefined
-                                          : blockBorderColor,
-                                      }}
-                                      onClick={() =>
-                                        onStopClick?.(
-                                          group.rawStops[0],
-                                          routeIndex,
-                                          displayIndex,
-                                        )
-                                      }
-                                    >
-                                      {isDepot ? (
-                                        <span className="flex items-center gap-1 text-[10px] font-bold text-white">
-                                          <HomeFilled className="text-white text-xs" />
-                                          {depotLabel}
-                                        </span>
-                                      ) : (
-                                        <span
-                                          className="text-xs font-bold"
-                                          style={{ color: blockTextColor }}
-                                        >
-                                          {displayIndex}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </Tooltip>
-                                );
                               });
                             })()}
                           </React.Fragment>

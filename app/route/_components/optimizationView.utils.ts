@@ -115,6 +115,7 @@ export const generateMapMarkers = (
   route: Route,
   jobs: Job[],
   allowedRouteIndices?: Set<number> | null,
+  pendingDeletedJobIds?: Set<number> | null,
 ) => {
   if (!route?.result?.routes) return [];
   const jobsMap = new Map(jobs.map((j) => [Number(j.id), j]));
@@ -194,6 +195,14 @@ export const generateMapMarkers = (
         };
       }
 
+      const isPendingDelete =
+        !isDepot &&
+        group.rawStops.length > 0 &&
+        group.rawStops.every((s: any) => {
+          const rawId = s.job_id || s.id || s.job?.id;
+          return rawId && pendingDeletedJobIds?.has(Number(rawId));
+        });
+
       const labelText = count > 1 ? `${displayIndex} (×${count})` : displayIndex.toString();
 
       return {
@@ -204,7 +213,9 @@ export const generateMapMarkers = (
           color: "white",
           fontWeight: "bold",
         },
-        title: stop.address_formatted || "Unknown location",
+        title: isPendingDelete
+          ? `${stop.address_formatted || "Unknown location"} (Pending Deletion)`
+          : stop.address_formatted || "Unknown location",
         description: stop.arrival_time
           ? `ETA: ${new Date(stop.arrival_time).toLocaleTimeString("en-US", {
               hour: "2-digit",
@@ -215,6 +226,7 @@ export const generateMapMarkers = (
         jobData: job,
         sequenceNumber: isDepot ? undefined : displayIndex,
         isDepot: isDepot,
+        isPendingDelete: isPendingDelete,
         // Route start/end hint so the map can draw a "Start"/"End" marker
         // (instead of a generic house icon) on the driver's first/last stops.
         depotKind: isDepot

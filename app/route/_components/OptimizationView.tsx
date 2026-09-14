@@ -115,6 +115,8 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
   // Tracks whether any job edits have been saved but re-optimization not yet run
   const [hasUnsavedJobEdits, setHasUnsavedJobEdits] = useState(false);
   const [editJobData, setEditJobData] = useState<Job | null>(null);
+  const [pendingDeletedJobIds, setPendingDeletedJobIds] = useState<Set<number>>(new Set());
+  const [isAddJobOpen, setIsAddJobOpen] = useState(false);
 
   // Job Details Floating Card state
   const [selectedDrawerJob, setSelectedDrawerJob] = useState<{
@@ -434,8 +436,8 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
   }, [route, focusedRouteIndex, allowedRouteIndices]);
 
   const allMarkers = useMemo(() => {
-    return generateMapMarkers(route, jobs, allowedRouteIndices);
-  }, [route, jobs, allowedRouteIndices]);
+    return generateMapMarkers(route, jobs, allowedRouteIndices, pendingDeletedJobIds);
+  }, [route, jobs, allowedRouteIndices, pendingDeletedJobIds]);
 
   // While a route is focused only its own stops stay on the map.
   const markers = useMemo(() => {
@@ -689,18 +691,67 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     startOperationPolling();
   }, [startOperationPolling]);
 
+  const handleStageDeleteJob = useCallback((jobId: number) => {
+    setPendingDeletedJobIds((prev) => {
+      const next = new Set(prev);
+      next.add(jobId);
+      return next;
+    });
+    setHasUnsavedJobEdits(true);
+    message.info(`Job #${jobId} staged for deletion. Click 'Re-Optimize' to apply changes.`);
+  }, []);
+
+  const handleUndoStageDeleteJob = useCallback((jobId: number) => {
+    setPendingDeletedJobIds((prev) => {
+      const next = new Set(prev);
+      next.delete(jobId);
+      if (next.size === 0) {
+        setHasUnsavedJobEdits(false);
+      }
+      return next;
+    });
+    message.info(`Job #${jobId} deletion undone.`);
+  }, []);
+
   const handleReOptimizeAll = useCallback(async () => {
     Modal.confirm({
       title: "Re-Optimize Entire Route",
       content:
-        "This will re-run the full optimization with updated job data. Old routes will be replaced. Continue?",
+        pendingDeletedJobIds.size > 0
+          ? `${pendingDeletedJobIds.size} job(s) will be deleted and the route re-optimized. Continue?`
+          : "This will re-run the full optimization with updated job data. Old routes will be replaced. Continue?",
       okText: "Re-Optimize",
       okButtonProps: { style: { backgroundColor: "#003220", borderColor: "#003220" } },
       onOk: async () => {
         try {
+          // Perform bulk delete for staged deletions
+          if (pendingDeletedJobIds.size > 0) {
+            const deletePromises = Array.from(pendingDeletedJobIds).map((jobId) =>
+              fetch(`/api/jobs/${jobId}`, { method: "DELETE" })
+            );
+            await Promise.all(deletePromises);
+          }
+
+          // Pre-optimization ETA & Driver snapshot for WhatsApp notification foundation
+          const preOptimizationEtaMap = new Map<number, { driverName: string; arrivalTime: string }>();
+          route.result?.routes?.forEach((r) => {
+            const driver = r.team_member_name || "Driver";
+            r.stops?.forEach((s: any) => {
+              const jId = s.job_id || s.job?.id;
+              if (jId && s.arrival_time) {
+                preOptimizationEtaMap.set(Number(jId), { driverName: driver, arrivalTime: s.arrival_time });
+              }
+            });
+          });
+
           await reOptimize(route.id);
+          setPendingDeletedJobIds(new Set());
           setHasUnsavedJobEdits(false);
-          // Polling auto-starts inside reOptimize()
+
+          console.log(
+            "[WhatsApp Notification Service] Staged re-optimization triggered successfully. Tracked pre-opt candidates:",
+            preOptimizationEtaMap.size
+          );
         } catch (err: any) {
           message.error(
             err?.message || "Failed to re-optimize. Please try again.",
@@ -708,7 +759,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
         }
       },
     });
-  }, [reOptimize, route.id]);
+  }, [reOptimize, route.id, route.result?.routes, pendingDeletedJobIds]);
 
   const getRouteData = (index: number | null) =>
     index !== null ? route.result?.routes?.[index] : null;
@@ -901,10 +952,11 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                   </div>
                 )}
 
-                {/* In-map expandable candidate search */}
+                {/* In-map expandable candidate search + Add Candidate button */}
                 <MapSearch
                   candidates={candidateIndex}
                   onSelect={handleSelectCandidate}
+                  onOpenAddJob={() => setIsAddJobOpen(true)}
                 />
               </div>
             </div>
@@ -946,6 +998,9 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                   onDriverSearchChange={setDriverSearch}
                   exactMatch={exactMatch}
                   onExactMatchChange={setExactMatch}
+                  pendingDeletedJobIds={pendingDeletedJobIds}
+                  onDeleteJob={handleStageDeleteJob}
+                  onUndoDeleteJob={handleUndoStageDeleteJob}
                 />
               </div>
             </div>
@@ -1022,6 +1077,20 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
           if (!open) setAddStopRouteIndex(null);
         }}
         onJobCreated={handleJobCreatedForRoute}
+      />
+
+      {/* Add New Candidate / Job Modal (from Map control overlay) */}
+      <AddJobsModal
+        open={isAddJobOpen}
+        setOpen={setIsAddJobOpen}
+        onCancel={() => setIsAddJobOpen(false)}
+        onJobCreated={(newJob) => {
+          if (route.scheduled_date) {
+            fetchJobsByDate(route.scheduled_date);
+          }
+          setHasUnsavedJobEdits(true);
+          message.success("New job added to unassigned pool. Click 'Re-Optimize' to include in route.");
+        }}
       />
 
       {/* Swap Driver Modal */}
