@@ -2,11 +2,13 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 import dayjs from "dayjs";
 import type { Job } from "@/types/job.type";
 import type { Vehicle } from "@/types/vehicle.type";
-import { Avatar, Tooltip, Select, Dropdown, Input } from "antd";
+import { Avatar, Tooltip, Select, Dropdown, Input, message } from "antd";
 import type { MenuProps } from "antd";
 import { isDriverMatch } from "./optimizationView.utils";
 import {
   UserOutlined,
+  UserAddOutlined,
+  UserDeleteOutlined,
   HomeFilled,
   MoreOutlined,
   PlusOutlined,
@@ -19,6 +21,7 @@ import {
   CarOutlined,
   SearchOutlined,
   CloseOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 import {
   calculateTimeRange,
@@ -348,29 +351,57 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
     const container = containerRef.current;
 
-    // Calculate horizontal X scroll offset to center stop on timeline
+    // Calculate horizontal X position of the stop
     const stopX = getPosition(targetStop.arrival_time, startTime, pixelsPerMinute);
     const visibleTimelineWidth = container.clientWidth - DRIVER_COLUMN_WIDTH;
-    const targetScrollLeft = Math.max(0, stopX - visibleTimelineWidth / 2);
 
-    // Calculate vertical Y scroll offset to bring driver row into view
+    // Only scroll horizontally if the stop is outside the visible timeline view window
+    const currentLeft = container.scrollLeft;
+    const currentRight = currentLeft + visibleTimelineWidth;
+
+    let targetScrollLeft = currentLeft;
+    if (stopX < currentLeft + 40 || stopX > currentRight - 40) {
+      targetScrollLeft = Math.max(0, stopX - visibleTimelineWidth / 2);
+    }
+
+    // Calculate vertical Y scroll offset to bring driver row into view if needed
     let targetScrollTop = container.scrollTop;
-    const rowEl = (container.querySelector<HTMLElement>(`[data-route-index="${rIdx}"]`) ||
-      Array.from(container.querySelectorAll<HTMLElement>('[data-route-indices]')).find(el => 
-        (el.getAttribute('data-route-indices') || '').split(',').includes(String(rIdx))
-      ));
+    const rowEl =
+      container.querySelector<HTMLElement>(`[data-route-index="${rIdx}"]`) ||
+      Array.from(
+        container.querySelectorAll<HTMLElement>("[data-route-indices]"),
+      ).find((el) =>
+        (el.getAttribute("data-route-indices") || "")
+          .split(",")
+          .includes(String(rIdx)),
+      );
+
     if (rowEl) {
       const rowTop = rowEl.offsetTop;
       const rowHeight = rowEl.offsetHeight;
       const containerHeight = container.clientHeight;
-      targetScrollTop = Math.max(0, rowTop - containerHeight / 2 + rowHeight / 2);
+      const currentTop = container.scrollTop;
+      const currentBottom = currentTop + containerHeight;
+
+      // Only scroll vertically if the driver row is outside the visible container height
+      if (rowTop < currentTop || rowTop + rowHeight > currentBottom) {
+        targetScrollTop = Math.max(
+          0,
+          rowTop - containerHeight / 2 + rowHeight / 2,
+        );
+      }
     }
 
-    container.scrollTo({
-      left: targetScrollLeft,
-      top: targetScrollTop,
-      behavior: "smooth",
-    });
+    if (
+      targetScrollLeft !== container.scrollLeft ||
+      targetScrollTop !== container.scrollTop
+    ) {
+      container.scrollTo({
+        left: targetScrollLeft,
+        top: targetScrollTop,
+        behavior: "smooth",
+      });
+    }
   }, [selectedMarkerId, routes, startTime, pixelsPerMinute]);
 
   const getRouteMenuItems = (routeIndex: number): MenuProps["items"] => [
@@ -896,6 +927,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   stop.stop_type === "depot_start" ||
                                   stop.stop_type === "depot_end";
 
+                                const depotLabel = isDepot
+                                  ? stop.stop_type === "depot_start"
+                                    ? "Start"
+                                    : stop.stop_type === "depot_end"
+                                      ? "End"
+                                      : "Depot"
+                                  : null;
+
                                 let displayIndex = 0;
                                 if (!isDepot) {
                                   displayIndex = jobStopCounter++;
@@ -971,98 +1010,136 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 const currentOccupancy =
                                   occupancyMap.get(lastRawIndex) ?? 0;
 
+                                const formattedAddr = isDepot
+                                  ? stop.stop_type === "depot_start"
+                                    ? "Depot (Start)"
+                                    : stop.stop_type === "depot_end"
+                                      ? "Depot (End)"
+                                      : "Depot"
+                                  : stop.address_formatted || `#${stop.job_id}`;
+
                                 const tooltipContent = (
-                                  <div className="pointer-events-auto select-none space-y-1">
-                                    <div className="font-semibold flex items-center gap-1.5">
-                                      {isDepot ? (
-                                        <HomeFilled className="text-amber-400 text-sm shrink-0" />
-                                      ) : (
-                                        <EnvironmentOutlined className="text-red-400 text-sm shrink-0" />
+                                  <div className="pointer-events-auto select-text p-1 space-y-2.5 w-[310px] text-slate-800">
+                                    {/* Header Badge Row */}
+                                    <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200 select-none">
+                                      {isPickup ? (
+                                        <span className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-400">
+                                          <UserAddOutlined className="text-emerald-700 font-bold" />
+                                          PICKUP
+                                        </span>
+                                      ) : isDropoff ? (
+                                        <span className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider bg-blue-100 text-blue-900 border border-blue-400">
+                                          <UserDeleteOutlined className="text-blue-700 font-bold" />
+                                          DROP-OFF
+                                        </span>
+                                      ) : isDepot ? (
+                                        <span className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-400">
+                                          <HomeFilled className="text-amber-700" />
+                                          DEPOT {stop.stop_type === "depot_start" ? "(START)" : stop.stop_type === "depot_end" ? "(END)" : ""}
+                                        </span>
+                                      ) : null}
+
+                                      {count > 1 && (
+                                        <span className="inline-flex items-center justify-center text-[10.5px] font-bold text-slate-600 bg-slate-100 px-2 py-1 border border-slate-300">
+                                          ×{count} candidates
+                                        </span>
                                       )}
-                                      <span>
-                                        {isDepot
-                                          ? stop.stop_type === "depot_start"
-                                            ? "Depot (Start)"
-                                            : stop.stop_type === "depot_end"
-                                              ? "Depot (End)"
-                                              : "Depot"
-                                          : stop.address_formatted ||
-                                            `#${stop.job_id}`}
-                                      </span>
                                     </div>
-                                    {stopTypeLabel && (
-                                      <div className="text-xs font-semibold uppercase opacity-80 flex items-center gap-1.5">
-                                        <UserOutlined className="text-xs shrink-0" />
-                                        <span>{stopTypeLabel}</span>
-                                        {count > 1 && (
-                                          <span className="bg-white/20 rounded px-1 lowercase">
-                                            ×{count} candidates
+
+                                    {/* Location / Address Row */}
+                                    <div className="flex items-start gap-2.5 py-0.5">
+                                      {isDepot ? (
+                                        <HomeFilled className="text-amber-500 text-base shrink-0 mt-0.5" />
+                                      ) : isPickup ? (
+                                        <EnvironmentOutlined className="text-emerald-600 text-base shrink-0 mt-0.5" />
+                                      ) : (
+                                        <EnvironmentOutlined className="text-blue-600 text-base shrink-0 mt-0.5" />
+                                      )}
+                                      <div className="flex flex-col min-w-0 flex-1">
+                                        <div className="flex items-center justify-between gap-1">
+                                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 select-none">
+                                            {isDepot ? "Station" : isPickup ? "Pickup Address" : isDropoff ? "Drop-off Address" : "Address"}
                                           </span>
-                                        )}
-                                      </div>
-                                    )}
-                                    {isJob && (
-                                      <div className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
-                                        <CarOutlined className="text-xs shrink-0" />
-                                        <span>
-                                          Occupancy: {currentOccupancy}{" "}
-                                          {vehicleCapacity
-                                            ? `/ ${vehicleCapacity}`
-                                            : ""}{" "}
-                                          seats
+                                          {formattedAddr && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                navigator.clipboard.writeText(formattedAddr);
+                                                message.success("Address copied to clipboard");
+                                              }}
+                                              className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer transition-colors border-none bg-transparent flex items-center gap-1 text-[10px] font-semibold select-none"
+                                              title="Copy address"
+                                            >
+                                              <CopyOutlined className="text-xs" />
+                                              <span>Copy</span>
+                                            </button>
+                                          )}
+                                        </div>
+                                        <span
+                                          className="text-xs font-bold text-slate-900 leading-snug select-text cursor-text break-words"
+                                          title={formattedAddr}
+                                        >
+                                          {formattedAddr}
                                         </span>
                                       </div>
-                                    )}
+                                    </div>
+
+                                    {/* Passengers / Job List */}
                                     {isJob && group.rawStops.length > 0 && (
-                                      <div className="text-xs max-h-36 overflow-y-auto space-y-1 custom-scrollbar pr-1 pt-0.5">
-                                        {group.rawStops.map(
-                                          (s: any, i: number) => {
-                                            const candName =
-                                              getCandidateName(s);
+                                      <div className="pt-2 border-t border-slate-200">
+                                        <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                          <UserOutlined className="text-slate-400" /> Passenger / Job(s)
+                                        </div>
+                                        <div className="text-xs max-h-36 overflow-y-auto space-y-1.5 custom-scrollbar pr-0.5">
+                                          {group.rawStops.map((s: any, i: number) => {
+                                            const candName = getCandidateName(s);
                                             return (
                                               <div
                                                 key={i}
-                                                className="cursor-pointer text-sky-200 hover:text-white hover:underline transition-colors py-0.5 flex items-center gap-1.5"
+                                                className="cursor-pointer bg-slate-50 hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 border border-slate-200 hover:border-emerald-400 px-2 py-1.5 transition-all flex items-center justify-between text-xs font-semibold overflow-hidden"
                                                 onClick={(e) => {
                                                   e.stopPropagation();
-                                                  onStopClick?.(
-                                                    s,
-                                                    routeIndex,
-                                                    displayIndex,
-                                                  );
+                                                  onStopClick?.(s, routeIndex, displayIndex);
                                                 }}
                                               >
-                                                <FileTextOutlined className="text-sky-300 text-xs shrink-0" />
-                                                <span>
-                                                  #{s.job_id}{" "}
-                                                  {candName
-                                                    ? `(${candName})`
-                                                    : ""}
-                                                </span>
+                                                <div className="flex items-center gap-1.5 min-w-0 w-full">
+                                                  <FileTextOutlined className="text-slate-500 text-xs shrink-0" />
+                                                  <span className="font-bold text-slate-900 shrink-0">#{s.job_id}</span>
+                                                  {candName && (
+                                                    <span className="text-slate-600 font-medium truncate shrink" title={candName}>({candName})</span>
+                                                  )}
+                                                </div>
                                               </div>
                                             );
-                                          },
-                                        )}
+                                          })}
+                                        </div>
                                       </div>
                                     )}
-                                    <div className="text-xs text-white font-bold flex items-center gap-1.5 pt-0.5">
-                                      <ClockCircleOutlined className="text-amber-300 text-xs shrink-0" />
-                                      <span>
-                                        ETA:{" "}
-                                        {arrivalTime.isValid()
-                                          ? arrivalTime.format("HH:mm")
-                                          : "--:--"}
-                                      </span>
-                                    </div>
-                                    {serviceDuration > 0 && (
-                                      <div className="text-xs text-gray-200 pl-5 space-y-0.5">
-                                        <div>
-                                          Departure:{" "}
-                                          {departureTime.isValid()
-                                            ? departureTime.format("HH:mm")
-                                            : "--:--"}
+
+                                    {/* Footer Info (Occupancy & ETA) */}
+                                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between gap-2 text-xs">
+                                      {isJob && (
+                                        <div className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-50 border border-slate-200 text-slate-800 text-[11px] text-center font-medium min-w-0">
+                                          <CarOutlined className="text-emerald-700 text-xs shrink-0" />
+                                          <span className="truncate">
+                                            Occupancy: <strong className="text-emerald-800 font-bold">{currentOccupancy}</strong>
+                                            {vehicleCapacity ? ` / ${vehicleCapacity}` : ""}
+                                          </span>
                                         </div>
-                                        <div>Service: {serviceDuration} min</div>
+                                      )}
+                                      <div className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-50 border border-slate-200 text-slate-900 text-[11px] text-center font-medium min-w-0">
+                                        <ClockCircleOutlined className="text-slate-600 text-xs shrink-0" />
+                                        <span className="truncate">
+                                          ETA: <strong className="text-slate-900 font-extrabold">{arrivalTime.isValid() ? arrivalTime.format("HH:mm") : "--:--"}</strong>
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {serviceDuration > 0 && (
+                                      <div className="text-[11px] text-slate-500 text-center pt-1 space-y-0.5 border-t border-slate-100">
+                                        <div>Departure: {departureTime.isValid() ? departureTime.format("HH:mm") : "--:--"}</div>
+                                        <div>Service Duration: {serviceDuration} min</div>
                                       </div>
                                     )}
                                   </div>
@@ -1073,8 +1150,15 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     <Tooltip
                                       key={`stop-${routeIndex}-${groupIndex}`}
                                       title={tooltipContent}
+                                      color="#ffffff"
+                                      overlayStyle={{ maxWidth: "none" }}
                                       overlayInnerStyle={{
+                                        maxWidth: "none",
                                         pointerEvents: "auto",
+                                        padding: "10px",
+                                        borderRadius: "0px",
+                                        boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.05)",
+                                        border: "1px solid #cbd5e1",
                                       }}
                                     >
                                       <div
@@ -1108,15 +1192,22 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   <Tooltip
                                     key={`stop-${routeIndex}-${groupIndex}`}
                                     title={tooltipContent}
+                                    color="#ffffff"
+                                    overlayStyle={{ maxWidth: "none" }}
                                     overlayInnerStyle={{
+                                      maxWidth: "none",
                                       pointerEvents: "auto",
+                                      padding: "10px",
+                                      borderRadius: "0px",
+                                      boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.05)",
+                                      border: "1px solid #cbd5e1",
                                     }}
                                   >
                                     <div
                                       className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md transition-all hover:scale-110 cursor-pointer ${
                                         isDepot
-                                          ? "w-8 h-8 rounded-lg bg-linear-to-br from-slate-700 to-slate-900 border-slate-600 z-10 shadow-lg text-white"
-                                          : "w-8 h-8 rounded z-0"
+                                          ? "px-2 h-6 bg-slate-900 border-slate-700 z-10 shadow-lg text-white"
+                                          : "w-8 h-8 z-0"
                                       }`}
                                       style={{
                                         left: left - 14,
@@ -1136,7 +1227,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       }
                                     >
                                       {isDepot ? (
-                                        <HomeFilled className="text-white text-base" />
+                                        <span className="flex items-center gap-1 text-[10px] font-bold text-white">
+                                          <HomeFilled className="text-white text-xs" />
+                                          {depotLabel}
+                                        </span>
                                       ) : (
                                         <span
                                           className="text-xs font-bold"
