@@ -6,7 +6,8 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { Search, X, MapPin, Phone, User, ChevronRight } from "lucide-react";
+import { Search, X, MapPin, Phone, User, ChevronRight, Plus } from "lucide-react";
+import { Tooltip } from "antd";
 
 export interface MapSearchResult {
   id: string;
@@ -31,6 +32,7 @@ interface MapSearchProps {
   candidates: MapSearchResult[];
   /** Called when the user selects a result */
   onSelect: (item: MapSearchResult) => void;
+  onOpenAddJob?: () => void;
 }
 
 
@@ -58,6 +60,7 @@ function saveRecent(query: string) {
 const MapSearch: React.FC<MapSearchProps> = ({
   candidates,
   onSelect,
+  onOpenAddJob,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -178,28 +181,29 @@ const MapSearch: React.FC<MapSearchProps> = ({
       className="flex flex-col"
     >
       {/* ── Toggle button / expanded input row ── */}
-      <div
-        className={`
-          flex items-center bg-white/95 backdrop-blur-sm border border-gray-200
-          shadow-lg transition-all duration-300 ease-out overflow-hidden
-          ${isOpen ? "rounded-none w-72" : "rounded-none w-9 h-9"}
-        `}
-      >
-        {/* Search icon button */}
-        <button
-          type="button"
-          aria-label="Search candidates"
-          onClick={() => (isOpen ? undefined : open())}
+      <div className="flex items-center gap-1.5">
+        <div
           className={`
-            flex items-center justify-center shrink-0 transition-colors cursor-pointer
-            ${isOpen
-              ? "w-9 h-9 text-emerald-700 hover:bg-emerald-50"
-              : "w-9 h-9 text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-none"
-            }
+            flex items-center bg-white/95 backdrop-blur-sm border border-gray-200
+            shadow-lg transition-all duration-300 ease-out overflow-hidden
+            ${isOpen ? "rounded-none w-72" : "rounded-none w-9 h-9"}
           `}
         >
-          <Search size={15} strokeWidth={2.2} />
-        </button>
+          {/* Search icon button */}
+          <button
+            type="button"
+            aria-label="Search candidates"
+            onClick={() => (isOpen ? undefined : open())}
+            className={`
+              flex items-center justify-center shrink-0 transition-colors cursor-pointer
+              ${isOpen
+                ? "w-9 h-9 text-emerald-700 hover:bg-emerald-50"
+                : "w-9 h-9 text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-none"
+              }
+            `}
+          >
+            <Search size={15} strokeWidth={2.2} />
+          </button>
 
         {/* Input — only rendered when open to avoid tab-focus on hidden input */}
         {isOpen && (
@@ -224,6 +228,21 @@ const MapSearch: React.FC<MapSearchProps> = ({
               <X size={13} />
             </button>
           </>
+        )}
+        </div>
+
+        {/* Plus / Add Candidate button beside search */}
+        {onOpenAddJob && !isOpen && (
+          <Tooltip title="Add New Candidate / Job">
+            <button
+              type="button"
+              onClick={onOpenAddJob}
+              aria-label="Add Candidate"
+              className="flex items-center justify-center w-9 h-9 bg-white/95 backdrop-blur-sm border border-gray-200 text-gray-700 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer shadow-lg rounded-none"
+            >
+              <Plus size={16} strokeWidth={2.2} />
+            </button>
+          </Tooltip>
         )}
       </div>
 

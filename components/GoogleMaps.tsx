@@ -61,6 +61,7 @@ interface MarkerData {
   draggable?: boolean;
   /** Index of the route this marker belongs to, used for route focus filtering. */
   routeIndex?: number;
+  isPendingDelete?: boolean;
 }
 
 interface PolylineData {
@@ -391,6 +392,7 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
             position={marker.position}
             title={marker.title}
             icon={icon}
+            opacity={marker.isPendingDelete ? 0.35 : 1.0}
             draggable={marker.draggable}
             zIndex={isSelected ? 9999 : (marker.sequenceNumber ?? 1)}
             animation={
