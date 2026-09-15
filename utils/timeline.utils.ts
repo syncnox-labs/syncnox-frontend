@@ -77,13 +77,21 @@ export const getPosition = (
   return clampedDiff * pixelsPerMinute;
 };
 
+export interface TimeMarker {
+  time: dayjs.Dayjs;
+  position: number;
+  label: string;
+  isNewDay?: boolean;
+  dateLabel?: string;
+}
+
 export const generateTimeMarkers = (
   startTime: dayjs.Dayjs,
   endTime: dayjs.Dayjs,
   intervalMinutes: number = 30,
   pixelsPerMinute: number = 4
-) => {
-  const markers = [];
+): TimeMarker[] => {
+  const markers: TimeMarker[] = [];
   let currentTime: dayjs.Dayjs;
 
   // Hard safety cap — should never be needed after calculateTimeRange clamp,
@@ -106,13 +114,25 @@ export const generateTimeMarkers = (
     currentTime = startTime.clone();
   }
 
+  let prevDateStr: string | null = null;
+
   while (currentTime.isBefore(safeEndTime)) {
     if (currentTime.isAfter(startTime) || currentTime.isSame(startTime)) {
+      const currentDateStr = currentTime.format("YYYY-MM-DD");
+      const isNewDay = prevDateStr !== null && currentDateStr !== prevDateStr;
+      const dateLabel = isNewDay || prevDateStr === null
+        ? currentTime.format("ddd MMM D")
+        : undefined;
+
       markers.push({
         time: currentTime,
         position: currentTime.diff(startTime, "minute", true) * pixelsPerMinute,
         label: currentTime.format("HH:mm"),
+        isNewDay,
+        dateLabel,
       });
+
+      prevDateStr = currentDateStr;
     }
     currentTime = currentTime.add(intervalMinutes, "minute");
   }
