@@ -552,10 +552,21 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               {timeMarkers.map((marker, i) => (
                 <div
                   key={i}
-                  className="absolute top-0 bottom-0 border-l border-gray-200 pl-1 text-xs text-gray-400"
+                  className={`absolute top-0 bottom-0 select-none transition-colors ${
+                    marker.isNewDay ? "z-20" : "border-l border-gray-200 pl-1 text-xs text-gray-400"
+                  }`}
                   style={{ left: marker.position, height: "100%" }}
                 >
-                  {marker.label}
+                  {marker.isNewDay && marker.dateLabel ? (
+                    <div className="absolute top-1 -left-2 z-20">
+                      <div className="inline-flex items-center gap-1.5 bg-[#003220] text-white px-2 py-0.5 rounded text-[10px] font-medium shadow-xs whitespace-nowrap">
+                        <span className="font-semibold tracking-tight">{marker.dateLabel}</span>
+                        <span className="text-[9px] text-emerald-200/90 font-mono">{marker.label}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    marker.label
+                  )}
                 </div>
               ))}
             </div>
@@ -571,7 +582,11 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               {timeMarkers.map((marker, i) => (
                 <div
                   key={i}
-                  className="absolute top-0 bottom-0 border-l border-dashed border-gray-200"
+                  className={`absolute top-0 bottom-0 ${
+                    marker.isNewDay
+                      ? "border-l-2 border-slate-300 z-10"
+                      : "border-l border-dashed border-gray-200"
+                  }`}
                   style={{ left: marker.position }}
                 />
               ))}
