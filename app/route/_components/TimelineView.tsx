@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { Truck } from "lucide-react";
 import dayjs from "dayjs";
 import type { Job } from "@/types/job.type";
 import type { Vehicle } from "@/types/vehicle.type";
@@ -183,9 +184,16 @@ const getVehicleCapacity = (v?: Vehicle): number | null => {
   if (Array.isArray(v.load_constraints)) {
     for (const c of v.load_constraints as any[]) {
       if (c && typeof c === "object") {
+        // Mirror the backend seat parser: only seat-like rows count as seats.
+        // weight/volume/distance/duration rows are cargo limits, never seats.
         const ctype = String(c.constraint_type || "").toLowerCase();
+        const label = String((c as any).label || "").toLowerCase();
         const unit = String(c.unit || "").toLowerCase();
-        if (ctype === "capacity" || ctype === "seats" || unit.includes("seat")) {
+        const isSeatRow =
+          ["seats", "seat", "passengers", "passenger", "capacity", "item_count",
+           "seating_capacity", "passenger_capacity", "pax"].includes(ctype) ||
+          ["seat", "passenger", "pax"].some((k) => label.includes(k) || unit.includes(k));
+        if (isSeatRow) {
           const val = Number(c.max_value);
           if (val > 0) return val;
         }
@@ -625,27 +633,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                   ).length;
                 });
 
-                const vehicleLabels = Array.from(
-                  new Set(
-                    driverGroup.routes
-                      .map((r) => {
-                        const v = r.route.vehicle_id
-                          ? vehiclesMap.get(Number(r.route.vehicle_id))
-                          : undefined;
-                        if (!v) return null;
-                        const cap = getVehicleCapacity(v);
-                        return [
-                          v.name,
-                          v.type ? `(${v.type.replace("_", " ")})` : null,
-                          cap ? `· ${cap} seats` : null,
-                          v.license_plate ? `· ${v.license_plate}` : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" ");
-                      })
-                      .filter((label): label is string => Boolean(label)),
-                  ),
-                ).join(", ");
+                // vehicleLabels removed — vehicle is now shown per-route on the timeline bar chip
 
                 const totalDurationSeconds = driverGroup.routes.reduce(
                   (sum, r) => sum + (r.route.total_duration_seconds || 0),
@@ -696,11 +684,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                           <span className="font-semibold truncate text-gray-800 text-xs">
                             {driverGroup.driverName}
                           </span>
-                          {vehicleLabels && (
-                            <span className="text-[10px] text-gray-900 font-medium truncate">
-                              {vehicleLabels}
-                            </span>
-                          )}
+                          {/* Vehicle is shown per-route on the timeline bar, not here */}
                           <span className="text-[11px] text-gray-400 truncate">
                             {Math.round(totalDistanceMeters / 1000)} km
                             {durationStr ? ` • ${durationStr}` : ""}
@@ -758,8 +742,81 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                           occupancyMap.set(idx, runningLoad);
                         });
 
+                        // ── Resolve vehicle label for this specific route ─────────────────
+                        const routeVehicleName = (route as any).vehicle_name as string | null | undefined;
+                        const routeVehicleCap = (route as any).vehicle_capacity as number | null | undefined;
+                        const firstStop = route.stops?.[0];
+                        const vehicleChipLeft = firstStop?.arrival_time
+                          ? getPosition(firstStop.arrival_time, startTime, pixelsPerMinute)
+                          : null;
+
                         return (
                           <React.Fragment key={`route-${routeIndex}`}>
+                            {/* Per-route vehicle chip ─ shown at first-stop position */}
+                            {routeVehicleName && vehicleChipLeft !== null && (
+                              <Tooltip
+                                title={
+                                  <div className="pointer-events-auto select-text p-1 text-slate-800">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-7 h-7 rounded bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                                        <Truck size={14} className="text-slate-700" />
+                                      </div>
+                                      <div className="flex flex-col min-w-0 pr-1">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-xs font-bold text-slate-900 leading-snug truncate" title={routeVehicleName}>
+                                            {routeVehicleName}
+                                          </span>
+                                          {routeVehicleCap && (
+                                            <span className="inline-flex items-center text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.2 border border-slate-200 rounded shrink-0">
+                                              {routeVehicleCap} seats
+                                            </span>
+                                          )}
+                                        </div>
+                                        {/* {driverGroup.driverName && (
+                                          <span className="text-[10.5px] font-medium text-slate-500 truncate">
+                                            Driver: <strong className="text-slate-800 font-semibold">{driverGroup.driverName}</strong>
+                                          </span>
+                                        )} */}
+                                      </div>
+                                    </div>
+                                  </div>
+                                }
+                                color="#ffffff"
+                                overlayStyle={{ maxWidth: "none" }}
+                                overlayInnerStyle={{
+                                  maxWidth: "none",
+                                  pointerEvents: "auto",
+                                  padding: "6px 8px",
+                                  borderRadius: "4px",
+                                  color: "#1e293b",
+                                  boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)",
+                                }}
+                              >
+                                <div
+                                  className="absolute flex items-center gap-1 bg-white border border-gray-200 rounded px-1.5 shadow-sm cursor-default select-none"
+                                  style={{
+                                    left: vehicleChipLeft,
+                                    top: 2,
+                                    fontSize: 9,
+                                    lineHeight: "14px",
+                                    whiteSpace: "nowrap",
+                                    zIndex: 5,
+                                    borderColor: routeColor,
+                                    borderLeftWidth: 2,
+                                    maxWidth: 120,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  <Truck size={9} style={{ color: routeColor, flexShrink: 0 }} />
+                                  <span className="font-semibold text-gray-700 truncate" style={{ fontSize: 9 }}>
+                                    {routeVehicleName}
+                                    {routeVehicleCap ? ` · ${routeVehicleCap}` : ""}
+                                  </span>
+                                </div>
+                              </Tooltip>
+                            )}
+
                             {/* Connection Lines (Segments) */}
                             {route.stops?.map((stop: any, index: number) => {
                               if (index === route.stops.length - 1) return null;
@@ -1024,7 +1081,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 const routeVehicle = route.vehicle_id
                                   ? vehiclesMap.get(Number(route.vehicle_id))
                                   : undefined;
+                                // Prefer backend-resolved capacity (seat parser); fall
+                                // back to the local vehicles list only for old results.
                                 const vehicleCapacity =
+                                  (route as any).vehicle_capacity ??
                                   getVehicleCapacity(routeVehicle);
 
                                 const lastRawIndex =
@@ -1211,14 +1271,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       <div className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-50 border border-slate-200 text-slate-900 text-[11px] text-center font-medium min-w-0">
                                         <ClockCircleOutlined className="text-slate-600 text-xs shrink-0" />
                                         <span className="truncate">
-                                          ETA: <strong className="text-slate-900 font-extrabold">{arrivalTime.isValid() ? arrivalTime.format("HH:mm") : "--:--"}</strong>
+                                          ETA: <strong className="text-slate-900 font-extrabold">{arrivalTime.isValid() ? arrivalTime.format("hh:mm A") : "--:--"}</strong>
                                         </span>
                                       </div>
                                     </div>
 
                                     {serviceDuration > 0 && (
                                       <div className="text-[11px] text-slate-500 text-center pt-1 space-y-0.5 border-t border-slate-100">
-                                        <div>Departure: {departureTime.isValid() ? departureTime.format("HH:mm") : "--:--"}</div>
+                                        <div>Departure: {departureTime.isValid() ? departureTime.format("hh:mm A") : "--:--"}</div>
                                         <div>Service Duration: {serviceDuration} min</div>
                                       </div>
                                     )}

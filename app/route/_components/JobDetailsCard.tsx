@@ -31,6 +31,7 @@ import {
 import dayjs from "dayjs";
 import type { Job, JobStatus } from "@/types/job.type";
 import { STATUS_COLORS, formatJobTypeLabel } from "@/utils/jobs.utils";
+import { formatTime12h } from "@/utils/app.utils";
 import { updateJobStatus, updateJob } from "@/apis/jobs.api";
 import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
@@ -148,7 +149,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     isDropoffStop;
 
   const arrivalTime = stopData?.arrival_time
-    ? dayjs(stopData.arrival_time).format("hh:mm A")
+    ? formatTime12h(stopData.arrival_time)
     : "--:--";
   const serviceDuration =
     stopData?.service_duration_minutes || job?.service_duration || 0;
@@ -162,7 +163,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   const companyName = job?.business_name || "-";
   const timeWindow =
     job?.time_window_start && job?.time_window_end
-      ? `${job.time_window_start} - ${job.time_window_end}`
+      ? `${formatTime12h(job.time_window_start)} - ${formatTime12h(job.time_window_end)}`
       : "-";
 
   const driverLabel = driverName
@@ -208,11 +209,12 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     "client_address",
   );
 
-  const clientPickUpTime = isReturnTrip
+  const clientPickUpTimeRaw = isReturnTrip
     ? shuttleValue("end_hour", "client_pick_up_time", "start_hour")
     : shuttleValue("client_pick_up_time", "start_hour", "end_hour");
-  const startHour = shuttleValue("start_hour");
-  const endHour = shuttleValue("end_hour");
+  const clientPickUpTime = formatTime12h(clientPickUpTimeRaw);
+  const startHour = formatTime12h(shuttleValue("start_hour"));
+  const endHour = formatTime12h(shuttleValue("end_hour"));
   const pickupType = shuttleValue("pickup_type");
   const scheduledDate =
     job?.scheduled_date ||
@@ -227,11 +229,12 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
       .join(" ");
   };
 
-  const candidatePickupEta = shuttleValue(
+  const candidatePickupEtaRaw = shuttleValue(
     "candidate_pickup_eta",
     "go_pickup_time_output",
     "return_pickup_time_output",
   );
+  const candidatePickupEta = formatTime12h(candidatePickupEtaRaw);
   const reachBeforeMinutes =
     job?.reach_before_minutes ??
     (job?.worker_shuttle_detail as any)?.reach_before_minutes ??
@@ -644,11 +647,12 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                         Shift Start Time
                       </label>
                       <TimePicker
-                        format="HH:mm"
+                        format="hh:mm A"
+                        use12Hours
                         size="small"
                         needConfirm={false}
                         className="w-full text-xs"
-                        value={editValues.start_hour ? dayjs(editValues.start_hour, ["HH:mm:ss", "HH:mm"]) : null}
+                        value={editValues.start_hour ? dayjs(editValues.start_hour, ["HH:mm:ss", "HH:mm", "hh:mm A"]) : null}
                         onChange={(t) => setEditValues(v => ({ ...v, start_hour: t ? t.format("HH:mm") : "" }))}
                       />
                     </div>
@@ -657,11 +661,12 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                         Shift End Time
                       </label>
                       <TimePicker
-                        format="HH:mm"
+                        format="hh:mm A"
+                        use12Hours
                         size="small"
                         needConfirm={false}
                         className="w-full text-xs"
-                        value={editValues.end_hour ? dayjs(editValues.end_hour, ["HH:mm:ss", "HH:mm"]) : null}
+                        value={editValues.end_hour ? dayjs(editValues.end_hour, ["HH:mm:ss", "HH:mm", "hh:mm A"]) : null}
                         onChange={(t) => setEditValues(v => ({ ...v, end_hour: t ? t.format("HH:mm") : "" }))}
                       />
                     </div>
@@ -897,11 +902,12 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                         Time Window Start
                       </label>
                       <TimePicker
-                        format="HH:mm"
+                        format="hh:mm A"
+                        use12Hours
                         size="small"
                         needConfirm={false}
                         className="w-full text-xs"
-                        value={editValues.time_window_start ? dayjs(editValues.time_window_start, ["HH:mm:ss", "HH:mm"]) : null}
+                        value={editValues.time_window_start ? dayjs(editValues.time_window_start, ["HH:mm:ss", "HH:mm", "hh:mm A"]) : null}
                         onChange={(t) => setEditValues(v => ({ ...v, time_window_start: t ? t.format("HH:mm") : "" }))}
                       />
                     </div>
@@ -910,11 +916,12 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                         Time Window End
                       </label>
                       <TimePicker
-                        format="HH:mm"
+                        format="hh:mm A"
+                        use12Hours
                         size="small"
                         needConfirm={false}
                         className="w-full text-xs"
-                        value={editValues.time_window_end ? dayjs(editValues.time_window_end, ["HH:mm:ss", "HH:mm"]) : null}
+                        value={editValues.time_window_end ? dayjs(editValues.time_window_end, ["HH:mm:ss", "HH:mm", "hh:mm A"]) : null}
                         onChange={(t) => setEditValues(v => ({ ...v, time_window_end: t ? t.format("HH:mm") : "" }))}
                       />
                     </div>

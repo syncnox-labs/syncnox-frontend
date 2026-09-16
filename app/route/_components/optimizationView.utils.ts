@@ -1,3 +1,4 @@
+import { formatTime12h } from "@/utils/app.utils";
 import { Route, Stop } from "@/types/routes.type";
 import { decodePolyline } from "@/utils/googleMaps.utils";
 import { getRouteColor } from "@/utils/timeline.utils";
@@ -217,11 +218,7 @@ export const generateMapMarkers = (
           ? `${stop.address_formatted || "Unknown location"} (Pending Deletion)`
           : stop.address_formatted || "Unknown location",
         description: stop.arrival_time
-          ? `ETA: ${new Date(stop.arrival_time).toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: true,
-            })}`
+          ? `ETA: ${formatTime12h(stop.arrival_time)}`
           : undefined,
         jobData: job,
         sequenceNumber: isDepot ? undefined : displayIndex,
@@ -258,11 +255,7 @@ export const prepareExportData = (route: Route, jobs: Job[]) => {
           Priority: jobDetails?.priority_level || "Medium",
           Address: stop.address_formatted,
           ETA: stop.arrival_time
-            ? new Date(stop.arrival_time).toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true,
-              })
+            ? formatTime12h(stop.arrival_time)
             : "-",
           "Phone Number": jobDetails?.phone_number || "-",
           Duration: jobDetails?.service_duration,

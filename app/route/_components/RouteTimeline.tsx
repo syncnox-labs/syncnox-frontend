@@ -78,7 +78,7 @@ const RouteTimeline: React.FC<RouteTimelineProps> = ({ stops }) => {
                 </div>
                 <div className="flex flex-col items-end">
                   <Text strong className="text-lg text-blue-600">
-                    {dayjs(stop.arrival_time).format("HH:mm")}
+                    {dayjs(stop.arrival_time).format("hh:mm A")}
                   </Text>
                   <Text type="secondary" className="text-xs">
                     {dayjs(stop.arrival_time).format("MMM D")}
