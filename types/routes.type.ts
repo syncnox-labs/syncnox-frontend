@@ -22,6 +22,10 @@ export interface Stop {
 export interface Routes {
   stops: Stop[];
   vehicle_id: number;
+  /** Real vehicle name resolved backend-side (avoids stale driver.vehicle labels). */
+  vehicle_name?: string | null;
+  /** Real seat capacity resolved backend-side from load_constraints. */
+  vehicle_capacity?: number | null;
   route_polyline: string;
   team_member_id: number;
   team_member_name: string;
@@ -33,7 +37,12 @@ export interface Routes {
 
 export interface UnassignedJob {
   job_id: number;
+  job_name?: string;
+  worker_name?: string;
   reason: string;
+  reason_code?: string;
+  suggested_actions?: string[];
+  scheduled_time?: string;
   address_formatted?: string;
 }
 

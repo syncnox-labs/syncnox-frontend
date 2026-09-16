@@ -77,6 +77,8 @@ export const getPosition = (
   return clampedDiff * pixelsPerMinute;
 };
 
+export { formatTime12h } from "./app.utils";
+
 export interface TimeMarker {
   time: dayjs.Dayjs;
   position: number;
@@ -127,7 +129,7 @@ export const generateTimeMarkers = (
       markers.push({
         time: currentTime,
         position: currentTime.diff(startTime, "minute", true) * pixelsPerMinute,
-        label: currentTime.format("HH:mm"),
+        label: currentTime.format("hh:mm A"),
         isNewDay,
         dateLabel,
       });

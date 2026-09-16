@@ -10,6 +10,7 @@ import {
 } from "@ant-design/icons";
 import { Job, JobStatus } from "@/types/job.type";
 import { STATUS_COLORS } from "@/utils/jobs.utils";
+import { formatTime12h } from "@/utils/app.utils";
 import { updateJobStatus } from "@/apis/jobs.api";
 import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
@@ -182,7 +183,7 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({ marker, onRemoveJob, 
               "time_window_end" in jobData &&
               jobData.time_window_end && (
                 <Text className="text-[11px] text-slate-600 leading-tight">
-                  Window: {jobData.time_window_start} - {jobData.time_window_end}
+                  Window: {formatTime12h(jobData.time_window_start)} - {formatTime12h(jobData.time_window_end)}
                 </Text>
               )}
           </div>
