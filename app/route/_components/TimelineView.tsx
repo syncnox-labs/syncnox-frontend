@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
-import { Truck } from "lucide-react";
+import { Truck, Calendar } from "lucide-react";
 import dayjs from "dayjs";
 import type { Job } from "@/types/job.type";
 import type { Vehicle } from "@/types/vehicle.type";
@@ -560,18 +560,33 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               {timeMarkers.map((marker, i) => (
                 <div
                   key={i}
-                  className={`absolute top-0 bottom-0 select-none transition-colors ${
-                    marker.isNewDay ? "z-20" : "border-l border-gray-200 pl-1 text-xs text-gray-400"
+                  className={`absolute top-0 bottom-0 select-none transition-colors border-l pl-1 text-xs ${
+                    marker.isNewDay
+                      ? "border-l-2 border-dashed border-[#003220] font-bold text-[#003220] z-10"
+                      : "border-gray-200 text-gray-400"
                   }`}
                   style={{ left: marker.position, height: "100%" }}
                 >
-                  {marker.isNewDay && marker.dateLabel ? (
-                    <div className="absolute top-1 -left-2 z-20">
-                      <div className="inline-flex items-center gap-1.5 bg-[#003220] text-white px-2 py-0.5 rounded text-[10px] font-medium shadow-xs whitespace-nowrap">
-                        <span className="font-semibold tracking-tight">{marker.dateLabel}</span>
-                        <span className="text-[9px] text-emerald-200/90 font-mono">{marker.label}</span>
-                      </div>
-                    </div>
+                  {marker.isNewDay ? (
+                    <Tooltip
+                      color="#ffffff"
+                      overlayInnerStyle={{
+                        padding: "6px 12px",
+                        borderRadius: "6px",
+                        color: "#1e293b",
+                        boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.06)",
+                        border: "1px solid #cbd5e1",
+                      }}
+                      title={
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 select-none">
+                          <Calendar size={14} className="text-[#003220] shrink-0" />
+                          <span className="font-bold text-slate-900">{marker.dateLabel || "New Day"}</span>
+                          <span className="text-slate-500 font-mono text-[11px]">({marker.label})</span>
+                        </div>
+                      }
+                    >
+                      <span className="cursor-pointer hover:underline">{marker.label}</span>
+                    </Tooltip>
                   ) : (
                     marker.label
                   )}
@@ -587,17 +602,40 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               className="absolute inset-0 z-0 pointer-events-none"
               style={{ marginLeft: DRIVER_COLUMN_WIDTH, width: timelineWidth }}
             >
-              {timeMarkers.map((marker, i) => (
-                <div
-                  key={i}
-                  className={`absolute top-0 bottom-0 ${
-                    marker.isNewDay
-                      ? "border-l-2 border-slate-300 z-10"
-                      : "border-l border-dashed border-gray-200"
-                  }`}
-                  style={{ left: marker.position }}
-                />
-              ))}
+              {timeMarkers.map((marker, i) =>
+                marker.isNewDay ? (
+                  <Tooltip
+                    key={i}
+                    color="#ffffff"
+                    overlayInnerStyle={{
+                      padding: "6px 12px",
+                      borderRadius: "6px",
+                      color: "#1e293b",
+                      boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.06)",
+                      border: "1px solid #cbd5e1",
+                    }}
+                    title={
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 select-none">
+                        <Calendar size={14} className="text-[#003220] shrink-0" />
+                        <span className="font-bold text-slate-900">{marker.dateLabel || "New Day"}</span>
+                        <span className="text-slate-500 font-mono text-[11px]">({marker.label})</span>
+                      </div>
+                    }
+                    placement="right"
+                  >
+                    <div
+                      className="absolute top-0 bottom-0 border-l-2 border-dashed border-[#003220] z-0 pointer-events-auto cursor-pointer hover:border-emerald-600 hover:opacity-100 transition-all opacity-85"
+                      style={{ left: marker.position }}
+                    />
+                  </Tooltip>
+                ) : (
+                  <div
+                    key={i}
+                    className="absolute top-0 bottom-0 border-l border-dashed border-gray-200"
+                    style={{ left: marker.position }}
+                  />
+                )
+              )}
             </div>
 
             {driverGroups.length === 0 ? (
@@ -712,10 +750,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                     {/* Timeline Track */}
                     <div
-                      className="relative z-0 transition-opacity"
+                      className="relative z-10"
                       style={{
                         width: timelineWidth,
-                        opacity: isDimmed ? 0.3 : 1,
                       }}
                     >
                       {driverGroup.routes.map(({ route, originalIndex: routeIndex }) => {
@@ -742,81 +779,22 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                           occupancyMap.set(idx, runningLoad);
                         });
 
-                        // ── Resolve vehicle label for this specific route ─────────────────
-                        const routeVehicleName = (route as any).vehicle_name as string | null | undefined;
-                        const routeVehicleCap = (route as any).vehicle_capacity as number | null | undefined;
-                        const firstStop = route.stops?.[0];
-                        const vehicleChipLeft = firstStop?.arrival_time
-                          ? getPosition(firstStop.arrival_time, startTime, pixelsPerMinute)
-                          : null;
+                        // ── Resolve vehicle label for segment hover tooltips ───────────────
+                        const routeVehicleObj = route.vehicle_id
+                          ? vehiclesMap.get(Number(route.vehicle_id))
+                          : undefined;
+                        const routeVehicleName =
+                          (route as any).vehicle_name ||
+                          routeVehicleObj?.name ||
+                          (route.vehicle_id
+                            ? `Vehicle #${route.vehicle_id}`
+                            : null);
+                        const routeVehicleCap =
+                          (route as any).vehicle_capacity ??
+                          getVehicleCapacity(routeVehicleObj);
 
                         return (
                           <React.Fragment key={`route-${routeIndex}`}>
-                            {/* Per-route vehicle chip ─ shown at first-stop position */}
-                            {routeVehicleName && vehicleChipLeft !== null && (
-                              <Tooltip
-                                title={
-                                  <div className="pointer-events-auto select-text p-1 text-slate-800">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-7 h-7 rounded bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
-                                        <Truck size={14} className="text-slate-700" />
-                                      </div>
-                                      <div className="flex flex-col min-w-0 pr-1">
-                                        <div className="flex items-center gap-1.5">
-                                          <span className="text-xs font-bold text-slate-900 leading-snug truncate" title={routeVehicleName}>
-                                            {routeVehicleName}
-                                          </span>
-                                          {routeVehicleCap && (
-                                            <span className="inline-flex items-center text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.2 border border-slate-200 rounded shrink-0">
-                                              {routeVehicleCap} seats
-                                            </span>
-                                          )}
-                                        </div>
-                                        {/* {driverGroup.driverName && (
-                                          <span className="text-[10.5px] font-medium text-slate-500 truncate">
-                                            Driver: <strong className="text-slate-800 font-semibold">{driverGroup.driverName}</strong>
-                                          </span>
-                                        )} */}
-                                      </div>
-                                    </div>
-                                  </div>
-                                }
-                                color="#ffffff"
-                                overlayStyle={{ maxWidth: "none" }}
-                                overlayInnerStyle={{
-                                  maxWidth: "none",
-                                  pointerEvents: "auto",
-                                  padding: "6px 8px",
-                                  borderRadius: "4px",
-                                  color: "#1e293b",
-                                  boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)",
-                                }}
-                              >
-                                <div
-                                  className="absolute flex items-center gap-1 bg-white border border-gray-200 rounded px-1.5 shadow-sm cursor-default select-none"
-                                  style={{
-                                    left: vehicleChipLeft,
-                                    top: 2,
-                                    fontSize: 9,
-                                    lineHeight: "14px",
-                                    whiteSpace: "nowrap",
-                                    zIndex: 5,
-                                    borderColor: routeColor,
-                                    borderLeftWidth: 2,
-                                    maxWidth: 120,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  }}
-                                >
-                                  <Truck size={9} style={{ color: routeColor, flexShrink: 0 }} />
-                                  <span className="font-semibold text-gray-700 truncate" style={{ fontSize: 9 }}>
-                                    {routeVehicleName}
-                                    {routeVehicleCap ? ` · ${routeVehicleCap}` : ""}
-                                  </span>
-                                </div>
-                              </Tooltip>
-                            )}
-
                             {/* Connection Lines (Segments) */}
                             {route.stops?.map((stop: any, index: number) => {
                               if (index === route.stops.length - 1) return null;
@@ -844,16 +822,47 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               return (
                                 <Tooltip
                                   key={`link-${routeIndex}-${index}`}
-                                  title={`${timeMin} min, ${distanceKm.toFixed(
-                                    2,
-                                  )} km`}
+                                  color="#ffffff"
+                                  overlayStyle={{ maxWidth: "none" }}
+                                  overlayInnerStyle={{
+                                    padding: "8px 12px",
+                                    borderRadius: "6px",
+                                    color: "#1e293b",
+                                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.06)",
+                                    border: "1px solid #cbd5e1",
+                                  }}
+                                  title={
+                                    <div className="flex flex-col gap-1.5 text-xs text-slate-800 pointer-events-auto select-none min-w-[140px]">
+                                      {routeVehicleName && (
+                                        <div className="flex items-center gap-1.5 pb-1 border-b border-slate-200 font-bold text-slate-900">
+                                          <Truck size={13} style={{ color: routeColor }} className="shrink-0" />
+                                          <span className="truncate">{routeVehicleName}</span>
+                                          {routeVehicleCap ? (
+                                            <span className="inline-flex items-center text-[10px] font-extrabold text-slate-600 bg-slate-100 px-1.5 py-0.2 border border-slate-200 rounded shrink-0">
+                                              {routeVehicleCap} seats
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-3 text-[11px] font-medium text-slate-600">
+                                        <span className="flex items-center gap-1">
+                                          <ClockCircleOutlined className="text-slate-400 text-xs" />
+                                          <strong className="text-slate-800">{timeMin} min</strong>
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                          <EnvironmentOutlined className="text-slate-400 text-xs" />
+                                          <strong className="text-slate-800">{distanceKm.toFixed(2)} km</strong>
+                                        </span>
+                                      </div>
+                                    </div>
+                                  }
                                 >
                                   <div
                                     className="absolute top-1/2 left-0 h-0.5 hover:opacity-100 transition-opacity cursor-pointer"
                                     style={{
                                       height: "5px",
                                       backgroundColor: routeColor,
-                                      opacity: 0.3,
+                                      opacity: isDimmed ? 0.1 : 0.35,
                                       left: startPos,
                                       width: width,
                                       transform: "translateY(-50%)",
@@ -907,11 +916,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     }
                                   >
                                     <div
-                                      className="absolute top-1/2 -translate-y-1/2 h-6 border border-gray-400 cursor-pointer opacity-80 hover:opacity-100 transition-opacity flex items-center justify-center"
+                                      className="absolute top-1/2 -translate-y-1/2 h-6 border border-gray-400 cursor-pointer hover:opacity-100 transition-opacity flex items-center justify-center"
                                       style={{
                                         left: breakStartPos,
                                         width: breakWidth,
-                                        backgroundColor: "#8c8c8c",
+                                        backgroundColor: isDimmed ? "#cbd5e1" : "#8c8c8c",
+                                        opacity: isDimmed ? 0.3 : 0.8,
                                         minWidth: 24,
                                       }}
                                     >
@@ -960,11 +970,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     }
                                   >
                                     <div
-                                      className="absolute top-1/2 -translate-y-1/2 h-6 border border-gray-300 cursor-pointer opacity-60 hover:opacity-100 transition-opacity"
+                                      className="absolute top-1/2 -translate-y-1/2 h-6 border border-gray-300 cursor-pointer hover:opacity-100 transition-opacity"
                                       style={{
                                         left: idleStartPos,
                                         width: idleWidth,
                                         backgroundColor: "#f5f5f5",
+                                        opacity: isDimmed ? 0.3 : 0.6,
                                         backgroundImage: `repeating-linear-gradient(
                                             45deg,
                                             transparent,
@@ -1086,6 +1097,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 const vehicleCapacity =
                                   (route as any).vehicle_capacity ??
                                   getVehicleCapacity(routeVehicle);
+                                const stopVehicleName =
+                                  (route as any).vehicle_name ||
+                                  routeVehicle?.name ||
+                                  (route.vehicle_id ? `Vehicle #${route.vehicle_id}` : null);
 
                                 const lastRawIndex =
                                   group.firstRawIndex +
@@ -1123,9 +1138,18 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         </span>
                                       ) : null}
 
-                                      {count > 1 && (
-                                        <span className="inline-flex items-center justify-center text-[10.5px] font-bold text-slate-600 bg-slate-100 px-2 py-1 border border-slate-300">
-                                          ×{count} candidates
+                                      {stopVehicleName && (
+                                        <span
+                                          className="inline-flex items-center gap-1 text-[10.5px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 border border-slate-300 rounded shrink-0"
+                                          title={`Vehicle: ${stopVehicleName}${vehicleCapacity ? ` (${vehicleCapacity} seats)` : ""}`}
+                                        >
+                                          <Truck size={12} className="text-slate-600 shrink-0" />
+                                          <span className="truncate max-w-[110px]">{stopVehicleName}</span>
+                                          {vehicleCapacity ? (
+                                            <span className="text-[9.5px] font-extrabold text-slate-500 bg-white px-1 rounded border border-slate-200 shrink-0 ml-0.5">
+                                              {vehicleCapacity}s
+                                            </span>
+                                          ) : null}
                                         </span>
                                       )}
                                     </div>
@@ -1172,8 +1196,15 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     {/* Passengers / Job List */}
                                     {isJob && group.rawStops.length > 0 && (
                                       <div className="pt-2 border-t border-slate-200">
-                                        <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                                          <UserOutlined className="text-slate-400" /> Passenger / Job(s)
+                                        <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                                          <div className="flex items-center gap-1.5">
+                                            <UserOutlined className="text-slate-400" /> Passenger / Job(s)
+                                          </div>
+                                          {count > 1 && (
+                                            <span className="inline-flex items-center justify-center text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 border border-slate-300 rounded select-none">
+                                              ×{count} candidates
+                                            </span>
+                                          )}
                                         </div>
                                         <div className="text-xs max-h-36 overflow-y-auto space-y-1.5 custom-scrollbar pr-0.5">
                                           {group.rawStops.map((s: any, i: number) => {
@@ -1310,14 +1341,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         }}
                                       >
                                         <div
-                                          className={`absolute top-1/2 -translate-y-1/2 h-8 flex items-center justify-center shadow-md transition-all hover:scale-105 cursor-pointer z-10 border-2 ${
+                                          className={`absolute top-1/2 -translate-y-1/2 h-8 flex items-center justify-center shadow-md transition-all hover:scale-105 cursor-pointer z-10 border-2 bg-white ${
                                             isGroupPendingDelete ? "opacity-35 border-dashed border-red-500 bg-red-100" : ""
                                           }`}
                                           style={{
                                             left: left,
                                             width: Math.max(blockWidth, 28),
-                                            backgroundColor: isGroupPendingDelete ? undefined : blockBgColor,
-                                            borderColor: isGroupPendingDelete ? undefined : blockBorderColor,
+                                            backgroundColor: isGroupPendingDelete ? undefined : isDimmed ? "#ffffff" : blockBgColor,
+                                            borderColor: isGroupPendingDelete ? undefined : isDimmed ? "#cbd5e1" : blockBorderColor,
                                           }}
                                           onClick={() =>
                                             onStopClick?.(
@@ -1329,7 +1360,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         >
                                           <span
                                             className="text-xs font-bold"
-                                            style={{ color: isGroupPendingDelete ? "#dc2626" : blockTextColor }}
+                                            style={{ color: isGroupPendingDelete ? "#dc2626" : isDimmed ? "#94a3b8" : blockTextColor }}
                                           >
                                             {displayIndex}
                                           </span>
@@ -1354,25 +1385,25 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       }}
                                     >
                                       <div
-                                        className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md transition-all hover:scale-110 cursor-pointer ${
+                                        className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md transition-all hover:scale-110 cursor-pointer bg-white ${
                                           isGroupPendingDelete
-                                            ? "w-8 h-8 z-0 opacity-35 border-dashed border-red-500 bg-red-100"
+                                            ? "w-8 h-8 z-10 opacity-35 border-dashed border-red-500 bg-red-100"
                                             : isDepot
                                               ? "px-2 h-6 bg-slate-900 border-slate-700 z-10 shadow-lg text-white"
-                                              : "w-8 h-8 z-0"
+                                              : "w-8 h-8 z-10 bg-white"
                                         }`}
                                         style={{
                                           left: left - 14,
                                           backgroundColor: isGroupPendingDelete
                                             ? undefined
                                             : isDepot
-                                              ? undefined
-                                              : blockBgColor,
+                                              ? (isDimmed ? "#94a3b8" : undefined)
+                                              : "#ffffff",
                                           borderColor: isGroupPendingDelete
                                             ? undefined
                                             : isDepot
                                               ? undefined
-                                              : blockBorderColor,
+                                              : (isDimmed ? "#cbd5e1" : blockBorderColor),
                                         }}
                                         onClick={() =>
                                           onStopClick?.(
@@ -1390,7 +1421,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         ) : (
                                           <span
                                             className="text-xs font-bold"
-                                            style={{ color: isGroupPendingDelete ? "#dc2626" : blockTextColor }}
+                                            style={{ color: isGroupPendingDelete ? "#dc2626" : isDimmed ? "#94a3b8" : blockTextColor }}
                                           >
                                             {displayIndex}
                                           </span>
