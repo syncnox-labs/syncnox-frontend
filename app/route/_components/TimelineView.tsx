@@ -697,7 +697,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                   >
                     {/* Sticky Driver Info */}
                     <div
-                      className="sticky left-0 z-10 bg-white border-r border-gray-200 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)] cursor-pointer"
+                      className="sticky left-0 z-20 bg-white border-r border-gray-200 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)] cursor-pointer"
                       style={{
                         width: DRIVER_COLUMN_WIDTH,
                         minWidth: DRIVER_COLUMN_WIDTH,
@@ -812,12 +812,16 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               );
                               const width = endPos - startPos;
 
+                              if (width <= 0) return null;
+
                               const distanceKm =
                                 (stop.distance_to_next_stop_meters ?? 0) /
                                 1000;
                               const timeMin = Math.round(
                                 (stop.time_to_next_stop_seconds ?? 0) / 60,
                               );
+
+                              const isWaiting = distanceKm === 0 && timeMin > 0;
 
                               return (
                                 <Tooltip
@@ -845,10 +849,17 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         </div>
                                       )}
                                       <div className="flex items-center gap-3 text-[11px] font-medium text-slate-600">
-                                        <span className="flex items-center gap-1">
-                                          <ClockCircleOutlined className="text-slate-400 text-xs" />
-                                          <strong className="text-slate-800">{timeMin} min</strong>
-                                        </span>
+                                        {isWaiting ? (
+                                          <span className="flex items-center gap-1 font-semibold text-amber-700">
+                                            <ClockCircleOutlined className="text-amber-600 text-xs" />
+                                            <span>Waiting: <strong className="text-amber-900">{timeMin} min</strong></span>
+                                          </span>
+                                        ) : (
+                                          <span className="flex items-center gap-1">
+                                            <ClockCircleOutlined className="text-slate-400 text-xs" />
+                                            <strong className="text-slate-800">{timeMin} min</strong>
+                                          </span>
+                                        )}
                                         <span className="flex items-center gap-1">
                                           <EnvironmentOutlined className="text-slate-400 text-xs" />
                                           <strong className="text-slate-800">{distanceKm.toFixed(2)} km</strong>
@@ -858,11 +869,20 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   }
                                 >
                                   <div
-                                    className="absolute top-1/2 left-0 h-0.5 hover:opacity-100 transition-opacity cursor-pointer"
+                                    className="absolute top-1/2 left-0 transition-opacity cursor-pointer border-t border-b border-slate-300 rounded-xs"
                                     style={{
-                                      height: "5px",
-                                      backgroundColor: routeColor,
-                                      opacity: isDimmed ? 0.1 : 0.35,
+                                      height: isWaiting ? "6px" : "5px",
+                                      backgroundColor: isWaiting ? "#e2e8f0" : routeColor,
+                                      backgroundImage: isWaiting
+                                        ? `repeating-linear-gradient(
+                                            45deg,
+                                            transparent,
+                                            transparent 3px,
+                                            rgba(0, 0, 0, 0.12) 3px,
+                                            rgba(0, 0, 0, 0.12) 6px
+                                          )`
+                                        : undefined,
+                                      opacity: isDimmed ? 0.15 : isWaiting ? 0.85 : 0.35,
                                       left: startPos,
                                       width: width,
                                       transform: "translateY(-50%)",
