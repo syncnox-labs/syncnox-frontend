@@ -98,6 +98,7 @@ const BasicInformation = ({
       };
     });
     form.setFieldsValue({ day_schedules: updated });
+    form.submit();
   };
 
   return (
@@ -370,22 +371,14 @@ const BasicInformation = ({
                     <Row gutter={12} align="middle" style={{ marginBottom: 8 }}>
                       <Col span={8}>
                         <Space size="small">
-                          <Switch
-                            size="small"
-                            checked={isEnabled}
-                            onChange={(checked) => {
-                              const current = form.getFieldValue("day_schedules") || {};
-                              form.setFieldsValue({
-                                day_schedules: {
-                                  ...current,
-                                  [day.key]: {
-                                    ...current[day.key],
-                                    enabled: checked,
-                                  },
-                                },
-                              });
-                            }}
-                          />
+                          <Form.Item
+                            name={["day_schedules", day.key, "enabled"]}
+                            valuePropName="checked"
+                            noStyle
+                            initialValue={isEnabled}
+                          >
+                            <Switch size="small" />
+                          </Form.Item>
                           <Text
                             style={{
                               fontSize: 13,

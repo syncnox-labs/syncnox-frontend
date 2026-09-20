@@ -13,6 +13,7 @@ import { transformFormToApi, transformApiToForm } from "./teamMemberForm.utils";
 import { useTeamStore } from "@/store/team.store";
 import { useDepotStore } from "@/store/depots.store";
 import { saveDriverZones } from "@/apis/team.api";
+import { isTextInput } from "@/utils/form.utils";
 import BasicInformation from "./BasicInformation";
 import SkillsAndCost from "./SkillsAndCost";
 import MobileAppSection from "./MobileAppSection";
@@ -48,33 +49,18 @@ const TeamMemberForm = ({
 
   // Auto-save ref
   const isPrefillingRef = useRef<boolean>(true);
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
-
+  const prevInitialDataIdRef = useRef<number | null>(null);
   const triggerAutoSave = () => {
     if (!initialData?.id || isPrefillingRef.current) return;
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-    autoSaveTimerRef.current = setTimeout(() => {
-      form
-        .validateFields()
-        .then(() => {
-          form.submit();
-        })
-        .catch(() => {
-          // Ignore validation errors during intermediate typing
-        });
-    }, 1000);
+    form
+      .validateFields()
+      .then(() => {
+        form.submit();
+      })
+      .catch(() => {
+        // Ignore validation errors during intermediate typing
+      });
   };
-
-  // Cleanup auto-save timer on unmount or initialData change
-  useEffect(() => {
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-      }
-    };
-  }, [initialData?.id]);
 
   // Initialize depot IDs when depots are loaded
   useEffect(() => {
@@ -93,13 +79,21 @@ const TeamMemberForm = ({
         setActiveSection("basic");
       }
     }
-    triggerAutoSave();
+    
+    // Auto-save immediately for non-text inputs (Switch, Select, etc.)
+    if (!isTextInput(document.activeElement)) {
+      triggerAutoSave();
+    }
+  };
+
+  const handleBlurCapture = (e: React.FocusEvent) => {
+    // Trigger auto-save when focus leaves a text input
+    if (isTextInput(e.target as Element)) {
+      triggerAutoSave();
+    }
   };
 
   const onFinish = async (values: any) => {
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
 
     const startDepot = depots.find((d) => d.id === startDepotId);
     const endDepot = depots.find((d) => d.id === endDepotId);
@@ -138,19 +132,32 @@ const TeamMemberForm = ({
       }
     } catch (e: any) {
       const error = e;
-      console.error(error?.detail);
-      messageApi.error(error?.detail ?? "Something went wrong");
+      console.error(error?.detail || error);
+      
+      let errorMessage = "Something went wrong";
+      if (Array.isArray(error?.detail)) {
+        errorMessage = error.detail.map((err: any) => {
+          if (err.msg?.includes("not a valid email address")) {
+            return "Email address is not valid";
+          }
+          return err.msg;
+        }).join(", ");
+      } else if (typeof error?.detail === "string") {
+        errorMessage = error.detail;
+      }
+      
+      messageApi.error(errorMessage);
     }
   };
 
   // Prefill form when initialData changes (for editing)
   useEffect(() => {
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = null;
+    if (initialData?.id && initialData.id === prevInitialDataIdRef.current) {
+      return; // Already initialized for this team member, ignore background refetches to prevent overwriting user input
     }
 
     if (initialData) {
+      prevInitialDataIdRef.current = initialData.id;
       isPrefillingRef.current = true;
       const formValues = transformApiToForm(initialData);
 
@@ -296,7 +303,9 @@ const TeamMemberForm = ({
             layout="vertical"
             onFinish={onFinish}
             onValuesChange={onValuesChange}
+            onBlurCapture={handleBlurCapture}
             initialValues={INITIAL_FORM_VALUES}
+            autoComplete="off"
           >
             {isDriver ? (
               <>

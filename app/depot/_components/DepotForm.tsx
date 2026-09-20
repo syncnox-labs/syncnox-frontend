@@ -8,6 +8,7 @@ import AddressAutocomplete, {
 } from "@/components/AddressAutocomplete";
 import { DepotPayload } from "@/apis/depots.api";
 import { Depot } from "@/types/depots.type";
+import { isTextInput } from "@/utils/form.utils";
 
 import { CustomFieldDefinition, getCustomFields } from "@/apis/custom-fields.api";
 import { DynamicCustomFieldsForm } from "@/components/DynamicCustomFieldsForm";
@@ -53,9 +54,10 @@ const DepotForm = ({
   }, [initialValues]);
 
   const isPrefillingRef = useRef<boolean>(true);
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const prevInitialValuesIdRef = useRef<any>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keep ref of latest state to prevent stale closure in debounced auto-save
+  // Keep ref of latest state to prevent stale closure in auto-save
   const latestValuesRef = useRef({ name, address, location, custom_fields: customFieldValues });
   useEffect(() => {
     latestValuesRef.current = { name, address, location, custom_fields: customFieldValues };
@@ -103,26 +105,25 @@ const DepotForm = ({
 
   const triggerAutoSave = () => {
     if (!initialValues?.id || isPrefillingRef.current) return;
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    autoSaveTimerRef.current = setTimeout(() => {
-      const { name: currentName, location: currentLocation } =
-        latestValuesRef.current;
-      if (currentName.trim() && currentLocation) {
-        handleSave();
-      }
-    }, 1000);
+    const { name: currentName, location: currentLocation } = latestValuesRef.current;
+    if (currentName.trim() && currentLocation) {
+      handleSave();
+    }
+  };
+
+  const handleBlurCapture = (e: React.FocusEvent) => {
+    if (isTextInput(e.target as Element)) {
+      triggerAutoSave();
+    }
   };
 
   useEffect(() => {
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-      }
-    };
-  }, [initialValues?.id]);
+    if (initialValues?.id && initialValues.id === prevInitialValuesIdRef.current) {
+      return;
+    }
 
-  useEffect(() => {
     if (initialValues) {
+      prevInitialValuesIdRef.current = initialValues.id;
       isPrefillingRef.current = true;
       setName(initialValues.name || "");
       setAddress(initialValues.address?.formatted_address || "");
@@ -213,7 +214,7 @@ const DepotForm = ({
     defaultCenter;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" onBlurCapture={handleBlurCapture}>
       {contextHolder}
       <div className="flex gap-2 w-full mb-2">
         <div className="w-1/3">
@@ -221,7 +222,6 @@ const DepotForm = ({
             value={name}
             onChange={(e) => {
               setName(e.target.value);
-              triggerAutoSave();
             }}
             placeholder="Enter depot name"
           />
@@ -249,7 +249,9 @@ const DepotForm = ({
             values={customFieldValues}
             onChange={(updated) => {
               setCustomFieldValues(updated);
-              triggerAutoSave();
+              if (!isTextInput(document.activeElement)) {
+                triggerAutoSave();
+              }
             }}
           />
         </div>
