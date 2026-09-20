@@ -5,8 +5,18 @@ import { Form, Input, Select, message, Typography, Flex } from "antd";
 import type { FormInstance } from "antd";
 import {
   LocationMapping,
+  LocationTypeEnum,
+  LOCATION_TYPE_OPTIONS
 } from "@/apis/location-mapping.api";
-import { LocationMappingFormValues, LocationTypeEnum, LOCATION_TYPE_OPTIONS } from "@/types/location.type";
+
+export interface LocationMappingFormValues {
+  name: string;
+  type?: LocationTypeEnum;
+  address?: string;
+  city?: string;
+  country?: string;
+  aliases?: string;
+}
 import { useLocationMappingStore } from "@/store/location-mapping.store";
 import GoogleMaps from "@/components/GoogleMaps";
 import AddressAutocomplete, { AddressData } from "@/components/AddressAutocomplete";
