@@ -438,7 +438,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     {
       key: "re-optimize",
       icon: <ThunderboltOutlined />,
-      label: "Re-optimize",
+      label: "Reoptimize Route",
       onClick: () => onReOptimize?.(routeIndex),
     },
   ];
