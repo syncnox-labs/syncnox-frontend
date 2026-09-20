@@ -5,16 +5,11 @@ import { Form, Input, Select, message, Typography, Flex } from "antd";
 import type { FormInstance } from "antd";
 import {
   LocationMapping,
-  LOCATION_TYPE_OPTIONS,
   LocationTypeEnum,
+  LOCATION_TYPE_OPTIONS
 } from "@/apis/location-mapping.api";
-import { useLocationMappingStore } from "@/store/location-mapping.store";
-import GoogleMaps from "@/components/GoogleMaps";
-import AddressAutocomplete, { AddressData } from "@/components/AddressAutocomplete";
 
-const { Text } = Typography;
-
-interface LocationMappingFormValues {
+export interface LocationMappingFormValues {
   name: string;
   type?: LocationTypeEnum;
   address?: string;
@@ -22,6 +17,12 @@ interface LocationMappingFormValues {
   country?: string;
   aliases?: string;
 }
+import { useLocationMappingStore } from "@/store/location-mapping.store";
+import GoogleMaps from "@/components/GoogleMaps";
+import AddressAutocomplete, { AddressData } from "@/components/AddressAutocomplete";
+import { isTextInput } from "@/utils/form.utils";
+
+const { Text } = Typography;
 
 interface LocationMappingFormProps {
   initialData?: LocationMapping | null;
@@ -53,33 +54,37 @@ const LocationMappingForm = ({
 
   // Auto-save refs
   const isPrefillingRef = useRef<boolean>(true);
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const prevInitialDataIdRef = useRef<number | null>(null);
 
   const triggerAutoSave = () => {
     if (!initialData?.id || isPrefillingRef.current) return;
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
+    form
+      .validateFields()
+      .then(() => {
+        form.submit();
+      })
+      .catch(() => {});
+  };
+
+  const handleValuesChange = () => {
+    if (!isTextInput(document.activeElement)) {
+      triggerAutoSave();
     }
-    autoSaveTimerRef.current = setTimeout(() => {
-      form
-        .validateFields()
-        .then(() => {
-          form.submit();
-        })
-        .catch(() => {});
-    }, 1000);
+  };
+
+  const handleBlurCapture = (e: React.FocusEvent) => {
+    if (isTextInput(e.target as Element)) {
+      triggerAutoSave();
+    }
   };
 
   useEffect(() => {
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-      }
-    };
-  }, [initialData?.id]);
+    if (initialData?.id && initialData.id === prevInitialDataIdRef.current) {
+      return;
+    }
 
-  useEffect(() => {
     if (initialData) {
+      prevInitialDataIdRef.current = initialData.id;
       isPrefillingRef.current = true;
       const initialType =
         (initialData.type as LocationTypeEnum) ||
@@ -130,9 +135,6 @@ const LocationMappingForm = ({
 
   const onFinish = async (values: LocationMappingFormValues) => {
     if (!initialData?.id) return;
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
     const payload = {
       name: values.name.trim(),
       type: values.type,
@@ -201,7 +203,10 @@ const LocationMappingForm = ({
         form={form}
         layout="vertical"
         onFinish={onFinish}
+        onValuesChange={handleValuesChange}
+        onBlurCapture={handleBlurCapture}
         className="flex flex-col h-full"
+        autoComplete="off"
       >
         <div className="grid grid-cols-2 gap-3 mb-2 shrink-0">
           <Form.Item
@@ -213,7 +218,6 @@ const LocationMappingForm = ({
             <Input
               placeholder="e.g. Montmorency Metro"
               className="rounded-none text-xs"
-              onChange={() => triggerAutoSave()}
             />
           </Form.Item>
 
@@ -247,15 +251,20 @@ const LocationMappingForm = ({
               allowClear
               options={LOCATION_TYPE_OPTIONS}
               className="rounded-none text-xs"
-              onChange={() => triggerAutoSave()}
             />
           </Form.Item>
 
           <Form.Item label="City" name="city" className="mb-0">
             <Input
-              placeholder="e.g. Laval, QC"
+              placeholder="e.g. Montreal"
               className="rounded-none text-xs"
-              onChange={() => triggerAutoSave()}
+            />
+          </Form.Item>
+
+          <Form.Item label="Country" name="country" className="mb-0">
+            <Input
+              placeholder="e.g. Canada"
+              className="rounded-none text-xs"
             />
           </Form.Item>
 
@@ -263,7 +272,6 @@ const LocationMappingForm = ({
             <Input
               placeholder="e.g. MTR-01, Montmorency"
               className="rounded-none text-xs font-mono"
-              onChange={() => triggerAutoSave()}
             />
           </Form.Item>
         </div>

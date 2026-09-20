@@ -22,6 +22,7 @@ import {
 } from "@ant-design/icons";
 import { Vehicle, VehicleType, ConstraintType, LoadConstraint } from "@/types/vehicle.type";
 import { useVehicleStore } from "@/store/vehicle.store";
+import { isTextInput } from "@/utils/form.utils";
 import { CustomFieldDefinition, getCustomFields } from "@/apis/custom-fields.api";
 import { DynamicCustomFieldsForm } from "@/components/DynamicCustomFieldsForm";
 
@@ -131,31 +132,29 @@ const VehicleForm = ({
 
   // Auto-save ref
   const isPrefillingRef = useRef<boolean>(true);
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const prevInitialDataIdRef = useRef<number | null>(null);
 
   const triggerAutoSave = () => {
     if (!initialData?.id || isPrefillingRef.current) return;
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-    autoSaveTimerRef.current = setTimeout(() => {
-      form
-        .validateFields()
-        .then(() => {
-          form.submit();
-        })
-        .catch(() => {});
-    }, 1000);
+    form
+      .validateFields()
+      .then(() => {
+        form.submit();
+      })
+      .catch(() => {});
   };
 
-  // Cleanup auto-save timer on unmount or initialData change
-  useEffect(() => {
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-      }
-    };
-  }, [initialData?.id]);
+  const handleValuesChange = () => {
+    if (!isTextInput(document.activeElement)) {
+      triggerAutoSave();
+    }
+  };
+
+  const handleBlurCapture = (e: React.FocusEvent) => {
+    if (isTextInput(e.target as Element)) {
+      triggerAutoSave();
+    }
+  };
 
   const defaultValues = {
     name: `Vehicle ${
@@ -169,7 +168,12 @@ const VehicleForm = ({
 
   // prefill form
   useEffect(() => {
+    if (initialData?.id && initialData.id === prevInitialDataIdRef.current) {
+      return;
+    }
+
     if (initialData) {
+      prevInitialDataIdRef.current = initialData.id;
       isPrefillingRef.current = true;
       form.setFieldsValue({
         name: initialData.name,
@@ -190,9 +194,6 @@ const VehicleForm = ({
   }, [initialData, form]);
 
   const onFinish = async (values: any) => {
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
 
     try {
       const payload = {
@@ -224,8 +225,19 @@ const VehicleForm = ({
       }
       onSubmit?.();
     } catch (e: any) {
-      console.error(e?.detail);
-      messageApi.error(e?.detail ?? "Something went wrong");
+      console.error(e?.detail || e);
+      let errorMessage = "Something went wrong";
+      if (Array.isArray(e?.detail)) {
+        errorMessage = e.detail.map((err: any) => {
+          if (err.msg?.includes("not a valid email address")) {
+            return "Email address is not valid";
+          }
+          return err.msg;
+        }).join(", ");
+      } else if (typeof e?.detail === "string") {
+        errorMessage = e.detail;
+      }
+      messageApi.error(errorMessage);
     }
   };
 
@@ -283,8 +295,10 @@ const VehicleForm = ({
             form={form}
             layout="vertical"
             onFinish={onFinish}
-            onValuesChange={() => triggerAutoSave()}
+            onValuesChange={handleValuesChange}
+            onBlurCapture={handleBlurCapture}
             initialValues={initialData ? undefined : defaultValues}
+            autoComplete="off"
           >
             {/* Section 1: Basic Information */}
             <div style={{ display: activeSection === "basic" ? "block" : "none" }}>
