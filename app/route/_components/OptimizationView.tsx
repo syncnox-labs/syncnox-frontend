@@ -1,6 +1,7 @@
 "use client";
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import apiClient from "@/config/apiClient.config";
 import { Panel, PanelGroup, ImperativePanelHandle } from "react-resizable-panels";
 import {
   Typography,
@@ -665,20 +666,33 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
       const driverName =
         route.result?.routes?.[routeIndex]?.team_member_name || "Driver";
       Modal.confirm({
-        title: "Re-optimize Route",
-        content: `Re-optimize ${driverName}'s route? This will re-run the optimization.`,
-        okText: "Re-optimize",
+        title: "Reoptimize Route",
+        content: `Reoptimize ${driverName}'s route? This will re-run the optimization for this route only.`,
+        okText: "Reoptimize",
         okButtonProps: { style: { backgroundColor: "#003220" } },
         onOk: async () => {
           try {
+            // Perform bulk delete for staged deletions so the backend doesn't re-include them
+            if (pendingDeletedJobIds.size > 0) {
+              const deletePromises = Array.from(pendingDeletedJobIds).map((jobId) =>
+                apiClient.delete(`/jobs/${jobId}`)
+              );
+              await Promise.all(deletePromises);
+            }
+
             const res = await reOptimizeRoute(route.id, routeIndex);
+            
+            // Clear staged edits
+            setPendingDeletedJobIds(new Set());
+            setHasUnsavedJobEdits(false);
+
             if (res.success) {
               message.success(res.message);
               startOperationPolling();
             }
           } catch (error: any) {
             message.error(
-              error?.response?.data?.detail || "Failed to re-optimize route",
+              error?.response?.data?.detail || "Failed to reoptimize route",
             );
           }
         },
@@ -698,7 +712,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
       return next;
     });
     setHasUnsavedJobEdits(true);
-    message.info(`Job #${jobId} staged for deletion. Click 'Re-Optimize' to apply changes.`);
+    message.info(`Job #${jobId} staged for deletion. Click 'Reoptimize All Routes' to apply globally, or use 'Reoptimize Route' on the specific route.`);
   }, []);
 
   const handleUndoStageDeleteJob = useCallback((jobId: number) => {
@@ -715,19 +729,19 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
 
   const handleReOptimizeAll = useCallback(async () => {
     Modal.confirm({
-      title: "Re-Optimize Entire Route",
+      title: "Reoptimize All Routes",
       content:
         pendingDeletedJobIds.size > 0
-          ? `${pendingDeletedJobIds.size} job(s) will be deleted and the route re-optimized. Continue?`
+          ? `${pendingDeletedJobIds.size} job(s) will be deleted and all routes re-optimized. Continue?`
           : "This will re-run the full optimization with updated job data. Old routes will be replaced. Continue?",
-      okText: "Re-Optimize",
+      okText: "Reoptimize All Routes",
       okButtonProps: { style: { backgroundColor: "#003220", borderColor: "#003220" } },
       onOk: async () => {
         try {
           // Perform bulk delete for staged deletions
           if (pendingDeletedJobIds.size > 0) {
             const deletePromises = Array.from(pendingDeletedJobIds).map((jobId) =>
-              fetch(`/api/jobs/${jobId}`, { method: "DELETE" })
+              apiClient.delete(`/jobs/${jobId}`)
             );
             await Promise.all(deletePromises);
           }
@@ -855,7 +869,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
 
           {/* Right: Action Buttons */}
           <div className="flex gap-2">
-            {/* Re-Optimize button — highlighted when job edits are pending */}
+            {/* Reoptimize All Routes button — highlighted when job edits are pending */}
             {route.status === "completed" && (
               <Button
                 icon={<ReloadOutlined />}
@@ -864,7 +878,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                   ? "border-amber-400 text-amber-700 bg-amber-50 font-semibold"
                   : ""}
               >
-                Re-Optimize
+                Reoptimize All Routes
               </Button>
             )}
             <Button icon={<ExportOutlined />} onClick={handleExportRoutes}>
@@ -1089,7 +1103,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
             fetchJobsByDate(route.scheduled_date);
           }
           setHasUnsavedJobEdits(true);
-          message.success("New job added to unassigned pool. Click 'Re-Optimize' to include in route.");
+          message.success("New job added to unassigned pool. Click 'Reoptimize All Routes' to re-run the global optimization, or assign it manually and use 'Reoptimize Route'.");
         }}
       />
 

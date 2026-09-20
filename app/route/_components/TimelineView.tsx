@@ -438,7 +438,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     {
       key: "re-optimize",
       icon: <ThunderboltOutlined />,
-      label: "Re-optimize",
+      label: "Reoptimize Route",
       onClick: () => onReOptimize?.(routeIndex),
     },
   ];
@@ -821,7 +821,11 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 (stop.time_to_next_stop_seconds ?? 0) / 60,
                               );
 
-                              const isWaiting = distanceKm === 0 && timeMin > 0;
+                              // If stops are at the exact same location, they are visually grouped together by `groupStopsByLocation`.
+                              // We do NOT want to draw a connection line extending out from the group block into empty space.
+                              if (distanceKm === 0) return null;
+
+                              const isWaiting = false;
 
                               return (
                                 <Tooltip
@@ -1018,8 +1022,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 const stop = group.representative;
                                 const count = group.candidateCount;
                                 const arrivalTime = dayjs(stop.arrival_time);
-                                const serviceDuration =
-                                  stop.service_duration_minutes || 0;
+                                
+                                const lastRawStop = group.rawStops[group.rawStops.length - 1];
+                                const lastArrivalTime = dayjs(lastRawStop.arrival_time);
+                                const totalWaitMinutes = Math.max(0, lastArrivalTime.diff(arrivalTime, "minute"));
+
+                                const baseService = stop.service_duration_minutes || 0;
+                                const serviceDuration = baseService + totalWaitMinutes;
+                                
                                 const departureTime = arrivalTime.add(
                                   serviceDuration,
                                   "minute",
