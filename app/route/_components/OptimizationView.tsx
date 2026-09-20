@@ -1,6 +1,7 @@
 "use client";
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import apiClient from "@/config/apiClient.config";
 import { Panel, PanelGroup, ImperativePanelHandle } from "react-resizable-panels";
 import {
   Typography,
@@ -671,14 +672,27 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
         okButtonProps: { style: { backgroundColor: "#003220" } },
         onOk: async () => {
           try {
+            // Perform bulk delete for staged deletions so the backend doesn't re-include them
+            if (pendingDeletedJobIds.size > 0) {
+              const deletePromises = Array.from(pendingDeletedJobIds).map((jobId) =>
+                apiClient.delete(`/jobs/${jobId}`)
+              );
+              await Promise.all(deletePromises);
+            }
+
             const res = await reOptimizeRoute(route.id, routeIndex);
+            
+            // Clear staged edits
+            setPendingDeletedJobIds(new Set());
+            setHasUnsavedJobEdits(false);
+
             if (res.success) {
               message.success(res.message);
               startOperationPolling();
             }
           } catch (error: any) {
             message.error(
-              error?.response?.data?.detail || "Failed to re-optimize route",
+              error?.response?.data?.detail || "Failed to reoptimize route",
             );
           }
         },
@@ -727,7 +741,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
           // Perform bulk delete for staged deletions
           if (pendingDeletedJobIds.size > 0) {
             const deletePromises = Array.from(pendingDeletedJobIds).map((jobId) =>
-              fetch(`/api/jobs/${jobId}`, { method: "DELETE" })
+              apiClient.delete(`/jobs/${jobId}`)
             );
             await Promise.all(deletePromises);
           }
