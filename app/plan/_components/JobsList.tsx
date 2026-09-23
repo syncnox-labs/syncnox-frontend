@@ -23,6 +23,7 @@ import { Panel, PanelGroup } from "react-resizable-panels";
 import ResizeHandle from "@/components/ResizeHandle";
 import { useJobsStore } from "@/store/jobs.store";
 import { useTeamStore } from "@/store/team.store";
+import { useIndexStore } from "@/store/index.store";
 import { ColDef } from "ag-grid-community";
 import { Job, JobStatus } from "@/types/job.type";
 import { CustomFieldDefinition, getCustomFields } from "@/apis/custom-fields.api";
@@ -207,28 +208,15 @@ export default function JobsList() {
     width: 150,
   }));
 
-  const [activeTemplate, setActiveTemplate] = useState<string>("pickup_delivery_job");
+  const { activeJobTemplate, fetchTenant } = useIndexStore();
 
   useEffect(() => {
-    const syncActiveTemplate = () => {
-      const stored = localStorage.getItem("syncnox_active_job_template");
-      if (stored) {
-        setActiveTemplate(stored);
-      }
-    };
-
-    syncActiveTemplate();
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("syncnox_active_template_changed", syncActiveTemplate);
-      return () => {
-        window.removeEventListener("syncnox_active_template_changed", syncActiveTemplate);
-      };
-    }
-  }, []);
+    // Fetch tenant on mount to ensure we have the latest template
+    fetchTenant();
+  }, [fetchTenant]);
 
   const baseColumns = createJobTableColumns({
-    templateType: activeTemplate,
+    templateType: activeJobTemplate || "pickup_delivery_job",
     viewColumnRenderer: (params: any) => (
       <button
         type="button"

@@ -84,6 +84,7 @@ const CONSTRAINT_UNITS: Record<ConstraintType, { value: string; label: string }[
 };
 
 const CONSTRAINT_TYPES: { value: ConstraintType; label: string }[] = [
+  { value: "capacity", label: "Capacity" },
   { value: "weight", label: "Weight" },
   { value: "volume", label: "Volume" },
   { value: "quantity", label: "Quantity" },

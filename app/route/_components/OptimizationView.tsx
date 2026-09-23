@@ -76,9 +76,8 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     updateOptimization,
     clearOptimization,
     fetchOptimization,
-    pollOptimizationStatus,
-    stopPolling,
-    isPolling,
+    setOptimizationResult,
+    isOptimizing,
     error,
     reOptimize,
   } = useOptimizationStore();
@@ -587,24 +586,21 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
 
   // ── Route Operations handlers ──
 
-  const startOperationPolling = useCallback(() => {
-    pollOptimizationStatus(route.id);
-  }, [pollOptimizationStatus, route.id]);
-
   const handleJobCreatedForRoute = useCallback(
     async (job: Job) => {
       if (addStopRouteIndex === null) return;
       try {
+        setOptimizationResult("processing");
         const res = await addStopToRoute(route.id, addStopRouteIndex, job.id);
         if (res.success) {
           message.success(res.message);
-          startOperationPolling();
         }
       } catch (error: any) {
+        setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to add job");
         message.error(error?.response?.data?.detail || "Failed to add job");
       }
     },
-    [route.id, addStopRouteIndex, startOperationPolling],
+    [route.id, addStopRouteIndex, setOptimizationResult],
   );
 
   const handleRemoveJob = useCallback(
@@ -618,12 +614,13 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
         },
         onOk: async () => {
           try {
+            setOptimizationResult("processing");
             const res = await removeStopFromRoute(route.id, routeIndex, jobId);
             if (res.success) {
               message.success(res.message);
-              startOperationPolling();
             }
           } catch (error: any) {
+            setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to remove job");
             message.error(
               error?.response?.data?.detail || "Failed to remove job",
             );
@@ -631,7 +628,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
         },
       });
     },
-    [route.id, startOperationPolling],
+    [route.id, setOptimizationResult],
   );
 
   const handleReverseRoute = useCallback(
@@ -667,7 +664,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
         route.result?.routes?.[routeIndex]?.team_member_name || "Driver";
       Modal.confirm({
         title: "Reoptimize Route",
-        content: `Reoptimize ${driverName}'s route? This will re-run the optimization for this route only.`,
+        content: `Run the routing engine again just for ${driverName}'s route to find a better sequence?`,
         okText: "Reoptimize",
         okButtonProps: { style: { backgroundColor: "#003220" } },
         onOk: async () => {
@@ -680,17 +677,15 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
               await Promise.all(deletePromises);
             }
 
+            setOptimizationResult("processing");
             const res = await reOptimizeRoute(route.id, routeIndex);
-            
-            // Clear staged edits
-            setPendingDeletedJobIds(new Set());
-            setHasUnsavedJobEdits(false);
-
             if (res.success) {
               message.success(res.message);
-              startOperationPolling();
+              setPendingDeletedJobIds(new Set());
+              setHasUnsavedJobEdits(false);
             }
           } catch (error: any) {
+            setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to reoptimize route");
             message.error(
               error?.response?.data?.detail || "Failed to reoptimize route",
             );
@@ -698,22 +693,87 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
         },
       });
     },
-    [route.id, route.result?.routes, startOperationPolling],
+    [route.id, route.result?.routes, setOptimizationResult, pendingDeletedJobIds, reOptimizeRoute],
   );
 
   const handleSwapSuccess = useCallback(() => {
-    startOperationPolling();
-  }, [startOperationPolling]);
+    setOptimizationResult("processing");
+  }, [setOptimizationResult]);
 
   const handleStageDeleteJob = useCallback((jobId: number) => {
-    setPendingDeletedJobIds((prev) => {
-      const next = new Set(prev);
-      next.add(jobId);
-      return next;
-    });
-    setHasUnsavedJobEdits(true);
-    message.info(`Job #${jobId} staged for deletion. Click 'Reoptimize All Routes' to apply globally, or use 'Reoptimize Route' on the specific route.`);
-  }, []);
+    const job = jobs.find((j) => j.id === jobId);
+    const isShuttle = job?.template_type === 'worker_shuttle' || !!job?.worker_shuttle_detail;
+    
+    const doDelete = (ids: number[]) => {
+      setPendingDeletedJobIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach(id => next.add(id));
+        return next;
+      });
+      setHasUnsavedJobEdits(true);
+      if (ids.length > 1) {
+        message.info(`Jobs #${ids.join(', #')} staged for deletion. Click 'Reoptimize All Routes' to apply.`);
+      } else {
+        message.info(`Job #${ids[0]} staged for deletion. Click 'Reoptimize All Routes' to apply globally, or use 'Reoptimize Route' on the specific route.`);
+      }
+    };
+
+    if (isShuttle) {
+      const shuttleValue = (keys: string[]) => {
+        for (const key of keys) {
+          const val = (job as any)?.[key] || (job?.worker_shuttle_detail as any)?.[key] || (job?.custom_fields as any)?.[key];
+          if (val !== undefined && val !== null && val !== "") return String(val);
+        }
+        return undefined;
+      };
+      
+      const tripType = job?.job_type || shuttleValue(["pickup_type", "job_type"]);
+      
+      // If it's part of a round trip, try to find the sister job
+      if (tripType === 'round_trip' || tripType === 'one_way' || tripType === 'return_only') {
+        const candidateName = shuttleValue(["candidate_name"]);
+        const quantId = shuttleValue(["quant_id", "quart_id"]);
+        const schedDate = job?.scheduled_date || shuttleValue(["scheduled_date"]);
+        
+        if (candidateName) {
+          const sisterJob = jobs.find((j) => {
+             if (j.id === jobId) return false;
+             const isAlsoShuttle = j.template_type === 'worker_shuttle' || !!j.worker_shuttle_detail;
+             if (!isAlsoShuttle) return false;
+             
+             const jShuttleValue = (keys: string[]) => {
+                for (const key of keys) {
+                  const val = (j as any)?.[key] || (j?.worker_shuttle_detail as any)?.[key] || (j?.custom_fields as any)?.[key];
+                  if (val !== undefined && val !== null && val !== "") return String(val);
+                }
+                return undefined;
+             };
+             
+             const jName = jShuttleValue(["candidate_name"]);
+             const jQuant = jShuttleValue(["quant_id", "quart_id"]);
+             const jDate = j.scheduled_date || jShuttleValue(["scheduled_date"]);
+             
+             return (jName === candidateName && jDate === schedDate && (jQuant === quantId || (!jQuant && !quantId)));
+          });
+          
+          if (sisterJob && !pendingDeletedJobIds.has(sisterJob.id)) {
+            Modal.confirm({
+              title: "Round Trip Detected",
+              content: "This job is part of a round trip. Would you like to delete the other leg's job as well?",
+              okText: "Delete Both Legs",
+              cancelText: "Delete Only This Leg",
+              okButtonProps: { style: { backgroundColor: "#dc2626", borderColor: "#dc2626" } },
+              onOk: () => doDelete([jobId, sisterJob.id]),
+              onCancel: () => doDelete([jobId])
+            });
+            return;
+          }
+        }
+      }
+    }
+    
+    doDelete([jobId]);
+  }, [jobs, pendingDeletedJobIds]);
 
   const handleUndoStageDeleteJob = useCallback((jobId: number) => {
     setPendingDeletedJobIds((prev) => {
@@ -791,26 +851,9 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
   return (
     <div className="flex flex-col h-full absolute inset-0">
       {/* Full-screen loading overlay */}
-      {isPolling && (
-        <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-sm flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <Spin
-              indicator={
-                <LoadingOutlined
-                  style={{ fontSize: 48, color: "#003220" }}
-                  spin
-                />
-              }
-            />
-            <div className="text-center">
-              <p className="text-lg font-medium text-gray-800 m-0">
-                Optimizing Route...
-              </p>
-              <p className="text-sm text-gray-500 mt-1">
-                This may take a few seconds
-              </p>
-            </div>
-          </div>
+      {isOptimizing && (
+        <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <Spin size="large" tip="Processing operation..." />
         </div>
       )}
 

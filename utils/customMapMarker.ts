@@ -15,6 +15,8 @@ export const createCustomMarkerIcon = (
   colorOverride?: string,
   isDepot: boolean = false,
   depotLabel: string = "Depot",
+  depotKind?: string,
+  stopType?: string,
 ): google.maps.Icon => {
   let fillColor = "";
   let strokeColor = "";
@@ -22,15 +24,14 @@ export const createCustomMarkerIcon = (
   let textColor = "";
   let dotColor = "";
 
+  let baseColor = colorOverride || STATUS_COLORS[status] || STATUS_COLORS.draft;
+
   if (isDepot) {
-    fillColor = "#1f2937";
+    fillColor = baseColor;
     strokeColor = "none";
     textColor = "white";
-    dotColor = "#1f2937";
+    dotColor = baseColor;
   } else {
-    let baseColor =
-      colorOverride || STATUS_COLORS[status] || STATUS_COLORS.draft;
-
     if (status === "failed" || status === "cancelled") {
       baseColor = "#ff4d4f"; // red
       fillColor = baseColor;
@@ -56,13 +57,38 @@ export const createCustomMarkerIcon = (
   /* 
     Depot markers are square (36x36 base) and centred.
     Stop markers are pins (32x45 base) and bottom-anchored.
-    We need consistent base dimensions for scaling but dynamic viewboxes for the SVG content.
   */
   // Rendered dimensions
   const width = (isDepot ? 36 : 32) * scale;
   const height = (isDepot ? 36 : 45) * scale;
 
-  // SVG marker icon - teardrop pin with number and dot trail
+  let badgeSvg = "";
+  if (!isDepot && stopType) {
+    if (stopType === "pickup") {
+      badgeSvg = `
+        <!-- Pickup Badge (Emerald) -->
+        <circle cx="26" cy="4" r="7" fill="#ffffff" stroke="#10b981" stroke-width="1.5"/>
+        <g transform="translate(19, -3) scale(0.6)" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+          <path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>
+        </g>
+      `;
+    } else if (stopType === "dropoff" || stopType === "drop_off") {
+      badgeSvg = `
+        <!-- Dropoff Badge (Blue) -->
+        <circle cx="26" cy="4" r="7" fill="#ffffff" stroke="#3b82f6" stroke-width="1.5"/>
+        <g transform="translate(19, -3) scale(0.6)" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+          <path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>
+        </g>
+      `;
+    }
+  }
+
+  const homeSvg = `<g transform="translate(6, 6) scale(1)" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></g>`;
+  const flagSvg = `<g transform="translate(6, 6) scale(1)" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></g>`;
+  
+  const depotIconSvg = depotKind === "end" ? flagSvg : homeSvg;
+
+  // SVG marker icon
   const svg = `
     <svg width="${width}" height="${height}" viewBox="-2 -2 36 49" xmlns="http://www.w3.org/2000/svg">
       <!-- Drop shadow -->
@@ -84,9 +110,8 @@ export const createCustomMarkerIcon = (
       ${
         isDepot
           ? `<rect x="2" y="2" width="28" height="28" rx="6" fill="${fillColor}" filter="url(#shadow)"/>
-           <!-- Start / End label so users know where the route begins/ends -->
-           <text x="16" y="17" font-family="Arial, sans-serif" font-size="7"
-             font-weight="bold" fill="${textColor}" text-anchor="middle" dominant-baseline="central">${depotLabel}</text>`
+             ${depotIconSvg}
+            `
           : `<path 
             d="M16 0C9.4 0 4 5.4 4 12c0 8 12 24 12 24s12-16 12-24c0-6.6-5.4-12-12-12z" 
             fill="${fillColor}"
@@ -105,7 +130,10 @@ export const createCustomMarkerIcon = (
             fill="${textColor}" 
             text-anchor="middle" 
             dominant-baseline="central"
-          >${number}</text>`
+          >${number}</text>
+          
+          ${badgeSvg}
+          `
       }
       
       <!-- Dot trail -->

@@ -32,9 +32,11 @@ import { CustomFieldFormModal } from "@/components/CustomFields/CustomFieldFormM
 import { FieldsSectionCard } from "@/components/CustomFields/FieldsSectionCard";
 import { Select } from "antd";
 import { STANDARD_JOB_FIELD_KEYS } from "@/utils/jobs.utils";
+import { useIndexStore } from "@/store/index.store";
 
 export default function CustomFieldsSettingsPage() {
   const [selectedEntity, setSelectedEntity] = useState<EntityTab>("job");
+  const { activeJobTemplate: storeActiveJobTemplate, updateActiveJobTemplate } = useIndexStore();
   const [activeJobTemplate, setActiveJobTemplate] = useState<string>("pickup_delivery_job");
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
   const [hiddenBaseFields, setHiddenBaseFields] = useState<string[]>([]);
@@ -44,22 +46,10 @@ export default function CustomFieldsSettingsPage() {
   const [loading, setLoading] = useState<boolean>(false);
 
   useEffect(() => {
-    const syncActiveTemplate = () => {
-      const stored = localStorage.getItem("syncnox_active_job_template");
-      if (stored) {
-        setActiveJobTemplate(stored);
-      }
-    };
-
-    syncActiveTemplate();
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("syncnox_active_template_changed", syncActiveTemplate);
-      return () => {
-        window.removeEventListener("syncnox_active_template_changed", syncActiveTemplate);
-      };
+    if (storeActiveJobTemplate) {
+      setActiveJobTemplate(storeActiveJobTemplate);
     }
-  }, []);
+  }, [storeActiveJobTemplate]);
 
   const isBaseField = (f: CustomFieldDefinition) => {
     return f.group === "optimization";

@@ -12,16 +12,18 @@ import { Route } from "@/types/routes.type";
 
 interface OptimizationStore {
   currentOptimization: Route | null;
-  isPolling: boolean;
+  isOptimizing: boolean;
   error: string | null;
-  pollingIntervalId: NodeJS.Timeout | null;
 
   // Actions
   startOptimization: (
     payload: CreateOptimizationRequestPayload
   ) => Promise<Route>;
-  pollOptimizationStatus: (id: number) => void;
-  stopPolling: () => void;
+  setOptimizationResult: (
+    status: string,
+    result?: any,
+    errorMessage?: string
+  ) => void;
   clearOptimization: () => void;
   fetchOptimization: (id: number) => Promise<Route>;
   updateOptimization: (
@@ -31,104 +33,68 @@ interface OptimizationStore {
   reOptimize: (id: number) => Promise<Route>;
 }
 
-const POLL_INTERVAL_MS = 2000; // 2 seconds
-const MAX_POLL_ATTEMPTS = 60; // 2 minutes total
-
 export const useOptimizationStore = create<OptimizationStore>((set, get) => ({
   currentOptimization: null,
-  isPolling: false,
+  isOptimizing: false,
   error: null,
-  pollingIntervalId: null,
 
   startOptimization: async (payload: CreateOptimizationRequestPayload) => {
     try {
-      set({ error: null });
+      set({ error: null, isOptimizing: true });
       const optimization = await createOptimizationRequest(payload);
       set({ currentOptimization: optimization });
-
-      // Start polling for status updates
-      get().pollOptimizationStatus(optimization.id);
-
       return optimization;
     } catch (error: any) {
       const errorMessage =
         error.response?.data?.detail ||
         error.message ||
         "Failed to create optimization request";
-      set({ error: errorMessage });
+      set({ error: errorMessage, isOptimizing: false });
       throw new Error(errorMessage);
     }
   },
 
-  pollOptimizationStatus: (id: number) => {
-    let attempts = 0;
-
-    set({ isPolling: true, error: null });
-
-    const intervalId = setInterval(async () => {
-      attempts++;
-
-      try {
-        const optimization = await getOptimizationRequest(id);
-        set({ currentOptimization: optimization });
-
-        // Check if optimization is complete
-        if (
-          optimization.status === "completed" ||
-          optimization.status === "success"
-        ) {
-          get().stopPolling();
-          return;
-        }
-
-        // Check if optimization failed
-        if (optimization.status === "failed") {
-          get().stopPolling();
-          set({
-            error: optimization.error_message || "Optimization failed",
-          });
-          return;
-        }
-
-        // Check if max attempts reached
-        if (attempts >= MAX_POLL_ATTEMPTS) {
-          get().stopPolling();
-          set({
-            error:
-              "Optimization is taking longer than expected. Please check back later.",
-          });
-          return;
-        }
-      } catch (error: any) {
-        console.error("Polling error:", error);
-        get().stopPolling();
+  setOptimizationResult: (status: string, result?: any, errorMessage?: string) => {
+    const { currentOptimization } = get();
+    if (currentOptimization) {
+      if (status === "completed" || status === "success") {
         set({
-          error:
-            error.response?.data?.detail ||
-            error.message ||
-            "Failed to fetch optimization status",
+          currentOptimization: {
+            ...currentOptimization,
+            status: "completed",
+            result: result || currentOptimization.result,
+          },
+          isOptimizing: false,
+          error: null,
+        });
+      } else if (status === "failed") {
+        set({
+          currentOptimization: {
+            ...currentOptimization,
+            status: "failed",
+            error_message: errorMessage || "Optimization failed",
+          },
+          isOptimizing: false,
+          error: errorMessage || "Optimization failed",
+        });
+      } else if (status === "processing" || status === "queued") {
+        set({
+          currentOptimization: {
+            ...currentOptimization,
+            status: status as any,
+          },
+          isOptimizing: true,
+          error: null,
         });
       }
-    }, POLL_INTERVAL_MS);
-
-    set({ pollingIntervalId: intervalId });
-  },
-
-  stopPolling: () => {
-    const { pollingIntervalId } = get();
-    if (pollingIntervalId) {
-      clearInterval(pollingIntervalId);
-      set({ pollingIntervalId: null, isPolling: false });
     }
   },
 
   clearOptimization: () => {
-    get().stopPolling();
     set({
       currentOptimization: null,
       error: null,
-      isPolling: false,
-      pollingIntervalId: null,
+      isOptimizing: false,
     });
   },
 
@@ -169,19 +135,16 @@ export const useOptimizationStore = create<OptimizationStore>((set, get) => ({
 
   reOptimize: async (id: number) => {
     try {
-      set({ error: null });
-      // Call the re-optimize endpoint — returns the request in 'queued' status
+      set({ error: null, isOptimizing: true });
       const optimization = await reOptimizeRequest(id);
       set({ currentOptimization: optimization });
-      // Start polling so the UI auto-updates when the new result arrives
-      get().pollOptimizationStatus(id);
       return optimization;
     } catch (error: any) {
       const errorMessage =
         error.response?.data?.detail ||
         error.message ||
         "Failed to re-optimize";
-      set({ error: errorMessage });
+      set({ error: errorMessage, isOptimizing: false });
       throw new Error(errorMessage);
     }
   },

@@ -15,6 +15,7 @@ import {
 import { useBulkUploadStore } from "@/store/bulkUpload.store";
 import type { JobCreate } from "@/types/bulk-upload.type";
 import { useJobsStore } from "@/store/jobs.store";
+import { useIndexStore } from "@/store/index.store";
 import { importBulkJobs, resolveBulkRow } from "@/apis/bulk-upload.api";
 import type { ColDef, RowClassParams, CellValueChangedEvent } from "ag-grid-community";
 import AddressCellEditor from "./AddressCellEditor";
@@ -184,7 +185,7 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
   const columnDefs: ColDef[] = useMemo(() => {
     const activeTemplate =
       useBulkUploadStore.getState().templateType ||
-      (typeof window !== "undefined" ? localStorage.getItem("activeJobTemplate") : null) ||
+      useIndexStore.getState().activeJobTemplate ||
       "worker_shuttle";
 
     const isWorkerShuttle = activeTemplate === "worker_shuttle";
@@ -636,7 +637,7 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
 
       const activeTemplate =
         useBulkUploadStore.getState().templateType ||
-        localStorage.getItem("activeJobTemplate") ||
+        useIndexStore.getState().activeJobTemplate ||
         "worker_shuttle";
 
       const jobs = validRows.map((row) => {

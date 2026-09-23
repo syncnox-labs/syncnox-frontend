@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
+import { useOptimizationStore } from "@/store/optimization.store";
 import { JobStatus } from "@/types/job.type";
 
 function getWsUrl(tenantId: string | number, token: string): string {
@@ -65,6 +66,12 @@ export function useDispatchSocket() {
               // 3. Silently refetch routes to sync progress bars and server state
               if (fetchRoutes) {
                 fetchRoutes(selectedStatus === "all" ? undefined : selectedStatus);
+              }
+            } else if (data.event === "optimization_updated") {
+              console.log("[WS Dispatch] Real-time optimization_updated received:", data);
+              const { setOptimizationResult } = useOptimizationStore.getState();
+              if (setOptimizationResult) {
+                setOptimizationResult(data.status, data.result, data.error_message);
               }
             }
           } catch (e) {
