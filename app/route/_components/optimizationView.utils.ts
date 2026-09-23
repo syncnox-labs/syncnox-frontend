@@ -233,6 +233,7 @@ export const generateMapMarkers = (
               ? "end"
               : "depot"
           : undefined,
+        stopType: stop.stop_type,
         color: color,
         routeIndex: index,
       };

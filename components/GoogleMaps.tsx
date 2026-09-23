@@ -58,6 +58,7 @@ interface MarkerData {
   isDepot?: boolean;
   /** "start" | "end" | "depot" — which route endpoint this depot marker is. */
   depotKind?: string;
+  stopType?: string;
   draggable?: boolean;
   /** Index of the route this marker belongs to, used for route focus filtering. */
   routeIndex?: number;
@@ -384,6 +385,8 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
           marker.color,
           marker.isDepot,
           depotLabel,
+          marker.depotKind,
+          marker.stopType,
         );
 
         return (

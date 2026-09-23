@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Modal, Radio, message, Alert } from "antd";
 import { FieldTemplate, applyFieldTemplate } from "@/apis/custom-fields.api";
 import { Sparkles, Replace, GitMerge, AlertTriangle } from "lucide-react";
+import { useIndexStore } from "@/store/index.store";
 
 interface ApplyTemplateModalProps {
   open: boolean;
@@ -31,10 +32,8 @@ export const ApplyTemplateModal: React.FC<ApplyTemplateModalProps> = ({
       if (template.entity_type === "job" || res.entity_type === "job") {
         const slug = res.template_slug || template.slug || "";
         const targetTemplate = slug.includes("shuttle") ? "worker_shuttle" : "pickup_delivery_job";
-        localStorage.setItem("syncnox_active_job_template", targetTemplate);
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new Event("syncnox_active_template_changed"));
-        }
+        const store = useIndexStore.getState();
+        store.updateActiveJobTemplate(targetTemplate);
       }
 
       message.success(

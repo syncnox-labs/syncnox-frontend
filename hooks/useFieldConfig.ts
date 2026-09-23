@@ -6,6 +6,7 @@ import {
   TEMPLATE_BASE_FIELDS,
   BaseFieldDefinition,
 } from "@/components/CustomFields/custom-fields.constants";
+import { useIndexStore } from "@/store/index.store";
 
 export interface ResolvedFieldConfig {
   field_key: string;
@@ -48,12 +49,10 @@ export function useFieldConfig(
         const hasShuttleKey = data.some((f) => shuttleKeys.includes(f.field_key));
         const detectedTemplate = hasShuttleKey ? "worker_shuttle" : "pickup_delivery_job";
 
-        if (typeof window !== "undefined") {
-          const stored = localStorage.getItem("syncnox_active_job_template");
-          if (stored !== detectedTemplate) {
-            localStorage.setItem("syncnox_active_job_template", detectedTemplate);
-            window.dispatchEvent(new Event("syncnox_active_template_changed"));
-          }
+        // Access the store directly since hooks are used inside components
+        const store = useIndexStore.getState();
+        if (store.activeJobTemplate !== detectedTemplate) {
+          store.updateActiveJobTemplate(detectedTemplate);
         }
       }
 

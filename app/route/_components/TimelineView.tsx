@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
-import { Truck, Calendar } from "lucide-react";
+import { Truck, Calendar, Home, Flag, ArrowUp, ArrowDown, House } from "lucide-react";
 import dayjs from "dayjs";
 import type { Job } from "@/types/job.type";
 import type { Vehicle } from "@/types/vehicle.type";
@@ -10,7 +10,6 @@ import {
   UserOutlined,
   UserAddOutlined,
   UserDeleteOutlined,
-  HomeFilled,
   MoreOutlined,
   PlusOutlined,
   SwapOutlined,
@@ -944,7 +943,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       style={{
                                         left: breakStartPos,
                                         width: breakWidth,
-                                        backgroundColor: isDimmed ? "#cbd5e1" : "#8c8c8c",
+                                        backgroundColor: "#8c8c8c",
                                         opacity: isDimmed ? 0.3 : 0.8,
                                         minWidth: 24,
                                       }}
@@ -1163,7 +1162,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         </span>
                                       ) : isDepot ? (
                                         <span className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-400">
-                                          <HomeFilled className="text-amber-700" />
+                                          <House className="text-amber-700" />
                                           DEPOT {stop.stop_type === "depot_start" ? "(START)" : stop.stop_type === "depot_end" ? "(END)" : ""}
                                         </span>
                                       ) : null}
@@ -1187,7 +1186,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     {/* Location / Address Row */}
                                     <div className="flex items-start gap-2.5 py-0.5">
                                       {isDepot ? (
-                                        <HomeFilled className="text-amber-500 text-base shrink-0 mt-0.5" />
+                                        <House className="text-amber-500 text-base shrink-0 mt-0.5" />
                                       ) : isPickup ? (
                                         <EnvironmentOutlined className="text-emerald-600 text-base shrink-0 mt-0.5" />
                                       ) : (
@@ -1377,8 +1376,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           style={{
                                             left: left,
                                             width: Math.max(blockWidth, 28),
-                                            backgroundColor: isGroupPendingDelete ? undefined : isDimmed ? "#ffffff" : blockBgColor,
-                                            borderColor: isGroupPendingDelete ? undefined : isDimmed ? "#cbd5e1" : blockBorderColor,
+                                            backgroundColor: isGroupPendingDelete ? undefined : blockBgColor,
+                                            borderColor: isGroupPendingDelete ? undefined : blockBorderColor,
+                                            opacity: isDimmed ? 0.4 : 1,
                                           }}
                                           onClick={() =>
                                             onStopClick?.(
@@ -1390,7 +1390,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         >
                                           <span
                                             className="text-xs font-bold"
-                                            style={{ color: isGroupPendingDelete ? "#dc2626" : isDimmed ? "#94a3b8" : blockTextColor }}
+                                            style={{ color: isGroupPendingDelete ? "#dc2626" : blockTextColor }}
                                           >
                                             {displayIndex}
                                           </span>
@@ -1415,25 +1415,20 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       }}
                                     >
                                       <div
-                                        className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md transition-all hover:scale-110 cursor-pointer bg-white ${
+                                        className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md transition-all hover:scale-110 cursor-pointer ${
                                           isGroupPendingDelete
                                             ? "w-8 h-8 z-10 opacity-35 border-dashed border-red-500 bg-red-100"
-                                            : isDepot
-                                              ? "px-2 h-6 bg-slate-900 border-slate-700 z-10 shadow-lg text-white"
-                                              : "w-8 h-8 z-10 bg-white"
+                                            : "w-8 h-8 z-10 bg-white"
                                         }`}
                                         style={{
                                           left: left - 14,
                                           backgroundColor: isGroupPendingDelete
                                             ? undefined
-                                            : isDepot
-                                              ? (isDimmed ? "#94a3b8" : undefined)
-                                              : "#ffffff",
+                                            : "#ffffff",
                                           borderColor: isGroupPendingDelete
                                             ? undefined
-                                            : isDepot
-                                              ? undefined
-                                              : (isDimmed ? "#cbd5e1" : blockBorderColor),
+                                            : blockBorderColor,
+                                          opacity: isDimmed ? 0.4 : 1,
                                         }}
                                         onClick={() =>
                                           onStopClick?.(
@@ -1444,17 +1439,35 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         }
                                       >
                                         {isDepot ? (
-                                          <span className="flex items-center gap-1 text-[10px] font-bold text-white">
-                                            <HomeFilled className="text-white text-xs" />
-                                            {depotLabel}
-                                          </span>
+                                          depotLabel === "End" ? (
+                                            <Flag size={16} color={routeColor} className="shrink-0" />
+                                          ) : (
+                                            <Home size={16} color={routeColor} className="shrink-0" />
+                                          )
                                         ) : (
-                                          <span
-                                            className="text-xs font-bold"
-                                            style={{ color: isGroupPendingDelete ? "#dc2626" : isDimmed ? "#94a3b8" : blockTextColor }}
-                                          >
-                                            {displayIndex}
-                                          </span>
+                                          <>
+                                            <span
+                                              className="text-xs font-bold"
+                                              style={{ color: isGroupPendingDelete ? "#dc2626" : blockTextColor }}
+                                            >
+                                              {displayIndex}
+                                            </span>
+                                            {isPickup ? (
+                                              <div 
+                                                className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 bg-white rounded-full border border-emerald-500 shadow-sm z-20"
+                                                title="Pickup"
+                                              >
+                                                <ArrowDown size={12} strokeWidth={3} className="text-emerald-500" />
+                                              </div>
+                                            ) : isDropoff ? (
+                                              <div 
+                                                className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 bg-white rounded-full border border-blue-500 shadow-sm z-20"
+                                                title="Drop-off"
+                                              >
+                                                <ArrowUp size={12} strokeWidth={3} className="text-blue-500" />
+                                              </div>
+                                            ) : null}
+                                          </>
                                         )}
                                       </div>
                                     </Tooltip>

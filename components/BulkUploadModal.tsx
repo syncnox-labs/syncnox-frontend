@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { Modal, Steps } from "antd";
 import { useBulkUploadStore } from "@/store/bulkUpload.store";
+import { useIndexStore } from "@/store/index.store";
 import FileUploadStep from "./bulk-upload/FileUploadStep";
 import ColumnMappingStep from "./bulk-upload/ColumnMappingStep";
 import DataPreviewStep from "./bulk-upload/DataPreviewStep";
@@ -21,7 +22,7 @@ const BulkUploadModal = ({ open, templateType, onClose, onCancel }: BulkUploadMo
     if (open) {
       const activeTpl =
         templateType ||
-        localStorage.getItem("activeJobTemplate") ||
+        useIndexStore.getState().activeJobTemplate ||
         "worker_shuttle";
       setTemplateType(activeTpl);
     }

@@ -66,7 +66,7 @@ const CreateRouteModal = ({
   const {
     startOptimization,
     currentOptimization,
-    isPolling,
+    isOptimizing,
     error,
     clearOptimization,
   } = useOptimizationStore();
@@ -77,6 +77,43 @@ const CreateRouteModal = ({
   const [showTeamModal, setShowTeamModal] = useState(false);
 
   useOptimizationCleanup();
+
+  const [loadingMessage, setLoadingMessage] = useState("Analyzing spatial and temporal constraints...");
+  
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isOptimizing || isSubmitting) {
+      const messages = [
+        "Analyzing spatial and temporal constraints...",
+        "Evaluating thousands of permutations...",
+        "Balancing resource allocation...",
+        "Sequencing optimal pathways...",
+        "Finalizing schedule architecture...",
+      ];
+      let msgIndex = 0;
+      setLoadingMessage(messages[0]);
+      interval = setInterval(() => {
+        msgIndex += 1;
+        if (msgIndex < messages.length) {
+          setLoadingMessage(messages[msgIndex]);
+        }
+        if (msgIndex >= messages.length - 1) {
+          clearInterval(interval);
+        }
+      }, 20000);
+    }
+    return () => clearInterval(interval);
+  }, [isOptimizing, isSubmitting]);
+
+  // Auto-redirect on completion
+  useEffect(() => {
+    if (currentOptimization?.status === "completed" || currentOptimization?.status === "success") {
+      router.push(`/route/${currentOptimization.id}`);
+      if (setOpen) setOpen(false);
+      if (onCancel) onCancel();
+      clearOptimization();
+    }
+  }, [currentOptimization?.status, currentOptimization?.id, router, setOpen, onCancel, clearOptimization]);
 
   // Detect if selected jobs are Worker Shuttle
   const allAvailableJobs = [
@@ -208,7 +245,7 @@ const CreateRouteModal = ({
 
   const handleCancel = () => {
     if (
-      (!isPolling && !isSubmitting) ||
+      (!isOptimizing && !isSubmitting) ||
       currentOptimization?.status === "failed" ||
       error
     ) {
@@ -285,7 +322,7 @@ const CreateRouteModal = ({
             </Button>
           </Flex>
         </div>
-      ) : isSubmitting || isPolling ? (
+      ) : isSubmitting || isOptimizing ? (
         <div className="py-10 px-4 flex flex-col items-center justify-center text-center">
           {/* Animated Visualizer Aura */}
           <div className="relative mb-6 flex items-center justify-center">
@@ -296,8 +333,8 @@ const CreateRouteModal = ({
           </div>
 
           {/* Title & Subtitle */}
-          <h3 className="text-base font-bold text-gray-900 mb-1.5">
-            {isCompleted ? "Routes Optimized Successfully!" : "Optimizing Routes"}
+          <h3 className="text-base font-bold text-gray-900 mb-1.5 transition-all duration-300">
+            {isCompleted ? "Routes Optimized Successfully!" : loadingMessage}
           </h3>
           <p className="text-xs text-gray-500 max-w-sm mb-6 leading-relaxed">
             {isCompleted
@@ -305,20 +342,7 @@ const CreateRouteModal = ({
               : "Generating optimal route sequences and driver assignments. This may take a moment."}
           </p>
 
-          {/* Simple Clean Progress Line */}
-          <div className="w-full max-w-xs">
-            <Progress
-              percent={isCompleted ? 100 : 70}
-              status={isCompleted ? "success" : "active"}
-              showInfo={false}
-              strokeColor={{
-                "0%": "#059669",
-                "100%": "#003220",
-              }}
-              size={["100%", 6]}
-              className="m-0"
-            />
-          </div>
+
         </div>
       ) : (
         <>
@@ -534,8 +558,9 @@ const CreateRouteModal = ({
                 type="primary"
                 htmlType="submit"
                 block
-                loading={isSubmitting || isPolling}
-                disabled={isSubmitting || isPolling}
+                loading={isSubmitting || isOptimizing}
+                disabled={isSubmitting || isOptimizing}
+                className="bg-[#003220] hover:bg-[#002417] text-white min-w-[120px] rounded"
               >
                 Create and Optimize Route
               </Button>

@@ -35,6 +35,7 @@ import {
 import { useJobsStore } from "@/store/jobs.store";
 import { filterCountryOptions } from "@/utils/jobs.utils";
 import { useTeamStore } from "@/store/team.store";
+import { useIndexStore } from "@/store/index.store";
 import { CustomFieldDefinition } from "@/apis/custom-fields.api";
 import { DynamicCustomFieldsForm } from "@/components/DynamicCustomFieldsForm";
 import { useFieldConfig } from "@/hooks/useFieldConfig";
@@ -102,30 +103,14 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
   const { teams } = useTeamStore();
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
 
-  const [activeTemplate, setActiveTemplate] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("syncnox_active_job_template") || "pickup_delivery_job";
-    }
-    return "pickup_delivery_job";
-  });
+  const { activeJobTemplate } = useIndexStore();
+  const [activeTemplate, setActiveTemplate] = useState<string>(activeJobTemplate || "pickup_delivery_job");
 
   useEffect(() => {
-    const syncActiveTemplate = () => {
-      const storedTemplate = localStorage.getItem("syncnox_active_job_template");
-      if (storedTemplate) {
-        setActiveTemplate(storedTemplate);
-      }
-    };
-
-    syncActiveTemplate();
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("syncnox_active_template_changed", syncActiveTemplate);
-      return () => {
-        window.removeEventListener("syncnox_active_template_changed", syncActiveTemplate);
-      };
+    if (!initialData && activeJobTemplate) {
+      setActiveTemplate(activeJobTemplate);
     }
-  }, []);
+  }, [activeJobTemplate, initialData]);
 
   const { getFieldConfig, customFields: customFieldDefs } = useFieldConfig("job", activeTemplate);
 
