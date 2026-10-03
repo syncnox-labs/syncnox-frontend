@@ -129,7 +129,7 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
         validationErrors++;
       } else if (row.is_duplicate) {
         status = "duplicate";
-        statusMessage = "Duplicate address detected";
+        statusMessage = row.duplicate_message || "Duplicate entry detected";
         duplicates++;
         readyToImport++; // Duplicates can still be imported
       } else {
@@ -229,7 +229,7 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
               );
             case "duplicate":
               return (
-                <Tooltip title={statusMessage}>
+                <Tooltip title={statusMessage} overlayStyle={{ maxWidth: 400 }}>
                   <WarningOutlined style={{ ...iconStyle, color: "#1890ff" }} />
                 </Tooltip>
               );
