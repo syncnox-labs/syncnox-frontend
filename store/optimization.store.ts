@@ -31,6 +31,7 @@ interface OptimizationStore {
     payload: UpdateOptimizationRequestPayload
   ) => Promise<Route>;
   reOptimize: (id: number) => Promise<Route>;
+  pollUntilComplete: (id: number, intervalMs?: number, maxAttempts?: number) => Promise<Route>;
 }
 
 export const useOptimizationStore = create<OptimizationStore>((set, get) => ({
@@ -147,6 +148,33 @@ export const useOptimizationStore = create<OptimizationStore>((set, get) => ({
       set({ error: errorMessage, isOptimizing: false });
       throw new Error(errorMessage);
     }
+  },
+
+  pollUntilComplete: async (id: number, intervalMs = 2000, maxAttempts = 90) => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      try {
+        const optimization = await getOptimizationRequest(id);
+        set({ currentOptimization: optimization });
+        const status = optimization.status;
+        if (status === "completed" || status === "failed") {
+          set({ isOptimizing: false });
+          if (status === "failed") {
+            const errMsg = (optimization as any).error_message || "Re-optimization failed";
+            set({ error: errMsg });
+          } else {
+            set({ error: null });
+          }
+          return optimization;
+        }
+      } catch (err: any) {
+        // Network hiccup — keep polling
+        console.warn("[pollUntilComplete] fetch error, retrying:", err?.message);
+      }
+    }
+    // Timed out
+    set({ isOptimizing: false, error: "Re-optimization timed out. Please refresh." });
+    throw new Error("Polling timed out after max attempts");
   },
 }));
 

@@ -103,6 +103,8 @@ export interface Job {
   pod_notes?: string;
   started_at?: string | null;
   completed_at?: string | null;
+  is_new?: boolean;
+  time_edited?: boolean;
 
   // Worker Shuttle Fields
   quant_id?: string;
