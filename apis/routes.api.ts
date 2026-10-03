@@ -72,27 +72,58 @@ export const reOptimizeRequest = async (id: number): Promise<Route> => {
 
 import type { RouteOperationResponse } from "@/types/routes.type";
 
-/** Add a draft job to a specific driver's route → re-optimizes */
+/** Add a draft job to a specific driver's route (synchronous, marks is_new=true) */
 export const addStopToRoute = async (
   optimizationId: number,
   routeIndex: number,
   jobId: number,
+  position?: number,
 ): Promise<RouteOperationResponse> => {
+  const payload: { job_id: number; position?: number } = { job_id: jobId };
+  if (position !== undefined) payload.position = position;
   const response = await apiClient.post(
     `optimization/requests/${optimizationId}/routes/${routeIndex}/add-stop`,
-    { job_id: jobId },
+    payload,
   );
   return response.data;
 };
 
-/** Remove a job from a specific driver's route → re-optimizes */
+/** Remove a job from a specific driver's route (synchronous) */
 export const removeStopFromRoute = async (
   optimizationId: number,
   routeIndex: number,
   jobId: number,
 ): Promise<RouteOperationResponse> => {
-  const response = await apiClient.post(
-    `optimization/requests/${optimizationId}/routes/${routeIndex}/remove-stop/${jobId}`,
+  const response = await apiClient.delete(
+    `optimization/requests/${optimizationId}/routes/${routeIndex}/stops/${jobId}`,
+  );
+  return response.data;
+};
+
+/** Manually reorder stops in a route via drag-and-drop (synchronous) */
+export const reorderRouteStops = async (
+  optimizationId: number,
+  routeIndex: number,
+  orderedJobIds: number[],
+): Promise<RouteOperationResponse> => {
+  const response = await apiClient.put(
+    `optimization/requests/${optimizationId}/routes/${routeIndex}/reorder`,
+    { ordered_job_ids: orderedJobIds },
+  );
+  return response.data;
+};
+
+/** Edit a stop's planned arrival/end time (synchronous) */
+export const editStopTime = async (
+  optimizationId: number,
+  routeIndex: number,
+  jobId: number,
+  startTime?: string,
+  endTime?: string,
+): Promise<RouteOperationResponse> => {
+  const response = await apiClient.patch(
+    `optimization/requests/${optimizationId}/routes/${routeIndex}/stops/${jobId}/time`,
+    { job_id: jobId, start_time: startTime, end_time: endTime },
   );
   return response.data;
 };

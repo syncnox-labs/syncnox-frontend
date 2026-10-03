@@ -172,6 +172,36 @@ const RoutePage = () => {
     };
   }, [id, fetchOptimization, clearOptimization]);
 
+  // ── Auto-poll when a worker is running ──────────────────────────────────────
+  // After any async op (re-optimize, swap-driver) status becomes "processing".
+  // Poll every 2.5s until it flips back to "completed" or "failed" so the UI
+  // auto-refreshes without the user needing to manually reload.
+  useEffect(() => {
+    if (!id) return;
+    const status = currentOptimization?.status;
+    if (status !== "processing" && status !== "queued") return;
+
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      if (cancelled) return;
+      try {
+        const updated = await fetchOptimization(id);
+        const newStatus = updated?.status;
+        if (newStatus === "completed" || newStatus === "failed") {
+          clearInterval(timer);
+        }
+      } catch {
+        // silently ignore transient fetch errors — keep polling
+      }
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [id, currentOptimization?.status, fetchOptimization]);
+
+
   const unassignedJobs: UnassignedJob[] =
     currentOptimization?.result?.unassigned_jobs || [];
 

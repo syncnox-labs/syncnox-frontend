@@ -25,7 +25,13 @@ import {
   DeleteOutlined,
   UndoOutlined,
   LockOutlined,
+  MenuOutlined,
 } from "@ant-design/icons";
+import {
+  GripVertical,
+  Sparkles as SparklesIcon,
+} from "lucide-react";
+import ReorderStopsModal from "./ReorderStopsModal";
 import {
   calculateTimeRange,
   generateTimeMarkers,
@@ -111,6 +117,9 @@ interface TimelineViewProps {
   onSwapDriver?: (routeIndex: number) => void;
   onReverseRoute?: (routeIndex: number) => void;
   onReOptimize?: (routeIndex: number) => void;
+  onReorderStops?: (routeIndex: number, orderedJobIds: number[]) => Promise<void> | void;
+  onSaveAndReOptimize?: (routeIndex: number, orderedJobIds: number[]) => Promise<void> | void;
+  onRemoveStop?: (routeIndex: number, jobId: number) => Promise<void> | void;
   /** Index of the route currently isolated on the map, or null for "show all". */
   focusedRouteIndex?: number | null;
   onFocusRoute?: (routeIndex: number) => void;
@@ -216,6 +225,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   onSwapDriver,
   onReverseRoute,
   onReOptimize,
+  onReorderStops,
+  onSaveAndReOptimize,
+  onRemoveStop,
   focusedRouteIndex = null,
   onFocusRoute,
   driverSearch: externalDriverSearch,
@@ -228,6 +240,121 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [intervalMinutes, setIntervalMinutes] = useState(30);
+
+  // Dedicated Reorder Modal state
+  const [reorderModalRouteIndex, setReorderModalRouteIndex] = useState<number | null>(null);
+
+  // Direct Timeline Drag and Drop state
+  const [draggedStopInfo, setDraggedStopInfo] = useState<{
+    routeIndex: number;
+    jobId: number;
+    displayIndex: number;
+  } | null>(null);
+
+  const [dragOverStopInfo, setDragOverStopInfo] = useState<{
+    routeIndex: number;
+    jobId: number;
+    displayIndex: number;
+    side: "before" | "after";
+  } | null>(null);
+
+  const handleTimelineStopDragStart = (
+    e: React.DragEvent,
+    routeIndex: number,
+    jobId: number,
+    displayIndex: number
+  ) => {
+    e.stopPropagation();
+    setDraggedStopInfo({ routeIndex, jobId, displayIndex });
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("application/json", JSON.stringify({ routeIndex, jobId }));
+  };
+
+  const handleTimelineStopDragOver = (
+    e: React.DragEvent,
+    routeIndex: number,
+    jobId: number,
+    displayIndex: number
+  ) => {
+    if (!draggedStopInfo || draggedStopInfo.routeIndex !== routeIndex || draggedStopInfo.jobId === jobId) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const midX = rect.left + rect.width / 2;
+    const side = e.clientX < midX ? "before" : "after";
+
+    if (
+      !dragOverStopInfo ||
+      dragOverStopInfo.jobId !== jobId ||
+      dragOverStopInfo.side !== side
+    ) {
+      setDragOverStopInfo({ routeIndex, jobId, displayIndex, side });
+    }
+  };
+
+  const handleTimelineStopDragLeave = (e: React.DragEvent) => {
+    e.stopPropagation();
+  };
+
+  const handleTimelineStopDrop = async (
+    e: React.DragEvent,
+    routeIndex: number,
+    targetJobId: number
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!draggedStopInfo || draggedStopInfo.routeIndex !== routeIndex || draggedStopInfo.jobId === targetJobId) {
+      setDraggedStopInfo(null);
+      setDragOverStopInfo(null);
+      return;
+    }
+
+    const targetRoute = routes[routeIndex];
+    if (!targetRoute || !targetRoute.stops) return;
+
+    const currentJobIds: number[] = [];
+    targetRoute.stops.forEach((s: any) => {
+      const isDepot =
+        s.stop_type === "depot" ||
+        s.stop_type === "depot_start" ||
+        s.stop_type === "depot_end";
+      if (!isDepot && s.job_id) {
+        currentJobIds.push(Number(s.job_id));
+      }
+    });
+
+    const sourceJobId = draggedStopInfo.jobId;
+    const side = dragOverStopInfo?.side || "before";
+
+    const updatedJobIds = currentJobIds.filter((id) => id !== sourceJobId);
+    const targetIdxInUpdated = updatedJobIds.indexOf(targetJobId);
+
+    if (targetIdxInUpdated === -1) {
+      setDraggedStopInfo(null);
+      setDragOverStopInfo(null);
+      return;
+    }
+
+    const insertIdx = side === "before" ? targetIdxInUpdated : targetIdxInUpdated + 1;
+    updatedJobIds.splice(insertIdx, 0, sourceJobId);
+
+    setDraggedStopInfo(null);
+    setDragOverStopInfo(null);
+
+    if (onReorderStops) {
+      await onReorderStops(routeIndex, updatedJobIds);
+    }
+  };
+
+  const handleTimelineStopDragEnd = () => {
+    setDraggedStopInfo(null);
+    setDragOverStopInfo(null);
+  };
 
   const [internalDriverSearch, setInternalDriverSearch] = useState("");
   const [internalExactMatch, setInternalExactMatch] = useState(false);
@@ -422,6 +549,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
   const getRouteMenuItems = (routeIndex: number): MenuProps["items"] => [
     {
+      key: "reorder-stops",
+      icon: <MenuOutlined />,
+      label: "Reorder Stops (Drag & Drop)",
+      onClick: () => setReorderModalRouteIndex(routeIndex),
+    },
+    {
       key: "add-stop",
       icon: <PlusOutlined />,
       label: "Add Job",
@@ -432,6 +565,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       icon: <SwapOutlined />,
       label: "Swap Route with Driver",
       onClick: () => onSwapDriver?.(routeIndex),
+    },
+    {
+      key: "reverse-route",
+      icon: <RetweetOutlined />,
+      label: "Reverse Route Order",
+      onClick: () => onReverseRoute?.(routeIndex),
     },
     { type: "divider" as const },
     {
@@ -730,6 +869,19 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                             }`}
                           </span>
                         </div>
+
+                        {/* Quick Reorder Button */}
+                        <Tooltip title="Reorder stops (Drag & Drop)">
+                          <div
+                            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer transition-colors text-gray-400 shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReorderModalRouteIndex(primaryIndex);
+                            }}
+                          >
+                            <MenuOutlined className="text-xs" />
+                          </div>
+                        </Tooltip>
 
                         {/* ••• Menu */}
                         <Dropdown
@@ -1139,12 +1291,16 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   occupancyMap.get(lastRawIndex) ?? 0;
 
                                 const formattedAddr = isDepot
-                                  ? stop.stop_type === "depot_start"
-                                    ? "Depot (Start)"
-                                    : stop.stop_type === "depot_end"
-                                      ? "Depot (End)"
-                                      : "Depot"
+                                  ? stop.address_formatted ||
+                                    (stop.stop_type === "depot_start"
+                                      ? "Depot (Start)"
+                                      : stop.stop_type === "depot_end"
+                                        ? "Depot (End)"
+                                        : "Depot")
                                   : stop.address_formatted || `#${stop.job_id}`;
+
+                                const isStopNew = Boolean(stop.is_new || group.rawStops.some((s: any) => s.is_new));
+                                const isTimeEdited = Boolean(stop.time_edited || group.rawStops.some((s: any) => s.time_edited));
 
                                 const tooltipContent = (
                                   <div className="pointer-events-auto select-text p-1 space-y-2.5 w-[310px] text-slate-800">
@@ -1162,7 +1318,11 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         </span>
                                       ) : isDepot ? (
                                         <span className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-400">
-                                          <House className="text-amber-700" />
+                                          {stop.stop_type === "depot_end" ? (
+                                            <Flag size={13} className="text-amber-700" />
+                                          ) : (
+                                            <House size={13} className="text-amber-700" />
+                                          )}
                                           DEPOT {stop.stop_type === "depot_start" ? "(START)" : stop.stop_type === "depot_end" ? "(END)" : ""}
                                         </span>
                                       ) : null}
@@ -1183,10 +1343,32 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       )}
                                     </div>
 
+                                    {/* Highlights Row for New / Edited Stop */}
+                                    {(isStopNew || isTimeEdited) && (
+                                      <div className="flex items-center gap-1.5 py-0.5 select-none">
+                                        {isStopNew && (
+                                          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-400 px-2 py-0.5 rounded shadow-xs animate-pulse">
+                                            <SparklesIcon size={11} className="text-emerald-700" />
+                                            NEWLY ADDED STOP
+                                          </span>
+                                        )}
+                                        {isTimeEdited && (
+                                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-purple-100 text-purple-900 border border-purple-300 px-2 py-0.5 rounded shadow-xs">
+                                            <ClockCircleOutlined className="text-purple-600" />
+                                            TIME EDITED
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+
                                     {/* Location / Address Row */}
                                     <div className="flex items-start gap-2.5 py-0.5">
                                       {isDepot ? (
-                                        <House className="text-amber-500 text-base shrink-0 mt-0.5" />
+                                        stop.stop_type === "depot_end" ? (
+                                          <Flag className="text-amber-600 text-base shrink-0 mt-0.5" />
+                                        ) : (
+                                          <House className="text-amber-600 text-base shrink-0 mt-0.5" />
+                                        )
                                       ) : isPickup ? (
                                         <EnvironmentOutlined className="text-emerald-600 text-base shrink-0 mt-0.5" />
                                       ) : (
@@ -1195,7 +1377,17 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       <div className="flex flex-col min-w-0 flex-1">
                                         <div className="flex items-center justify-between gap-1">
                                           <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 select-none">
-                                            {isDepot ? "Station" : isPickup ? "Pickup Address" : isDropoff ? "Drop-off Address" : "Address"}
+                                            {isDepot
+                                              ? stop.stop_type === "depot_start"
+                                                ? "Driver Start Location"
+                                                : stop.stop_type === "depot_end"
+                                                  ? "Driver End Location"
+                                                  : "Depot Location"
+                                              : isPickup
+                                                ? "Pickup Address"
+                                                : isDropoff
+                                                  ? "Drop-off Address"
+                                                  : "Address"}
                                           </span>
                                           {formattedAddr && (
                                             <button
@@ -1353,6 +1545,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       return rawId && pendingDeletedJobIds.has(Number(rawId));
                                     });
 
+                                  const firstJobId = group.rawStops[0]?.job_id ? Number(group.rawStops[0].job_id) : null;
+                                  const isDraggingThis = draggedStopInfo?.jobId === firstJobId && draggedStopInfo?.routeIndex === routeIndex;
+                                  const isDropTarget = dragOverStopInfo?.jobId === firstJobId && dragOverStopInfo?.routeIndex === routeIndex;
+                                  const isDropBefore = isDropTarget && dragOverStopInfo?.side === "before";
+                                  const isDropAfter = isDropTarget && dragOverStopInfo?.side === "after";
+
                                   if (isJob && serviceDuration > 0) {
                                     return (
                                       <Tooltip
@@ -1370,15 +1568,27 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         }}
                                       >
                                         <div
-                                          className={`absolute top-1/2 -translate-y-1/2 h-8 flex items-center justify-center shadow-md transition-all hover:scale-105 cursor-pointer z-10 border-2 bg-white ${
+                                          draggable={!isDepot && Boolean(firstJobId)}
+                                          onDragStart={(e) => firstJobId && handleTimelineStopDragStart(e, routeIndex, firstJobId, displayIndex)}
+                                          onDragOver={(e) => firstJobId && handleTimelineStopDragOver(e, routeIndex, firstJobId, displayIndex)}
+                                          onDragLeave={handleTimelineStopDragLeave}
+                                          onDrop={(e) => firstJobId && handleTimelineStopDrop(e, routeIndex, firstJobId)}
+                                          onDragEnd={handleTimelineStopDragEnd}
+                                          className={`absolute top-1/2 -translate-y-1/2 h-8 flex items-center justify-center shadow-md transition-all z-10 border-2 bg-white ${
+                                            !isDepot ? "cursor-grab active:cursor-grabbing hover:scale-105" : "cursor-pointer"
+                                          } ${
+                                            isDraggingThis ? "opacity-35 border-dashed border-emerald-500 scale-95" : ""
+                                          } ${
+                                            isStopNew ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg" : ""
+                                          } ${
                                             isGroupPendingDelete ? "opacity-35 border-dashed border-red-500 bg-red-100" : ""
                                           }`}
                                           style={{
                                             left: left,
                                             width: Math.max(blockWidth, 28),
                                             backgroundColor: isGroupPendingDelete ? undefined : blockBgColor,
-                                            borderColor: isGroupPendingDelete ? undefined : blockBorderColor,
-                                            opacity: isDimmed ? 0.4 : 1,
+                                            borderColor: isGroupPendingDelete ? undefined : isStopNew ? "#059669" : blockBorderColor,
+                                            opacity: isDimmed ? 0.4 : isDraggingThis ? 0.35 : 1,
                                           }}
                                           onClick={() =>
                                             onStopClick?.(
@@ -1388,6 +1598,21 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             )
                                           }
                                         >
+                                          {/* Drag drop insertion line */}
+                                          {isDropBefore && (
+                                            <div className="absolute -left-1.5 top-0 bottom-0 w-1.5 bg-emerald-600 rounded-full shadow-lg z-30 animate-pulse pointer-events-none" />
+                                          )}
+                                          {isDropAfter && (
+                                            <div className="absolute -right-1.5 top-0 bottom-0 w-1.5 bg-emerald-600 rounded-full shadow-lg z-30 animate-pulse pointer-events-none" />
+                                          )}
+
+                                          {/* Newly Added Job Badge */}
+                                          {isStopNew && (
+                                            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-emerald-600 text-white text-[8px] font-black uppercase rounded shadow-xs flex items-center gap-0.5 tracking-tight animate-bounce z-30 select-none pointer-events-none whitespace-nowrap">
+                                              <SparklesIcon size={8} /> NEW
+                                            </div>
+                                          )}
+
                                           <span
                                             className="text-xs font-bold"
                                             style={{ color: isGroupPendingDelete ? "#dc2626" : blockTextColor }}
@@ -1415,10 +1640,22 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       }}
                                     >
                                       <div
-                                        className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md transition-all hover:scale-110 cursor-pointer ${
+                                        draggable={!isDepot && Boolean(firstJobId)}
+                                        onDragStart={(e) => firstJobId && handleTimelineStopDragStart(e, routeIndex, firstJobId, displayIndex)}
+                                        onDragOver={(e) => firstJobId && handleTimelineStopDragOver(e, routeIndex, firstJobId, displayIndex)}
+                                        onDragLeave={handleTimelineStopDragLeave}
+                                        onDrop={(e) => firstJobId && handleTimelineStopDrop(e, routeIndex, firstJobId)}
+                                        onDragEnd={handleTimelineStopDragEnd}
+                                        className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md transition-all z-10 ${
+                                          !isDepot ? "cursor-grab active:cursor-grabbing hover:scale-110" : "cursor-pointer"
+                                        } ${
+                                          isDraggingThis ? "w-8 h-8 opacity-35 border-dashed border-emerald-500 scale-95" : "w-8 h-8 bg-white"
+                                        } ${
+                                          isStopNew ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg" : ""
+                                        } ${
                                           isGroupPendingDelete
-                                            ? "w-8 h-8 z-10 opacity-35 border-dashed border-red-500 bg-red-100"
-                                            : "w-8 h-8 z-10 bg-white"
+                                            ? "opacity-35 border-dashed border-red-500 bg-red-100"
+                                            : ""
                                         }`}
                                         style={{
                                           left: left - 14,
@@ -1427,8 +1664,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             : "#ffffff",
                                           borderColor: isGroupPendingDelete
                                             ? undefined
+                                            : isStopNew
+                                            ? "#059669"
                                             : blockBorderColor,
-                                          opacity: isDimmed ? 0.4 : 1,
+                                          opacity: isDimmed ? 0.4 : isDraggingThis ? 0.35 : 1,
                                         }}
                                         onClick={() =>
                                           onStopClick?.(
@@ -1438,6 +1677,21 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           )
                                         }
                                       >
+                                        {/* Drag drop insertion line */}
+                                        {isDropBefore && (
+                                          <div className="absolute -left-1.5 top-0 bottom-0 w-1.5 bg-emerald-600 rounded-full shadow-lg z-30 animate-pulse pointer-events-none" />
+                                        )}
+                                        {isDropAfter && (
+                                          <div className="absolute -right-1.5 top-0 bottom-0 w-1.5 bg-emerald-600 rounded-full shadow-lg z-30 animate-pulse pointer-events-none" />
+                                        )}
+
+                                        {/* Newly Added Job Badge */}
+                                        {isStopNew && !isDepot && (
+                                          <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-emerald-600 text-white text-[8px] font-black uppercase rounded shadow-xs flex items-center gap-0.5 tracking-tight animate-bounce z-30 select-none pointer-events-none whitespace-nowrap">
+                                            <SparklesIcon size={8} /> NEW
+                                          </div>
+                                        )}
+
                                         {isDepot ? (
                                           depotLabel === "End" ? (
                                             <Flag size={16} color={routeColor} className="shrink-0" />
@@ -1485,6 +1739,24 @@ const TimelineView: React.FC<TimelineViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Reorder Stops Dedicated Drawer/Modal */}
+      <ReorderStopsModal
+        open={reorderModalRouteIndex !== null}
+        routeIndex={reorderModalRouteIndex}
+        routeData={
+          reorderModalRouteIndex !== null ? routes[reorderModalRouteIndex] : null
+        }
+        jobs={jobs}
+        onClose={() => setReorderModalRouteIndex(null)}
+        onSave={async (rIdx, orderedJobIds) => {
+          if (onReorderStops) {
+            await onReorderStops(rIdx, orderedJobIds);
+          }
+        }}
+        onSaveAndReOptimize={onSaveAndReOptimize}
+        onRemoveStop={onRemoveStop}
+      />
     </div>
   );
 };

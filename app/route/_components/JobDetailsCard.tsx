@@ -7,6 +7,7 @@ import {
   CheckCircleOutlined,
   EditOutlined,
   SaveOutlined,
+  ClockCircleOutlined,
 } from "@ant-design/icons";
 import {
   User,
@@ -27,6 +28,7 @@ import {
   Fingerprint,
   ArrowRightLeft,
   Tag as TagIcon,
+  Sparkles,
 } from "lucide-react";
 import dayjs from "dayjs";
 import type { Job, JobStatus } from "@/types/job.type";
@@ -528,6 +530,17 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
               className={`shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 border rounded-none ${stopBadge.className}`}
             >
               {stopBadge.label}
+            </span>
+          )}
+          {Boolean(stopData?.is_new || job?.is_new) && (
+            <span className="shrink-0 text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-400 flex items-center gap-1 animate-pulse">
+              <Sparkles size={11} className="text-emerald-700" />
+              NEW STOP
+            </span>
+          )}
+          {Boolean(stopData?.time_edited || (job as any)?.time_edited) && (
+            <span className="shrink-0 text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-300 flex items-center gap-0.5">
+              <ClockCircleOutlined className="text-[10px]" /> EDITED
             </span>
           )}
         </div>

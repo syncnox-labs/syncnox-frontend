@@ -17,6 +17,11 @@ export interface Stop {
   address_formatted: string;
   time_to_next_stop_seconds?: number;
   distance_to_next_stop_meters?: number;
+  is_new?: boolean;
+  time_edited?: boolean;
+  candidate_name?: string;
+  passenger_count?: number;
+  service_duration_minutes?: number;
 }
 
 export interface Routes {
@@ -106,4 +111,6 @@ export interface AllRoutes {
 export interface RouteOperationResponse {
   success: boolean;
   message: string;
+  route?: Routes | Record<string, unknown>;
+  is_async?: boolean;
 }

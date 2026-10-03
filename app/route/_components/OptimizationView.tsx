@@ -54,6 +54,8 @@ import Icon from "@ant-design/icons";
 import {
   addStopToRoute,
   removeStopFromRoute,
+  reorderRouteStops,
+  editStopTime,
   swapRouteDriver,
   reverseRoute,
   reOptimizeRoute,
@@ -80,6 +82,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     isOptimizing,
     error,
     reOptimize,
+    pollUntilComplete,
   } = useOptimizationStore();
   const { jobs, fetchJobsByDate, fetchJobsByIds } = useJobsStore();
   const { updateRoute } = useRouteStore();
@@ -590,37 +593,38 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     async (job: Job) => {
       if (addStopRouteIndex === null) return;
       try {
-        setOptimizationResult("processing");
         const res = await addStopToRoute(route.id, addStopRouteIndex, job.id);
         if (res.success) {
-          message.success(res.message);
+          message.success(res.message || "Job added to route! Newly added stop is highlighted.");
+          setHasUnsavedJobEdits(true);
+          await fetchOptimization(route.id);
         }
       } catch (error: any) {
-        setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to add job");
         message.error(error?.response?.data?.detail || "Failed to add job");
       }
     },
-    [route.id, addStopRouteIndex, setOptimizationResult],
+    [route.id, addStopRouteIndex, fetchOptimization],
   );
 
   const handleRemoveJob = useCallback(
-    (routeIndex: number, jobId: number, driverName: string) => {
+    (routeIndex: number, jobId: number, driverName?: string) => {
+      const dName = driverName || route.result?.routes?.[routeIndex]?.team_member_name || "Driver";
       Modal.confirm({
         title: "Remove Job",
-        content: `Remove job from ${driverName}'s route? It will be moved back to Unassigned.`,
+        content: `Remove Job #${jobId} from ${dName}'s route? It will be moved back to Unassigned.`,
         okText: "Remove",
         okButtonProps: {
           style: { backgroundColor: "#dc2626", borderColor: "#dc2626" },
         },
         onOk: async () => {
           try {
-            setOptimizationResult("processing");
             const res = await removeStopFromRoute(route.id, routeIndex, jobId);
             if (res.success) {
-              message.success(res.message);
+              message.success(res.message || "Job removed from route");
+              setHasUnsavedJobEdits(true);
+              await fetchOptimization(route.id);
             }
           } catch (error: any) {
-            setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to remove job");
             message.error(
               error?.response?.data?.detail || "Failed to remove job",
             );
@@ -628,7 +632,48 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
         },
       });
     },
-    [route.id, setOptimizationResult],
+    [route.id, route.result?.routes, fetchOptimization],
+  );
+
+  const handleReorderStops = useCallback(
+    async (routeIndex: number, orderedJobIds: number[]) => {
+      try {
+        const res = await reorderRouteStops(route.id, routeIndex, orderedJobIds);
+        if (res.success) {
+          message.success(res.message || "Stops reordered successfully!");
+          setHasUnsavedJobEdits(true);
+          await fetchOptimization(route.id);
+        }
+      } catch (error: any) {
+        message.error(
+          error?.response?.data?.detail || "Failed to reorder stops",
+        );
+      }
+    },
+    [route.id, fetchOptimization],
+  );
+
+  const handleSaveAndReOptimize = useCallback(
+    async (routeIndex: number, orderedJobIds: number[]) => {
+      try {
+        // Step 1: Save the new stop order
+        await reorderRouteStops(route.id, routeIndex, orderedJobIds);
+        // Step 2: Queue async re-optimization for this route
+        setOptimizationResult("processing");
+        const res = await reOptimizeRoute(route.id, routeIndex);
+        if (res.success) {
+          message.loading({ content: "Re-optimization queued. Waiting for result…", key: "save_reopt", duration: 0 });
+          setHasUnsavedJobEdits(false);
+          // Step 3: Poll until the async worker finishes
+          await pollUntilComplete(route.id);
+          message.success({ content: "Route reordered and re-optimized!", key: "save_reopt" });
+        }
+      } catch (error: any) {
+        message.error({ content: error?.response?.data?.detail || error?.message || "Failed to reorder and re-optimize route", key: "save_reopt" });
+        setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to re-optimize route");
+      }
+    },
+    [route.id, setOptimizationResult, pollUntilComplete],
   );
 
   const handleReverseRoute = useCallback(
@@ -680,25 +725,30 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
             setOptimizationResult("processing");
             const res = await reOptimizeRoute(route.id, routeIndex);
             if (res.success) {
-              message.success(res.message);
+              message.loading({ content: `Re-optimizing ${driverName}'s route…`, key: "reopt", duration: 0 });
               setPendingDeletedJobIds(new Set());
               setHasUnsavedJobEdits(false);
+              // Poll until the async worker finishes
+              await pollUntilComplete(route.id);
+              message.success({ content: `${driverName}'s route re-optimized!`, key: "reopt" });
             }
           } catch (error: any) {
+            message.error({ content: error?.response?.data?.detail || error?.message || "Failed to reoptimize route", key: "reopt" });
             setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to reoptimize route");
-            message.error(
-              error?.response?.data?.detail || "Failed to reoptimize route",
-            );
           }
         },
       });
     },
-    [route.id, route.result?.routes, setOptimizationResult, pendingDeletedJobIds, reOptimizeRoute],
+    [route.id, route.result?.routes, setOptimizationResult, pendingDeletedJobIds, pollUntilComplete],
   );
 
   const handleSwapSuccess = useCallback(() => {
     setOptimizationResult("processing");
-  }, [setOptimizationResult]);
+    // Poll until the async swap-driver worker finishes
+    pollUntilComplete(route.id).catch(() => {
+      // Error already set in store
+    });
+  }, [setOptimizationResult, pollUntilComplete, route.id]);
 
   const handleStageDeleteJob = useCallback((jobId: number) => {
     const job = jobs.find((j) => j.id === jobId);
@@ -818,22 +868,24 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
             });
           });
 
+          message.loading({ content: "Re-optimization queued. Waiting for result…", key: "reopt_all", duration: 0 });
           await reOptimize(route.id);
           setPendingDeletedJobIds(new Set());
           setHasUnsavedJobEdits(false);
+          // Poll until the global re-optimize worker finishes
+          await pollUntilComplete(route.id);
+          message.success({ content: "All routes re-optimized!", key: "reopt_all" });
 
           console.log(
             "[WhatsApp Notification Service] Staged re-optimization triggered successfully. Tracked pre-opt candidates:",
             preOptimizationEtaMap.size
           );
         } catch (err: any) {
-          message.error(
-            err?.message || "Failed to re-optimize. Please try again.",
-          );
+          message.error({ content: err?.message || "Failed to re-optimize. Please try again.", key: "reopt_all" });
         }
       },
     });
-  }, [reOptimize, route.id, route.result?.routes, pendingDeletedJobIds]);
+  }, [reOptimize, route.id, route.result?.routes, pendingDeletedJobIds, pollUntilComplete]);
 
   const getRouteData = (index: number | null) =>
     index !== null ? route.result?.routes?.[index] : null;
@@ -850,10 +902,27 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
 
   return (
     <div className="flex flex-col h-full absolute inset-0">
-      {/* Full-screen loading overlay */}
-      {isOptimizing && (
-        <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center">
-          <Spin size="large" tip="Processing operation..." />
+      {/* Full-screen loading overlay — shown during any async optimization op */}
+      {(isOptimizing || route.status === "processing" || route.status === "queued") && (
+        <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 px-10 py-8 flex flex-col items-center gap-4 min-w-[280px]">
+            <div className="relative">
+              <Spin size="large" />
+              <div className="absolute inset-0 rounded-full animate-ping opacity-20 bg-emerald-400" style={{ animationDuration: "1.5s" }} />
+            </div>
+            <div className="text-center">
+              <div className="font-bold text-gray-900 text-base">Optimizing Routes</div>
+              <div className="text-xs text-gray-500 mt-1">
+                {route.status === "processing" || route.status === "queued"
+                  ? "The routing engine is running in the background. This usually takes 10–60 seconds."
+                  : "Processing your request…"}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-full px-4 py-1.5 font-semibold">
+              <LoadingOutlined spin />
+              <span>Auto-refreshing when complete</span>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1049,6 +1118,9 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                   onSwapDriver={(idx) => setSwapDriverRouteIndex(idx)}
                   onReverseRoute={handleReverseRoute}
                   onReOptimize={handleReOptimize}
+                  onReorderStops={handleReorderStops}
+                  onSaveAndReOptimize={handleSaveAndReOptimize}
+                  onRemoveStop={(rIdx, jId) => handleRemoveJob(rIdx, jId)}
                   focusedRouteIndex={focusedRouteIndex}
                   onFocusRoute={handleFocusRoute}
                   driverSearch={driverSearch}
