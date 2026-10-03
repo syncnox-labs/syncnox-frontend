@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Tag, Button, App, message, Input, InputNumber, TimePicker, DatePicker, Select } from "antd";
 import AddressAutocomplete, { AddressData } from "@/components/AddressAutocomplete";
 import {
@@ -37,6 +37,8 @@ import { formatTime12h } from "@/utils/app.utils";
 import { updateJobStatus, updateJob } from "@/apis/jobs.api";
 import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
+import { useDepotStore } from "@/store/depots.store";
+import { useLocationMappingStore } from "@/store/location-mapping.store";
 
 interface JobDetailsCardProps {
   stopData: any | null;
@@ -46,7 +48,7 @@ interface JobDetailsCardProps {
   leg?: string;
   onClose: () => void;
   onRemoveJob?: () => void;
-  onJobSaved?: (requiresReOptimization: boolean) => void;
+  onJobSaved?: (info: { requiresReOptimization: boolean, timeChanged: boolean, startTime?: string, endTime?: string, oldStartTime?: string, oldEndTime?: string }) => void;
   onEditJob?: (job: Job) => void;
   isFullscreen?: boolean;
 }
@@ -124,9 +126,37 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   const { patchJobLocally, jobs } = useJobsStore();
   const { modal } = App.useApp();
   const { fetchRoutes, selectedStatus } = useRouteStore();
+  const { depots } = useDepotStore();
+  const { locationMappings } = useLocationMappingStore();
   const [isUpdating, setIsUpdating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  const predefinedLocations = useMemo(() => {
+    const opts: { label: string; addressData: AddressData }[] = [];
+    
+    depots.forEach(depot => {
+      opts.push({
+        label: `Depot: ${depot.name}`,
+        addressData: {
+          address_formatted: depot.address?.formatted_address || '',
+          location: { lat: depot.location?.lat || 0, lng: depot.location?.lng || 0 },
+        }
+      });
+    });
+
+    locationMappings.forEach(loc => {
+      opts.push({
+        label: `Location: ${loc.name || loc.address || ''}`,
+        addressData: {
+          address_formatted: loc.address || '',
+          location: { lat: loc.latitude || 0, lng: loc.longitude || 0 },
+        }
+      });
+    });
+
+    return opts;
+  }, [depots, locationMappings]);
 
   if (!stopData && !job) return null;
 
@@ -465,7 +495,14 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
       patchJobLocally(updated);
       setIsEditing(false);
 
-      onJobSaved?.(requiresReOptimization);
+      onJobSaved?.({ 
+        requiresReOptimization, 
+        timeChanged: startHourChanged || endHourChanged || twStartChanged || twEndChanged,
+        startTime: editValues.start_hour || editValues.time_window_start,
+        endTime: editValues.end_hour || editValues.time_window_end,
+        oldStartTime: origStartHour || origTimeWindowStart,
+        oldEndTime: origEndHour || origTimeWindowEnd,
+      });
     } catch (err) {
       console.error("Failed to save job:", err);
       message.error("Failed to save job");
@@ -696,10 +733,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                         value={editValues.pickup_type}
                         onChange={(val) => setEditValues(v => ({ ...v, pickup_type: val }))}
                         options={[
-                          { value: "GO", label: "GO" },
-                          { value: "RETURN", label: "RETURN" },
-                          { value: "BOTH", label: "BOTH" },
-                          { value: "one_way", label: "One Way" },
+                          { value: "one_way", label: "One Way Go" },
                           { value: "return_only", label: "Return Only" },
                           { value: "round_trip", label: "Round Trip" },
                         ]}
@@ -744,6 +778,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                     <AddressAutocomplete
                       value={editValues.pick_up_address}
                       placeholder="Search pickup address"
+                      predefinedOptions={predefinedLocations}
                       onChange={(val) =>
                         setEditValues((v) => ({
                           ...v,
@@ -767,6 +802,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                     <AddressAutocomplete
                       value={editValues.drop_off_address}
                       placeholder="Search dropoff address"
+                      predefinedOptions={predefinedLocations}
                       onChange={(val) =>
                         setEditValues((v) => ({
                           ...v,
@@ -892,6 +928,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                     <AddressAutocomplete
                       value={editValues.address_formatted}
                       placeholder="Search address"
+                      predefinedOptions={predefinedLocations}
                       onChange={(val) =>
                         setEditValues((v) => ({
                           ...v,

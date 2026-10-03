@@ -34,6 +34,8 @@ export const getOptimizationRequest = async (id: number): Promise<Route> => {
 
 export interface UpdateOptimizationRequestPayload {
   route_name?: string;
+  job_ids?: number[];
+  result?: any;
 }
 
 export const updateOptimizationRequest = async (

@@ -204,6 +204,9 @@ export const generateMapMarkers = (
           return rawId && pendingDeletedJobIds?.has(Number(rawId));
         });
 
+      const isNew = Boolean(stop.is_new || group.rawStops.some((s: any) => s.is_new));
+      const isTimeEdited = Boolean(stop.time_edited || group.rawStops.some((s: any) => s.time_edited));
+
       const labelText = count > 1 ? `${displayIndex} (×${count})` : displayIndex.toString();
 
       return {
@@ -236,6 +239,8 @@ export const generateMapMarkers = (
         stopType: stop.stop_type,
         color: color,
         routeIndex: index,
+        isNew: isNew,
+        isTimeEdited: isTimeEdited,
       };
     });
   });
