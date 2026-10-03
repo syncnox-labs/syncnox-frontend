@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 dayjs.extend(customParseFormat);
@@ -58,6 +58,8 @@ import {
   FileText,
   ArrowRightLeft,
 } from "lucide-react";
+import { useDepotStore } from "@/store/depots.store";
+import { useLocationMappingStore } from "@/store/location-mapping.store";
 
 const FormLabel = ({
   icon: IconComponent,
@@ -101,7 +103,35 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
   const [messageApi, contextHolder] = message.useMessage();
   const { isLoading, createJobAction, updateJobAction } = useJobsStore();
   const { teams } = useTeamStore();
+  const { depots } = useDepotStore();
+  const { locationMappings } = useLocationMappingStore();
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
+  
+  const predefinedLocations = useMemo(() => {
+    const opts: { label: string; addressData: AddressData }[] = [];
+    
+    depots.forEach(depot => {
+      opts.push({
+        label: `Depot: ${depot.name}`,
+        addressData: {
+          address_formatted: depot.address?.formatted_address || '',
+          location: { lat: depot.location?.lat || 0, lng: depot.location?.lng || 0 },
+        }
+      });
+    });
+
+    locationMappings.forEach(loc => {
+      opts.push({
+        label: `Location: ${loc.name || loc.address || ''}`,
+        addressData: {
+          address_formatted: loc.address || '',
+          location: { lat: loc.latitude || 0, lng: loc.longitude || 0 },
+        }
+      });
+    });
+
+    return opts;
+  }, [depots, locationMappings]);
 
   const { activeJobTemplate } = useIndexStore();
   const [activeTemplate, setActiveTemplate] = useState<string>(activeJobTemplate || "pickup_delivery_job");
@@ -443,12 +473,9 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                       <Select
                         placeholder={`Select ${getFieldConfig("pickup_type").label}`}
                         options={[
-                          { value: "GO", label: "GO (Pick Up to Plant/Workplace)" },
-                          { value: "RETURN", label: "RETURN (Plant/Workplace to Drop Off)" },
-                          { value: "BOTH", label: "BOTH (Go & Return)" },
-                          { value: "one_way", label: "One Way (Pick Up)" },
-                          { value: "return_only", label: "Return Only (Drop Off)" },
-                          { value: "round_trip", label: "Round Trip (Go & Return)" },
+                          { value: "one_way", label: "One Way Go" },
+                          { value: "return_only", label: "Return Only" },
+                          { value: "round_trip", label: "Round Trip" },
                         ]}
                       />
                     </Form.Item>
@@ -571,6 +598,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                   <AddressAutocomplete
                     value={form.getFieldValue("pick_up_address")}
                     placeholder={`Type to search ${getFieldConfig("pick_up_address").label.toLowerCase()}`}
+                    predefinedOptions={predefinedLocations}
                     onChange={() => {
                       form.setFieldsValue({ pick_up_address: undefined, pick_up_location: undefined });
                     }}
@@ -599,6 +627,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                   <AddressAutocomplete
                     value={form.getFieldValue("drop_off_address")}
                     placeholder={`Type to search ${getFieldConfig("drop_off_address").label.toLowerCase()}`}
+                    predefinedOptions={predefinedLocations}
                     onChange={() => {
                       form.setFieldsValue({ drop_off_address: undefined, drop_off_location: undefined });
                     }}
@@ -610,6 +639,64 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                     }}
                   />
                 </Form.Item>
+              )}
+
+              {/* Candidate Name & Phone */}
+              {(getFieldConfig("candidate_name").isVisible || getFieldConfig("candidate_phone").isVisible) && (
+                <Row gutter={16}>
+                  {getFieldConfig("candidate_name").isVisible && (
+                    <Col span={getFieldConfig("candidate_phone").isVisible ? 12 : 24}>
+                      <Form.Item
+                        label={<FormLabel icon={User} label={getFieldConfig("candidate_name").label} />}
+                        name="candidate_name"
+                        required={getFieldConfig("candidate_name").isRequired}
+                        rules={
+                          getFieldConfig("candidate_name").isRequired
+                            ? [{ required: true, message: `${getFieldConfig("candidate_name").label} is required` }]
+                            : []
+                        }
+                      >
+                        <Input placeholder={getFieldConfig("candidate_name").label} />
+                      </Form.Item>
+                    </Col>
+                  )}
+                  {getFieldConfig("candidate_phone").isVisible && (
+                    <Col span={getFieldConfig("candidate_name").isVisible ? 12 : 24}>
+                      <Form.Item
+                        label={<FormLabel icon={Phone} label={getFieldConfig("candidate_phone").label} />}
+                        name="candidate_phone"
+                        required={getFieldConfig("candidate_phone").isRequired}
+                        rules={
+                          getFieldConfig("candidate_phone").isRequired
+                            ? [{ required: true, message: `${getFieldConfig("candidate_phone").label} is required` }]
+                            : []
+                        }
+                      >
+                        <Input placeholder={getFieldConfig("candidate_phone").label} />
+                      </Form.Item>
+                    </Col>
+                  )}
+                </Row>
+              )}
+
+              {/* Candidate ID */}
+              {getFieldConfig("candidate_id").isVisible && (
+                <Row gutter={16}>
+                  <Col span={24}>
+                    <Form.Item
+                      label={<FormLabel icon={Fingerprint} label={getFieldConfig("candidate_id").label} />}
+                      name="candidate_id"
+                      required={getFieldConfig("candidate_id").isRequired}
+                      rules={
+                        getFieldConfig("candidate_id").isRequired
+                          ? [{ required: true, message: `${getFieldConfig("candidate_id").label} is required` }]
+                          : []
+                      }
+                    >
+                      <Input placeholder={getFieldConfig("candidate_id").label} />
+                    </Form.Item>
+                  </Col>
+                </Row>
               )}
 
               {/* Client Name & Phone */}
@@ -750,6 +837,7 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
                   <AddressAutocomplete
                     value={form.getFieldValue("address_formatted")}
                     placeholder="Type to search address"
+                    predefinedOptions={predefinedLocations}
                     onChange={(value: string) => {
                       form.setFieldsValue({
                         address_formatted: undefined,

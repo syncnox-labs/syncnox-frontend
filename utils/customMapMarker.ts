@@ -17,6 +17,8 @@ export const createCustomMarkerIcon = (
   depotLabel: string = "Depot",
   depotKind?: string,
   stopType?: string,
+  isNew: boolean = false,
+  isTimeEdited: boolean = false
 ): google.maps.Icon => {
   let fillColor = "";
   let strokeColor = "";
@@ -104,20 +106,32 @@ export const createCustomMarkerIcon = (
             <feMergeNode in="SourceGraphic"/>
           </feMerge>
         </filter>
+        ${(isNew || isTimeEdited) ? `
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur"/>
+          <feComponentTransfer in="blur" result="glow">
+            <feFuncA type="linear" slope="1.5"/>
+          </feComponentTransfer>
+          <feMerge>
+            <feMergeNode in="glow"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+        ` : ""}
       </defs>
 
       <!-- Main pin body (teardrop for stops, rounded square for depot) -->
       ${
         isDepot
-          ? `<rect x="2" y="2" width="28" height="28" rx="6" fill="${fillColor}" filter="url(#shadow)"/>
+          ? `<rect x="2" y="2" width="28" height="28" rx="6" fill="${fillColor}" filter="url(#${(isNew || isTimeEdited) ? 'glow' : 'shadow'})"/>
              ${depotIconSvg}
             `
           : `<path 
             d="M16 0C9.4 0 4 5.4 4 12c0 8 12 24 12 24s12-16 12-24c0-6.6-5.4-12-12-12z" 
             fill="${fillColor}"
-            stroke="${strokeColor}"
-            stroke-width="${strokeWidth}"
-            filter="url(#shadow)"
+            stroke="${(isNew || isTimeEdited) ? '#059669' : strokeColor}"
+            stroke-width="${(isNew || isTimeEdited) ? 4 : strokeWidth}"
+            filter="url(#${(isNew || isTimeEdited) ? 'glow' : 'shadow'})"
           />
           
           <!-- Number text -->

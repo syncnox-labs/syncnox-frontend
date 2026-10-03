@@ -1172,10 +1172,19 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               return groupedStops.map((group, groupIndex) => {
                                 const stop = group.representative;
                                 const count = group.candidateCount;
-                                const arrivalTime = dayjs(stop.arrival_time);
+                                
+                                const fallbackArrivalTime = groupIndex > 0
+                                  ? dayjs(groupedStops[groupIndex - 1].representative.arrival_time || startTime.toISOString()).add(30, 'minute')
+                                  : startTime;
+                                  
+                                const arrivalTime = stop.arrival_time
+                                  ? dayjs(stop.arrival_time)
+                                  : fallbackArrivalTime;
                                 
                                 const lastRawStop = group.rawStops[group.rawStops.length - 1];
-                                const lastArrivalTime = dayjs(lastRawStop.arrival_time);
+                                const lastArrivalTime = lastRawStop.arrival_time
+                                  ? dayjs(lastRawStop.arrival_time)
+                                  : arrivalTime;
                                 const totalWaitMinutes = Math.max(0, lastArrivalTime.diff(arrivalTime, "minute"));
 
                                 const baseService = stop.service_duration_minutes || 0;
@@ -1186,8 +1195,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   "minute",
                                 );
 
+                                const computedArrivalTimeString = stop.arrival_time || arrivalTime.toISOString();
+
                                 const left = getPosition(
-                                  stop.arrival_time,
+                                  computedArrivalTimeString,
                                   startTime,
                                   pixelsPerMinute,
                                 );

@@ -16,6 +16,7 @@ import { useAutoSyncTab } from "@/hooks/useAutoSyncTab";
 import { useDispatchSocket } from "@/hooks/useDispatchSocket";
 import { useOnboardingStore } from "@/store/onboarding.store";
 import { OnboardingModal } from "@/components/Onboarding";
+import { useLocationMappingStore } from "@/store/location-mapping.store";
 
 const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
@@ -30,6 +31,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const { initializeDepots } = useDepotStore();
   const { initializeVehicles } = useVehicleStore();
   const { fetchOnboardingStatus, onboarding, hasFetchedStatus } = useOnboardingStore();
+  const { initializeLocationMappings } = useLocationMappingStore();
 
   // Register AG Grid modules on client side only to prevent hydration issues
   useEffect(() => {
@@ -69,8 +71,9 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
       initializeRoutes();
       initializeDepots();
       initializeVehicles();
+      initializeLocationMappings();
     }
-  }, [isSignInPage, initializeJobs, initializeTeams, initializeRoutes, initializeDepots, initializeVehicles]);
+  }, [isSignInPage, initializeJobs, initializeTeams, initializeRoutes, initializeDepots, initializeVehicles, initializeLocationMappings]);
 
   if (isSignInPage) {
     return <>{children}</>;

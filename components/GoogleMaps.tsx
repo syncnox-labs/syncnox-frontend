@@ -387,6 +387,8 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
           depotLabel,
           marker.depotKind,
           marker.stopType,
+          (marker as any).isNew,
+          (marker as any).isTimeEdited,
         );
 
         return (

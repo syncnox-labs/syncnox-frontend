@@ -28,7 +28,9 @@ export interface GeocodedRow {
   geocode_result: GeocodeResult;
   is_duplicate: boolean;
   validation_errors: string[];
+  duplicate_message?: string | null;
 }
+
 
 export interface BulkGeocodeResponse {
   data: GeocodedRow[];

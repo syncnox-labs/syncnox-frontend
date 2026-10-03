@@ -17,12 +17,17 @@ interface AddressAutocompleteProps {
   onChange?: (value: string) => void;
   onSelect?: (addressData: AddressData) => void;
   placeholder?: string;
+  predefinedOptions?: {
+    label: string;
+    addressData: AddressData;
+  }[];
 }
 
 interface PredictionOption {
   value: string;
-  label: string;
-  placeId: string;
+  label: React.ReactNode;
+  placeId?: string;
+  addressData?: AddressData;
 }
 
 /**
@@ -34,6 +39,7 @@ const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
   onChange,
   onSelect,
   placeholder = "Type to search address",
+  predefinedOptions = [],
 }) => {
   const { isLoaded, error } = useGooglePlaces();
   const [options, setOptions] = useState<PredictionOption[]>([]);
@@ -84,54 +90,88 @@ const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
     setSearchValue(searchText);
     onChange?.(searchText);
 
+    // Filter predefined options
+    const matchingPredefined = predefinedOptions
+      .filter((opt) =>
+        !searchText ||
+        opt.label.toLowerCase().includes(searchText.toLowerCase()) ||
+        opt.addressData.address_formatted.toLowerCase().includes(searchText.toLowerCase())
+      )
+      .map((opt, index) => ({
+        value: `predefined_${index}_${opt.label}`,
+        label: (
+          <div className="flex flex-col">
+            <span className="font-semibold text-gray-800">{opt.label}</span>
+            <span className="text-xs text-gray-500">{opt.addressData.address_formatted}</span>
+          </div>
+        ),
+        _addressData: opt.addressData,
+      }));
+
     // Clear previous debounce timer
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
 
     if (!searchText || !autocompleteService.current) {
-      setOptions([]);
+      setOptions(matchingPredefined);
       return;
     }
 
     // Set new debounce timer (200ms delay)
-    // Set new debounce timer (200ms delay)
     debounceTimer.current = setTimeout(() => {
       autocompleteService.current!.getPlacePredictions(
         { input: searchText },
-        handlePredictions
+        (predictions, status) => {
+          if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
+            const googleOptions = predictions.map((prediction) => ({
+              value: prediction.place_id,
+              label: (
+                <div className="flex flex-col">
+                  <span>{prediction.structured_formatting?.main_text || prediction.description}</span>
+                  <span className="text-xs text-gray-500">
+                    {prediction.structured_formatting?.secondary_text || ""}
+                  </span>
+                </div>
+              ),
+              _placeId: prediction.place_id,
+            }));
+            setOptions([...matchingPredefined, ...googleOptions]);
+          } else {
+            setOptions(matchingPredefined);
+          }
+        }
       );
     }, 200);
   };
 
-  const handlePredictions = (
-    predictions: google.maps.places.AutocompletePrediction[] | null,
-    status: google.maps.places.PlacesServiceStatus
-  ) => {
-    if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
-      const newOptions: PredictionOption[] = predictions.map((prediction) => ({
-        value: prediction.description,
-        label: prediction.description,
-        placeId: prediction.place_id,
-      }));
-      setOptions(newOptions);
-    } else {
-      setOptions([]);
-    }
-  };
-
   // Handle address selection
   const handleSelectAddress = (selectedValue: string) => {
-    const selectedOption = options.find((opt) => opt.value === selectedValue);
+    // We are casting it because our state actually holds extra properties
+    const selectedOption = options.find((opt) => opt.value === selectedValue) as any;
 
-    if (!selectedOption || !placesService.current) {
+    if (!selectedOption) {
+      return;
+    }
+
+    isFocusedRef.current = false;
+
+    if (selectedOption._addressData) {
+      setSearchValue(selectedOption._addressData.address_formatted);
+      setConfirmedValue(selectedOption._addressData.address_formatted);
+      onChange?.(selectedOption._addressData.address_formatted);
+      onSelect?.(selectedOption._addressData);
+      return;
+    }
+
+    if (!placesService.current || !selectedOption._placeId) {
       return;
     }
 
     // Get place details to extract coordinates
     placesService.current.getDetails(
       {
-        placeId: selectedOption.placeId,
+        placeId: selectedOption._placeId,
         fields: ["geometry", "formatted_address", "address_components"],
       },
       (place, status) => {
@@ -188,6 +228,9 @@ const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
 
   const handleFocus = () => {
     isFocusedRef.current = true;
+    if (!searchValue) {
+      handleSearch("");
+    }
   };
 
   if (error) {
@@ -198,7 +241,7 @@ const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
     <AutoComplete
       style={{ width: "100%" }}
       value={searchValue}
-      options={options}
+      options={options.map(opt => ({ value: opt.value, label: opt.label }))}
       onSearch={handleSearch}
       onSelect={handleSelectAddress}
       onFocus={handleFocus}
