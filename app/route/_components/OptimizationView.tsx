@@ -1282,12 +1282,17 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                     message.error(err?.message || "Failed to update stop time in route");
                   }
                 } else if (requiresReOptimization) {
+                  await fetchOptimization(route.id);
                   message.info("Job updated. Route parameters changed, please re-optimize when ready.");
                   setHasUnsavedJobEdits(true);
                 } else {
+                  await fetchOptimization(route.id);
                   message.success("Job updated successfully");
                 }
               } else {
+                if (route?.id) {
+                  await fetchOptimization(route.id);
+                }
                 message.success("Job updated successfully");
               }
             }}
@@ -1440,6 +1445,8 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                 } catch (err: any) {
                   message.error(err?.message || "Failed to update stop time in route");
                 }
+              } else if (route?.id) {
+                await fetchOptimization(route.id);
               }
             }
 

@@ -205,7 +205,11 @@ export const generateMapMarkers = (
         });
 
       const isNew = Boolean(stop.is_new || group.rawStops.some((s: any) => s.is_new));
-      const isTimeEdited = Boolean(stop.time_edited || group.rawStops.some((s: any) => s.time_edited));
+      const isTimeEdited = Boolean(
+        stop.time_edited ||
+        stop.is_edited ||
+        group.rawStops.some((s: any) => s.time_edited || s.is_edited)
+      );
 
       const labelText = count > 1 ? `${displayIndex} (×${count})` : displayIndex.toString();
 

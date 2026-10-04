@@ -119,7 +119,7 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
           candidate_name: resolveCandidateName(s) || undefined,
           passenger_count: s.passenger_count || 1,
           is_new: Boolean(s.is_new),
-          time_edited: Boolean(s.time_edited),
+          time_edited: Boolean(s.time_edited || s.is_edited),
           rawStop: s,
           originalIndex: idx,
         });
@@ -240,7 +240,7 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
           candidate_name: resolveCandidateName(s) || undefined,
           passenger_count: s.passenger_count || 1,
           is_new: Boolean(s.is_new),
-          time_edited: Boolean(s.time_edited),
+          time_edited: Boolean(s.time_edited || s.is_edited),
           rawStop: s,
           originalIndex: idx,
         });
