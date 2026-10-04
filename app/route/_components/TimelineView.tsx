@@ -1655,6 +1655,33 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           >
                                             {displayIndex}
                                           </span>
+
+                                          {/* Pickup / Drop-off corner badge */}
+                                          {isPickup ? (
+                                            <div 
+                                              className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 bg-white rounded-full border border-emerald-500 shadow-sm z-20"
+                                              title="Pickup"
+                                            >
+                                              <ArrowDown size={12} strokeWidth={3} className="text-emerald-500" />
+                                            </div>
+                                          ) : isDropoff ? (
+                                            <div 
+                                              className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 bg-white rounded-full border border-blue-500 shadow-sm z-20"
+                                              title="Drop-off"
+                                            >
+                                              <ArrowUp size={12} strokeWidth={3} className="text-blue-500" />
+                                            </div>
+                                          ) : null}
+
+                                          {/* Corner edited indicator */}
+                                          {!isDepot && isStopEdited && !isStopNew && (
+                                            <div 
+                                              className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-full border border-white shadow-xs z-20"
+                                              title="Job edited"
+                                            >
+                                              <ClockCircleOutlined className="text-[7.5px]" />
+                                            </div>
+                                          )}
                                         </div>
                                       </Tooltip>
                                     );
