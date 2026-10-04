@@ -52,8 +52,18 @@ interface ReorderStopsModalProps {
   routeData: any | null;
   jobs?: Job[];
   onClose: () => void;
-  onSave: (routeIndex: number, orderedJobIds: number[]) => Promise<void> | void;
-  onSaveAndReOptimize?: (routeIndex: number, orderedJobIds: number[]) => Promise<void> | void;
+  onSave: (
+    routeIndex: number,
+    orderedJobIds: number[],
+    orderedStopIndices?: number[],
+    orderedStops?: any[]
+  ) => Promise<void> | void;
+  onSaveAndReOptimize?: (
+    routeIndex: number,
+    orderedJobIds: number[],
+    orderedStopIndices?: number[],
+    orderedStops?: any[]
+  ) => Promise<void> | void;
   onRemoveStop?: (routeIndex: number, jobId: number) => Promise<void> | void;
 }
 
@@ -253,9 +263,11 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
   const handleSaveOrder = async () => {
     if (routeIndex === null) return;
     const orderedJobIds = stopsList.map((s) => s.job_id);
+    const orderedStopIndices = stopsList.map((s) => s.originalIndex);
+    const orderedStops = stopsList.map((s) => ({ job_id: s.job_id, stop_type: s.stop_type }));
     try {
       setIsSaving(true);
-      await onSave(routeIndex, orderedJobIds);
+      await onSave(routeIndex, orderedJobIds, orderedStopIndices, orderedStops);
       onClose();
     } catch (err: any) {
       // Error handled by parent
@@ -267,9 +279,11 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
   const handleSaveAndReoptimize = async () => {
     if (routeIndex === null || !onSaveAndReOptimize) return;
     const orderedJobIds = stopsList.map((s) => s.job_id);
+    const orderedStopIndices = stopsList.map((s) => s.originalIndex);
+    const orderedStops = stopsList.map((s) => ({ job_id: s.job_id, stop_type: s.stop_type }));
     try {
       setIsReoptimizing(true);
-      await onSaveAndReOptimize(routeIndex, orderedJobIds);
+      await onSaveAndReOptimize(routeIndex, orderedJobIds, orderedStopIndices, orderedStops);
       onClose();
     } catch (err: any) {
       // Error handled by parent

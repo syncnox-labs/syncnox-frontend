@@ -120,6 +120,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
   const [editJobData, setEditJobData] = useState<Job | null>(null);
   const [pendingDeletedJobIds, setPendingDeletedJobIds] = useState<Set<number>>(new Set());
   const [isAddJobOpen, setIsAddJobOpen] = useState(false);
+  const [reorderingRouteIndex, setReorderingRouteIndex] = useState<number | null>(null);
 
   // Undo Stack (up to 5 ops)
   const [undoStack, setUndoStack] = useState<Array<{ label: string; action: () => Promise<void> }>>([]);
@@ -685,19 +686,82 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
   );
 
   const handleReorderStops = useCallback(
-    async (routeIndex: number, orderedJobIds: number[]) => {
-      const originalOrder = route.result?.routes?.[routeIndex]?.stops
-        ?.filter((s: any) => s.job_id)
+    async (
+      routeIndex: number,
+      orderedJobIds: number[],
+      orderedStopIndices?: number[],
+      orderedStops?: any[],
+    ) => {
+      const originalStops = route.result?.routes?.[routeIndex]?.stops || [];
+      const originalOrder = originalStops
+        .filter((s: any) => s.job_id)
         .map((s: any) => s.job_id) || [];
-        
+      const originalIndices = originalStops
+        .map((s: any, idx: number) => ({ s, idx }))
+        .filter(({ s }: any) => s.job_id && s.stop_type !== "depot_start" && s.stop_type !== "depot_end")
+        .map(({ idx }: any) => idx);
+
+      const originalSnapshot = route;
+
+      // ── Instant Optimistic Update ─────────────────────────────────────────
+      // Immediately reflect the new stop sequence so the UI updates with 0 latency!
+      if (orderedStopIndices && orderedStopIndices.length > 0 && route.result?.routes) {
+        try {
+          const targetRoute = route.result.routes[routeIndex];
+          if (targetRoute && targetRoute.stops) {
+            const depotStart = targetRoute.stops.find(
+              (s: any) => s.stop_type === "depot_start" || (s.stop_type === "depot" && s === targetRoute.stops[0])
+            );
+            const lastStop = targetRoute.stops[targetRoute.stops.length - 1];
+            const depotEnd = targetRoute.stops.length > 1 && (lastStop.stop_type === "depot_end" || lastStop.stop_type === "depot")
+              ? lastStop
+              : null;
+
+            const reorderedStops = [
+              ...(depotStart ? [depotStart] : []),
+              ...orderedStopIndices.map((idx) => targetRoute.stops[idx]).filter(Boolean),
+              ...(depotEnd ? [depotEnd] : []),
+            ];
+
+            const updatedRoutes = [...route.result.routes];
+            updatedRoutes[routeIndex] = {
+              ...targetRoute,
+              stops: reorderedStops,
+            };
+
+            const updatedResult = {
+              ...route.result,
+              routes: updatedRoutes,
+            };
+
+            useOptimizationStore.setState({
+              currentOptimization: {
+                ...route,
+                result: updatedResult,
+              },
+            });
+          }
+        } catch (e) {
+          console.warn("Optimistic update error:", e);
+        }
+      }
+
+      setReorderingRouteIndex(routeIndex);
+
       try {
-        const res = await reorderRouteStops(route.id, routeIndex, orderedJobIds);
+        const res = await reorderRouteStops(
+          route.id,
+          routeIndex,
+          orderedJobIds,
+          orderedStopIndices,
+          orderedStops,
+        );
         if (res.success) {
           message.success(res.message || "Stops reordered successfully!");
           setHasUnsavedJobEdits(true);
           
           pushUndo("Reorder Stops", async () => {
-            await reorderRouteStops(route.id, routeIndex, originalOrder);
+            await reorderRouteStops(route.id, routeIndex, originalOrder, originalIndices);
             await fetchOptimization(route.id);
             setHasUnsavedJobEdits(true);
           });
@@ -705,47 +769,84 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
           await fetchOptimization(route.id);
         }
       } catch (error: any) {
+        // Rollback optimistic update on failure
+        useOptimizationStore.setState({
+          currentOptimization: originalSnapshot,
+        });
         message.error(
           error?.response?.data?.detail || "Failed to reorder stops",
         );
+      } finally {
+        setReorderingRouteIndex(null);
       }
     },
-    [route.id, route.result, fetchOptimization, pushUndo],
+    [route, fetchOptimization, pushUndo],
   );
 
   const handleSaveAndReOptimize = useCallback(
-    async (routeIndex: number, orderedJobIds: number[]) => {
-      const originalOrder = route.result?.routes?.[routeIndex]?.stops
-        ?.filter((s: any) => s.job_id)
+    async (
+      routeIndex: number,
+      orderedJobIds: number[],
+      orderedStopIndices?: number[],
+      orderedStops?: any[],
+    ) => {
+      const driverName =
+        route.result?.routes?.[routeIndex]?.team_member_name || "Driver";
+      const originalStops = route.result?.routes?.[routeIndex]?.stops || [];
+      const originalOrder = originalStops
+        .filter((s: any) => s.job_id)
         .map((s: any) => s.job_id) || [];
+      const originalIndices = originalStops
+        .map((s: any, idx: number) => ({ s, idx }))
+        .filter(({ s }: any) => s.job_id && s.stop_type !== "depot_start" && s.stop_type !== "depot_end")
+        .map(({ idx }: any) => idx);
         
       try {
-        // Step 1: Save the new stop order
-        await reorderRouteStops(route.id, routeIndex, orderedJobIds);
-        // Step 2: Queue async re-optimization for this route
-        setOptimizationResult("processing");
-        const res = await reOptimizeRoute(route.id, routeIndex);
+        message.loading({ content: "Saving stop order…", key: "save_reopt", duration: 0 });
+        // Save the new stop order and recalculate ETAs & polylines
+        const res = await reorderRouteStops(
+          route.id,
+          routeIndex,
+          orderedJobIds,
+          orderedStopIndices,
+          orderedStops,
+        );
         if (res.success) {
-          message.loading({ content: "Re-optimization queued. Waiting for result…", key: "save_reopt", duration: 0 });
-          setHasUnsavedJobEdits(false);
-          
           pushUndo("Save and Re-optimize Route", async () => {
-             // For undoing re-optimization, we can at least restore the old stop order.
-             // (Wait, re-optimization might have changed ETAs which reorder alone won't restore completely without a full rollback, but it's the best inverse we have).
-             await reorderRouteStops(route.id, routeIndex, originalOrder);
+             await reorderRouteStops(route.id, routeIndex, originalOrder, originalIndices);
              await fetchOptimization(route.id);
           });
 
-          // Step 3: Poll until the async worker finishes
-          await pollUntilComplete(route.id);
-          message.success({ content: "Route reordered and re-optimized!", key: "save_reopt" });
+          // Perform bulk delete for staged deletions if any
+          if (pendingDeletedJobIds.size > 0) {
+            const deletePromises = Array.from(pendingDeletedJobIds).map((jobId) =>
+              apiClient.delete(`/jobs/${jobId}`)
+            );
+            await Promise.all(deletePromises);
+          }
+
+          setOptimizationResult("processing");
+          const reoptRes = await reOptimizeRoute(route.id, routeIndex);
+          if (reoptRes.success) {
+            message.loading({ content: `Re-optimizing ${driverName}'s route…`, key: "save_reopt", duration: 0 });
+            setPendingDeletedJobIds(new Set());
+            setHasUnsavedJobEdits(false);
+            await pollUntilComplete(route.id);
+            message.success({ content: `${driverName}'s route re-optimized successfully!`, key: "save_reopt" });
+          } else {
+            await fetchOptimization(route.id);
+            message.success({ content: "Stop order saved!", key: "save_reopt" });
+          }
         }
       } catch (error: any) {
-        message.error({ content: error?.response?.data?.detail || error?.message || "Failed to reorder and re-optimize route", key: "save_reopt" });
-        setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to re-optimize route");
+        message.error({
+          content: error?.response?.data?.detail || error?.message || "Failed to save & reoptimize route",
+          key: "save_reopt",
+        });
+        setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to reoptimize route");
       }
     },
-    [route.id, route.result, setOptimizationResult, pollUntilComplete, pushUndo],
+    [route.id, route.result, fetchOptimization, pushUndo, setOptimizationResult, pendingDeletedJobIds, pollUntilComplete],
   );
 
   const handleReverseRoute = useCallback(
@@ -1233,6 +1334,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                   pendingDeletedJobIds={pendingDeletedJobIds}
                   onDeleteJob={handleStageDeleteJob}
                   onUndoDeleteJob={handleUndoStageDeleteJob}
+                  reorderingRouteIndex={reorderingRouteIndex}
                 />
               </div>
             </div>

@@ -102,15 +102,21 @@ export const removeStopFromRoute = async (
   return response.data;
 };
 
-/** Manually reorder stops in a route via drag-and-drop (synchronous) */
+/** Manually reorder stops in a route via drag-and-drop or modal (synchronous) */
 export const reorderRouteStops = async (
   optimizationId: number,
   routeIndex: number,
-  orderedJobIds: number[],
+  orderedJobIds?: number[],
+  orderedStopIndices?: number[],
+  orderedStops?: any[],
 ): Promise<RouteOperationResponse> => {
+  const payload: any = {};
+  if (orderedJobIds && orderedJobIds.length > 0) payload.ordered_job_ids = orderedJobIds;
+  if (orderedStopIndices && orderedStopIndices.length > 0) payload.ordered_stop_indices = orderedStopIndices;
+  if (orderedStops && orderedStops.length > 0) payload.ordered_stops = orderedStops;
   const response = await apiClient.put(
     `optimization/requests/${optimizationId}/routes/${routeIndex}/reorder`,
-    { ordered_job_ids: orderedJobIds },
+    payload,
   );
   return response.data;
 };
