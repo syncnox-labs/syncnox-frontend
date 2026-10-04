@@ -8,6 +8,9 @@ interface AddJobsModalProps {
   onCancel?: () => void;
   /** Optional: called with the created Job after successful submission */
   onJobCreated?: (job: Job) => void;
+  defaultTemplate?: string;
+  defaultDate?: string;
+  defaultJobType?: string;
 }
 
 const AddJobsModal = ({
@@ -15,6 +18,9 @@ const AddJobsModal = ({
   setOpen,
   onCancel,
   onJobCreated,
+  defaultTemplate,
+  defaultDate,
+  defaultJobType,
 }: AddJobsModalProps) => {
   const handleClose = () => {
     if (setOpen) setOpen(false);
@@ -33,11 +39,14 @@ const AddJobsModal = ({
     >
       <div style={{ height: "100%" }}>
         <JobForm
+          defaultTemplate={defaultTemplate as any}
+          defaultDate={defaultDate}
+          defaultJobType={defaultJobType}
           onSubmit={(job) => {
-            handleClose();
             if (job && onJobCreated) {
               onJobCreated(job);
             }
+            handleClose();
           }}
         />
       </div>

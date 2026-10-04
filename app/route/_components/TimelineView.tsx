@@ -300,6 +300,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     e.stopPropagation();
   };
 
+  const [isReordering, setIsReordering] = useState(false);
+
   const handleTimelineStopDrop = async (
     e: React.DragEvent,
     routeIndex: number,
@@ -346,8 +348,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     setDraggedStopInfo(null);
     setDragOverStopInfo(null);
 
-    if (onReorderStops) {
-      await onReorderStops(routeIndex, updatedJobIds);
+    if (isReordering) return;
+    setIsReordering(true);
+    try {
+      if (onReorderStops) {
+        await onReorderStops(routeIndex, updatedJobIds);
+      }
+    } finally {
+      setIsReordering(false);
     }
   };
 
@@ -1500,15 +1508,15 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                                     </span>
                                                   )}
                                                 </div>
-                                                {!isFinished && onDeleteJob && numJobId && (
+                                                {!isFinished && onRemoveStop && numJobId && (
                                                   <button
                                                     type="button"
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      onDeleteJob(numJobId);
+                                                      onRemoveStop(routeIndex, numJobId);
                                                     }}
                                                     className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors border-none bg-transparent flex items-center shrink-0 cursor-pointer opacity-80 group-hover/jobrow:opacity-100"
-                                                    title="Stage job for deletion"
+                                                    title="Remove job from route"
                                                   >
                                                     <DeleteOutlined className="text-xs" />
                                                   </button>

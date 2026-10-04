@@ -97,9 +97,18 @@ const parseDateToDayjs = (dateVal: any) => {
 interface JobFormProps {
   initialData?: Job | null;
   onSubmit?: (job?: Job) => void;
+  defaultTemplate?: string;
+  defaultDate?: string | dayjs.Dayjs;
+  defaultJobType?: string;
 }
 
-const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
+const JobForm = ({
+  initialData = null,
+  onSubmit,
+  defaultTemplate,
+  defaultDate,
+  defaultJobType,
+}: JobFormProps) => {
   const [messageApi, contextHolder] = message.useMessage();
   const { isLoading, createJobAction, updateJobAction } = useJobsStore();
   const { teams } = useTeamStore();
@@ -134,13 +143,13 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
   }, [depots, locationMappings]);
 
   const { activeJobTemplate } = useIndexStore();
-  const [activeTemplate, setActiveTemplate] = useState<string>(activeJobTemplate || "pickup_delivery_job");
+  const [activeTemplate, setActiveTemplate] = useState<string>(defaultTemplate || activeJobTemplate || "pickup_delivery_job");
 
   useEffect(() => {
-    if (!initialData && activeJobTemplate) {
-      setActiveTemplate(activeJobTemplate);
+    if (!initialData && (defaultTemplate || activeJobTemplate)) {
+      setActiveTemplate(defaultTemplate || activeJobTemplate || "pickup_delivery_job");
     }
-  }, [activeJobTemplate, initialData]);
+  }, [activeJobTemplate, initialData, defaultTemplate]);
 
   const { getFieldConfig, customFields: customFieldDefs } = useFieldConfig("job", activeTemplate);
 
@@ -149,7 +158,9 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
   useEffect(() => {
     if (!initialData) {
       const currentJobType = form.getFieldValue("job_type");
-      if (activeTemplate === "worker_shuttle") {
+      if (defaultJobType) {
+        form.setFieldsValue({ job_type: defaultJobType });
+      } else if (activeTemplate === "worker_shuttle") {
         if (!currentJobType || currentJobType === "pickup" || currentJobType === "round_trip") {
           form.setFieldsValue({ job_type: "one_way" });
         }
@@ -158,8 +169,13 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
           form.setFieldsValue({ job_type: "pickup" });
         }
       }
+      if (defaultDate) {
+        form.setFieldsValue({
+          scheduled_date: dayjs.isDayjs(defaultDate) ? defaultDate : dayjs(defaultDate),
+        });
+      }
     }
-  }, [activeTemplate, initialData, form]);
+  }, [activeTemplate, initialData, form, defaultDate, defaultJobType]);
 
   const onFinish = async (values: any) => {
     // Transform the form values to match API requirements
@@ -355,11 +371,13 @@ const JobForm = ({ initialData = null, onSubmit }: JobFormProps) => {
           layout="vertical"
           onFinish={onFinish}
           initialValues={{
-            scheduled_date: dayjs(),
+            scheduled_date: defaultDate
+              ? (dayjs.isDayjs(defaultDate) ? defaultDate : dayjs(defaultDate))
+              : dayjs(),
             priority_level: "medium",
             recurrence_type: "one_time",
             payment_status: "paid",
-            job_type: activeTemplate === "worker_shuttle" ? "one_way" : "pickup",
+            job_type: defaultJobType || (activeTemplate === "worker_shuttle" ? "one_way" : "pickup"),
             service_duration: 5,
             reach_before_minutes: activeTemplate === "worker_shuttle" ? 10 : undefined,
           }}
