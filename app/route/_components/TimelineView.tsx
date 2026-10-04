@@ -27,12 +27,14 @@ import {
   LockOutlined,
   MenuOutlined,
   LoadingOutlined,
+  CheckOutlined,
 } from "@ant-design/icons";
 import {
   GripVertical,
   Sparkles as SparklesIcon,
 } from "lucide-react";
 import ReorderStopsModal from "./ReorderStopsModal";
+import TransferStopsModal from "./TransferStopsModal";
 import {
   calculateTimeRange,
   generateTimeMarkers,
@@ -142,6 +144,13 @@ interface TimelineViewProps {
   onDeleteJob?: (jobId: number) => void;
   onUndoDeleteJob?: (jobId: number) => void;
   reorderingRouteIndex?: number | null;
+  onTransferStops?: (
+    sourceRouteIndex: number,
+    targetRouteIndex: number,
+    jobIds: number[],
+    targetPosition?: number,
+    reoptimize?: boolean,
+  ) => Promise<void> | void;
 }
 
 const INTERVAL_OPTIONS = [
@@ -250,12 +259,20 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   onDeleteJob,
   onUndoDeleteJob,
   reorderingRouteIndex = null,
+  onTransferStops,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [intervalMinutes, setIntervalMinutes] = useState(30);
 
   // Dedicated Reorder Modal state
   const [reorderModalRouteIndex, setReorderModalRouteIndex] = useState<number | null>(null);
+
+  // Dedicated Transfer Modal state
+  const [transferModalRouteIndex, setTransferModalRouteIndex] = useState<number | null>(null);
+
+  // Multi-stop selection state on timeline
+  const [selectedStopJobIds, setSelectedStopJobIds] = useState<Set<number>>(new Set());
+  const [selectionSourceRouteIndex, setSelectionSourceRouteIndex] = useState<number | null>(null);
 
   // Direct Timeline Drag and Drop state
   const [draggedStopInfo, setDraggedStopInfo] = useState<{
@@ -474,7 +491,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     e: React.DragEvent,
     routeIndex: number
   ) => {
-    if (!draggedStopInfo || draggedStopInfo.routeIndex !== routeIndex) {
+    if (!draggedStopInfo) {
       return;
     }
     e.preventDefault();
@@ -482,12 +499,31 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     e.dataTransfer.dropEffect = "move";
 
     const routeData = routeDataMap.get(routeIndex);
-    if (!routeData || routeData.nonDepotGroups.length === 0) return;
+    if (!routeData) return;
 
     const trackRect = e.currentTarget.getBoundingClientRect();
     const mouseX = e.clientX - trackRect.left;
 
     const nonDepotGroups = routeData.nonDepotGroups;
+    if (nonDepotGroups.length === 0) {
+      dragOverSlotRef.current = {
+        routeIndex,
+        targetFirstRawIndex: 0,
+        side: "after",
+        indicatorX: Math.max(20, mouseX),
+      };
+      setDragOverStopInfo({
+        routeIndex,
+        targetFirstRawIndex: 0,
+        targetRawIndices: [0],
+        side: "after",
+        indicatorX: Math.max(20, mouseX),
+        targetStopIndex: 1,
+        targetName: routes[routeIndex]?.team_member_name || "Driver",
+      });
+      return;
+    }
+
     let closestGroup = nonDepotGroups[0];
     let minDistance = Infinity;
     let targetSide: "before" | "after" = "before";
@@ -521,7 +557,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       runningStopCounter++;
     }
 
-    if (draggedStopInfo.rawIndices.includes(closestGroup.firstRawIndex)) {
+    if (
+      draggedStopInfo.routeIndex === routeIndex &&
+      draggedStopInfo.rawIndices.includes(closestGroup.firstRawIndex)
+    ) {
       if (dragOverSlotRef.current) {
         dragOverSlotRef.current = null;
         setDragOverStopInfo(null);
@@ -576,7 +615,26 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     e.stopPropagation();
 
     const currentSlot = dragOverSlotRef.current;
-    if (!draggedStopInfo || !currentSlot || draggedStopInfo.routeIndex !== routeIndex) {
+    if (!draggedStopInfo || !currentSlot) {
+      dragOverSlotRef.current = null;
+      setDraggedStopInfo(null);
+      setDragOverStopInfo(null);
+      return;
+    }
+
+    // ── Cross-Driver Drop (Transfer Stop to Another Driver) ───────────────
+    if (draggedStopInfo.routeIndex !== routeIndex) {
+      const jobsToTransfer =
+        selectedStopJobIds.has(draggedStopInfo.jobId!) &&
+        selectionSourceRouteIndex === draggedStopInfo.routeIndex
+          ? Array.from(selectedStopJobIds)
+          : draggedStopInfo.jobId ? [draggedStopInfo.jobId] : [];
+
+      if (jobsToTransfer.length > 0 && onTransferStops) {
+        await onTransferStops(draggedStopInfo.routeIndex, routeIndex, jobsToTransfer);
+      }
+      setSelectedStopJobIds(new Set());
+      setSelectionSourceRouteIndex(null);
       dragOverSlotRef.current = null;
       setDraggedStopInfo(null);
       setDragOverStopInfo(null);
@@ -783,29 +841,38 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
   const getRouteMenuItems = (routeIndex: number): MenuProps["items"] => [
     {
-      key: "reorder-stops",
-      icon: <MenuOutlined />,
-      label: "Reorder Stops (Drag & Drop)",
-      onClick: () => setReorderModalRouteIndex(routeIndex),
-    },
-    {
       key: "add-stop",
       icon: <PlusOutlined />,
       label: "Add Job",
       onClick: () => onAddStop?.(routeIndex),
     },
     {
-      key: "swap-driver",
+      key: "transfer-stops",
       icon: <SwapOutlined />,
-      label: "Swap Route with Driver",
-      onClick: () => onSwapDriver?.(routeIndex),
+      label: "Transfer Stops to Driver...",
+      onClick: () => {
+        setSelectionSourceRouteIndex(routeIndex);
+        setTransferModalRouteIndex(routeIndex);
+      },
     },
     {
-      key: "reverse-route",
-      icon: <RetweetOutlined />,
-      label: "Reverse Route Order",
-      onClick: () => onReverseRoute?.(routeIndex),
+      key: "reorder-stops",
+      icon: <MenuOutlined />,
+      label: "Reorder Stops (Drag & Drop)",
+      onClick: () => setReorderModalRouteIndex(routeIndex),
     },
+    // {
+    //   key: "swap-driver",
+    //   icon: <SwapOutlined />,
+    //   label: "Swap Route with Driver",
+    //   onClick: () => onSwapDriver?.(routeIndex),
+    // },
+    // {
+    //   key: "reverse-route",
+    //   icon: <RetweetOutlined />,
+    //   label: "Reverse Route Order",
+    //   onClick: () => onReverseRoute?.(routeIndex),
+    // },
     { type: "divider" as const },
     {
       key: "re-optimize",
@@ -1111,8 +1178,22 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                           </span>
                         </div>
 
+                        {/* Quick Transfer Button */}
+                        {/* <Tooltip title="Transfer stops to another driver">
+                          <div
+                            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer transition-colors text-gray-400 shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectionSourceRouteIndex(primaryIndex);
+                              setTransferModalRouteIndex(primaryIndex);
+                            }}
+                          >
+                            <SwapOutlined className="text-xs" />
+                          </div>
+                        </Tooltip> */}
+
                         {/* Quick Reorder Button */}
-                        <Tooltip title="Reorder stops (Drag & Drop)">
+                        {/* <Tooltip title="Reorder stops (Drag & Drop)">
                           <div
                             className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer transition-colors text-gray-400 shrink-0"
                             onClick={(e) => {
@@ -1122,7 +1203,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                           >
                             <MenuOutlined className="text-xs" />
                           </div>
-                        </Tooltip>
+                        </Tooltip> */}
 
                         {/* ••• Menu */}
                         <Dropdown
@@ -1837,6 +1918,41 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     });
 
                                   const firstJobId = group.rawStops[0]?.job_id ? Number(group.rawStops[0].job_id) : null;
+                                  const isStopSelected = Boolean(
+                                    firstJobId &&
+                                    selectedStopJobIds.has(firstJobId) &&
+                                    selectionSourceRouteIndex === routeIndex
+                                  );
+
+                                  const handleStopItemClick = (e: React.MouseEvent) => {
+                                    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+                                      e.stopPropagation();
+                                      if (firstJobId) {
+                                        if (selectionSourceRouteIndex !== null && selectionSourceRouteIndex !== routeIndex) {
+                                          setSelectionSourceRouteIndex(routeIndex);
+                                          setSelectedStopJobIds(new Set([firstJobId]));
+                                        } else {
+                                          setSelectionSourceRouteIndex(routeIndex);
+                                          setSelectedStopJobIds((prev) => {
+                                            const next = new Set(prev);
+                                            if (next.has(firstJobId)) {
+                                              next.delete(firstJobId);
+                                              if (next.size === 0) setSelectionSourceRouteIndex(null);
+                                            } else {
+                                              next.add(firstJobId);
+                                            }
+                                            return next;
+                                          });
+                                        }
+                                      }
+                                      return;
+                                    }
+                                    onStopClick?.(
+                                      group.rawStops[0],
+                                      routeIndex,
+                                      displayIndex,
+                                    );
+                                  };
                                   const groupRawIndices = group.rawStops.map((_, i) => group.firstRawIndex + i);
                                   const isDraggingThis = Boolean(
                                     draggedStopInfo &&
@@ -1878,35 +1994,44 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           } ${
                                             isStopNew ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg" : isStopEdited ? "ring-2 ring-purple-500 ring-offset-1 shadow-lg" : ""
                                           } ${
+                                            isStopSelected
+                                              ? "ring-2 ring-emerald-500 ring-offset-2 scale-105 z-30 shadow-lg"
+                                              : isStopNew
+                                              ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg"
+                                              : isStopEdited
+                                              ? "ring-2 ring-purple-500 ring-offset-1 shadow-lg"
+                                              : ""
+                                          } ${
                                             isGroupPendingDelete ? "opacity-35 border-dashed border-red-500 bg-red-100" : ""
                                           }`}
                                           style={{
                                             left: left,
                                             width: Math.max(blockWidth, 28),
                                             backgroundColor: isGroupPendingDelete ? undefined : blockBgColor,
-                                            borderColor: isGroupPendingDelete ? undefined : isStopNew ? "#059669" : isStopEdited ? "#9333ea" : blockBorderColor,
+                                            borderColor: isGroupPendingDelete ? undefined : isStopSelected || isStopNew ? "#059669" : isStopEdited ? "#9333ea" : blockBorderColor,
                                             opacity: isDimmed ? 0.4 : isDraggingThis ? 0.3 : 1,
                                           }}
-                                          onClick={() =>
-                                            onStopClick?.(
-                                              group.rawStops[0],
-                                              routeIndex,
-                                              displayIndex,
-                                            )
-                                          }
-                                          title={!isDepot ? "Drag to reorder stop" : undefined}
+                                          onClick={handleStopItemClick}
+                                          title={!isDepot ? "Drag to reorder stop / Shift+Click to select" : undefined}
                                         >
 
+                                          {/* Selected Check Badge */}
+                                          {isStopSelected && (
+                                            <div className="absolute -top-2.5 -left-2.5 w-5 h-5 bg-[#003220] text-white rounded-none flex items-center justify-center shadow-md z-30 pointer-events-none">
+                                              <CheckOutlined className="text-[10px] font-black" />
+                                            </div>
+                                          )}
+
                                           {/* Newly Added Job Badge */}
-                                          {isStopNew && (
-                                            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-emerald-600 text-white text-[8px] font-black uppercase rounded shadow-xs flex items-center gap-0.5 tracking-tight animate-bounce z-30 select-none pointer-events-none whitespace-nowrap">
+                                          {isStopNew && !isStopSelected && (
+                                            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-[#003220] text-white text-[8px] font-black uppercase rounded-none shadow-xs flex items-center gap-0.5 tracking-tight animate-bounce z-30 select-none pointer-events-none whitespace-nowrap">
                                               <SparklesIcon size={8} /> NEW
                                             </div>
                                           )}
 
                                           {/* Edited Job Badge */}
-                                          {!isStopNew && isStopEdited && (
-                                            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded shadow-xs flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
+                                          {!isStopNew && isStopEdited && !isStopSelected && (
+                                            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded-none shadow-xs flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
                                               <ClockCircleOutlined className="text-[8px]" /> EDITED
                                             </div>
                                           )}
@@ -1921,14 +2046,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           {/* Pickup / Drop-off corner badge */}
                                           {isPickup ? (
                                             <div 
-                                              className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 bg-white rounded-full border border-emerald-500 shadow-sm z-20"
+                                              className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 bg-white rounded-none border border-emerald-500 shadow-sm z-20"
                                               title="Pickup"
                                             >
                                               <ArrowDown size={12} strokeWidth={3} className="text-emerald-500" />
                                             </div>
                                           ) : isDropoff ? (
                                             <div 
-                                              className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 bg-white rounded-full border border-blue-500 shadow-sm z-20"
+                                              className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 bg-white rounded-none border border-blue-500 shadow-sm z-20"
                                               title="Drop-off"
                                             >
                                               <ArrowUp size={12} strokeWidth={3} className="text-blue-500" />
@@ -1938,7 +2063,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           {/* Corner edited indicator */}
                                           {!isDepot && isStopEdited && !isStopNew && (
                                             <div 
-                                              className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-full border border-white shadow-xs z-20"
+                                              className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-none border border-white shadow-xs z-20"
                                               title="Job edited"
                                             >
                                               <ClockCircleOutlined className="text-[7.5px]" />
@@ -1975,7 +2100,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         } ${
                                           isDropTarget ? "ring-2 ring-emerald-400 ring-offset-1" : ""
                                         } ${
-                                          isStopNew ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg" : isStopEdited ? "ring-2 ring-purple-500 ring-offset-1 shadow-lg" : ""
+                                          isStopSelected
+                                            ? "ring-2 ring-emerald-500 ring-offset-2 scale-105 z-30 shadow-lg"
+                                            : isStopNew
+                                            ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg"
+                                            : isStopEdited
+                                            ? "ring-2 ring-purple-500 ring-offset-1 shadow-lg"
+                                            : ""
                                         } ${
                                           isGroupPendingDelete
                                             ? "opacity-35 border-dashed border-red-500 bg-red-100"
@@ -1988,32 +2119,33 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             : "#ffffff",
                                           borderColor: isGroupPendingDelete
                                             ? undefined
-                                            : isStopNew
+                                            : isStopSelected || isStopNew
                                             ? "#059669"
                                             : isStopEdited
                                             ? "#9333ea"
                                             : blockBorderColor,
                                           opacity: isDimmed ? 0.4 : isDraggingThis ? 0.3 : 1,
                                         }}
-                                        onClick={() =>
-                                          onStopClick?.(
-                                            group.rawStops[0],
-                                            routeIndex,
-                                            displayIndex,
-                                          )
-                                        }
-                                        title={!isDepot ? "Drag to reorder stop" : undefined}
+                                        onClick={handleStopItemClick}
+                                        title={!isDepot ? "Drag to reorder stop / Shift+Click to select" : undefined}
                                       >
 
+                                        {/* Selected Check Badge */}
+                                        {isStopSelected && (
+                                          <div className="absolute -top-2.5 -left-2.5 w-5 h-5 bg-emerald-600 text-white rounded-full flex items-center justify-center shadow-md z-30 pointer-events-none">
+                                            <CheckOutlined className="text-[10px] font-black" />
+                                          </div>
+                                        )}
+
                                         {/* Newly Added Job Badge */}
-                                        {isStopNew && !isDepot && (
+                                        {isStopNew && !isDepot && !isStopSelected && (
                                           <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-emerald-600 text-white text-[8px] font-black uppercase rounded shadow-xs flex items-center gap-0.5 tracking-tight animate-bounce z-30 select-none pointer-events-none whitespace-nowrap">
                                             <SparklesIcon size={8} /> NEW
                                           </div>
                                         )}
 
                                         {/* Edited Job Badge */}
-                                        {!isStopNew && isStopEdited && !isDepot && (
+                                        {!isStopNew && isStopEdited && !isDepot && !isStopSelected && (
                                           <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded shadow-xs flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
                                             <ClockCircleOutlined className="text-[8px]" /> EDITED
                                           </div>
@@ -2092,6 +2224,67 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         onSaveAndReOptimize={onSaveAndReOptimize}
         onRemoveStop={onRemoveStop}
       />
+
+      {/* Transfer Stops Dedicated Modal */}
+      <TransferStopsModal
+        open={transferModalRouteIndex !== null}
+        sourceRouteIndex={transferModalRouteIndex}
+        routes={routes}
+        jobs={jobs}
+        initialSelectedJobIds={
+          selectionSourceRouteIndex === transferModalRouteIndex
+            ? Array.from(selectedStopJobIds)
+            : []
+        }
+        onClose={() => {
+          setTransferModalRouteIndex(null);
+          setSelectedStopJobIds(new Set());
+          setSelectionSourceRouteIndex(null);
+        }}
+        onTransfer={async (srcIdx, tgtIdx, jobIds, pos, reopt) => {
+          if (onTransferStops) {
+            await onTransferStops(srcIdx, tgtIdx, jobIds, pos, reopt);
+          }
+          setSelectedStopJobIds(new Set());
+          setSelectionSourceRouteIndex(null);
+        }}
+      />
+
+      {/* Floating Bulk Action Bar when Stops are Selected on Timeline */}
+      {selectedStopJobIds.size > 0 && selectionSourceRouteIndex !== null && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#003220] text-white px-5 py-3 rounded-none shadow-2xl border border-emerald-800 flex items-center gap-4 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-none bg-emerald-400 animate-pulse" />
+            <span className="text-xs font-bold text-white">
+              {selectedStopJobIds.size} Job(s) Selected
+            </span>
+            <span className="text-[11px] text-emerald-200">
+              from {routes[selectionSourceRouteIndex]?.team_member_name || `Driver #${selectionSourceRouteIndex + 1}`}
+            </span>
+          </div>
+
+          <div className="h-4 w-px bg-emerald-800" />
+
+          <button
+            type="button"
+            onClick={() => setTransferModalRouteIndex(selectionSourceRouteIndex)}
+            className="px-3 py-1.5 bg-white text-[#003220] hover:bg-emerald-50 text-xs font-bold rounded-none border-none cursor-pointer transition-colors shadow-sm flex items-center gap-1.5"
+          >
+            <SwapOutlined /> Transfer to Driver...
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedStopJobIds(new Set());
+              setSelectionSourceRouteIndex(null);
+            }}
+            className="text-emerald-200 hover:text-white text-xs bg-transparent border-none cursor-pointer outline-none ml-1 transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+      )}
     </div>
   );
 };
