@@ -24,6 +24,7 @@ import {
   LoadingOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
+import dayjs from "dayjs";
 
 import GoogleMaps from "@/components/GoogleMaps";
 import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, Map as MapIcon } from "lucide-react";
@@ -59,6 +60,7 @@ import {
   swapRouteDriver,
   reverseRoute,
   reOptimizeRoute,
+  transferRouteStops,
   shareOptimizationRoutes,
   type ShareRouteResponse,
 } from "@/apis/routes.api";
@@ -933,6 +935,122 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     });
   }, [setOptimizationResult, pollUntilComplete, route.id]);
 
+  const handleTransferStops = useCallback(
+    async (
+      sourceRouteIndex: number,
+      targetRouteIndex: number,
+      jobIds: number[],
+      targetPosition?: number,
+      reoptimize?: boolean,
+    ) => {
+      if (sourceRouteIndex === targetRouteIndex || jobIds.length === 0) return;
+
+      const sourceRoute = route.result?.routes?.[sourceRouteIndex];
+      const targetRoute = route.result?.routes?.[targetRouteIndex];
+      const sourceDriverName = sourceRoute?.team_member_name || `Driver #${sourceRouteIndex + 1}`;
+      const targetDriverName = targetRoute?.team_member_name || `Driver #${targetRouteIndex + 1}`;
+
+      const originalSnapshot = route;
+
+      // ── Instant Optimistic Update ─────────────────────────────────────────
+      try {
+        if (route.result?.routes) {
+          const jobIdsSet = new Set(jobIds);
+          const movedStops = (sourceRoute?.stops || [])
+            .filter((s: any) => s.job_id && jobIdsSet.has(s.job_id))
+            .map((s: any) => ({ ...s, is_new: true }));
+
+          const remainingSourceStops = (sourceRoute?.stops || []).filter(
+            (s: any) => !s.job_id || !jobIdsSet.has(s.job_id)
+          );
+
+          const targetStops = [...(targetRoute?.stops || [])];
+          const lastDepotEndIdx = targetStops.findIndex(
+            (s: any, idx: number) => idx > 0 && (s.stop_type === "depot_end" || s.stop_type === "depot")
+          );
+          const insertIdx =
+            targetPosition !== undefined
+              ? Math.min(Math.max(0, targetPosition), targetStops.length)
+              : lastDepotEndIdx >= 0
+              ? lastDepotEndIdx
+              : targetStops.length;
+
+          targetStops.splice(insertIdx, 0, ...movedStops);
+
+          const updatedRoutes = [...route.result.routes];
+          updatedRoutes[sourceRouteIndex] = {
+            ...sourceRoute,
+            stops: remainingSourceStops,
+          };
+          updatedRoutes[targetRouteIndex] = {
+            ...targetRoute,
+            stops: targetStops,
+          };
+
+          useOptimizationStore.setState({
+            currentOptimization: {
+              ...route,
+              result: {
+                ...route.result,
+                routes: updatedRoutes,
+              },
+            },
+          });
+        }
+      } catch (e) {
+        console.warn("Transfer optimistic update error:", e);
+      }
+
+      try {
+        message.loading({
+          content: `Transferring ${jobIds.length} stop(s) to ${targetDriverName}…`,
+          key: "transfer_stops",
+          duration: 0,
+        });
+
+        const res = await transferRouteStops(
+          route.id,
+          sourceRouteIndex,
+          targetRouteIndex,
+          jobIds,
+          targetPosition,
+          reoptimize,
+        );
+
+        if (res.success) {
+          message.success({
+            content: res.message || `Transferred ${jobIds.length} stop(s) to ${targetDriverName}!`,
+            key: "transfer_stops",
+          });
+          setHasUnsavedJobEdits(true);
+
+          pushUndo(`Transfer Stops to ${targetDriverName}`, async () => {
+            await transferRouteStops(route.id, targetRouteIndex, sourceRouteIndex, jobIds);
+            await fetchOptimization(route.id);
+            setHasUnsavedJobEdits(true);
+          });
+
+          if (reoptimize && res.is_async) {
+            setOptimizationResult("processing");
+            await pollUntilComplete(route.id);
+          } else {
+            await fetchOptimization(route.id);
+          }
+        }
+      } catch (error: any) {
+        // Rollback on failure
+        useOptimizationStore.setState({
+          currentOptimization: originalSnapshot,
+        });
+        message.error({
+          content: error?.response?.data?.detail || error?.message || "Failed to transfer stops",
+          key: "transfer_stops",
+        });
+      }
+    },
+    [route, fetchOptimization, pushUndo, pollUntilComplete, setOptimizationResult],
+  );
+
   const handleStageDeleteJob = useCallback((jobId: number) => {
     const job = jobs.find((j) => j.id === jobId);
     const isShuttle = job?.template_type === 'worker_shuttle' || !!job?.worker_shuttle_detail;
@@ -1078,6 +1196,26 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     0;
   const totalVehicles = route.result?.routes?.length || 0;
 
+  const formattedRouteDate = useMemo(() => {
+    if (!route?.scheduled_date) return "";
+    const d = dayjs(route.scheduled_date);
+    return d.isValid() ? d.format("ddd, MMM D") : route.scheduled_date;
+  }, [route?.scheduled_date]);
+
+  const isRouteOptimized =
+    route?.status === "completed" ||
+    route?.status === "success" ||
+    Boolean(route?.result?.routes && route.result.routes.length > 0);
+
+  const hasPendingOptimization = useMemo(() => {
+    if (hasUnsavedJobEdits) return true;
+    if (undoStack.length > 0) return true;
+    if (!route.result?.routes) return false;
+    return route.result.routes.some((r) =>
+      r.stops?.some((s: any) => s.is_new || s.time_edited || s.is_edited)
+    );
+  }, [hasUnsavedJobEdits, undoStack.length, route.result?.routes]);
+
   const handleBackToPlanRoutes = () => {
     setCurrentTab("routes");
     router.push("/plan");
@@ -1113,15 +1251,16 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
       {/* Header - matching NavBar height */}
       <nav className="bg-white border-b border-gray-200 px-3 shrink-0">
         <div className="flex items-center justify-between h-14 relative">
-          {/* Left: Back Button + Route Name */}
+          {/* Left: Back Button + Route Name & Subtitle Stats */}
           <div className="flex items-center gap-3">
             <Icon
               component={ArrowLeftOutlined}
               style={{ color: "#003220" }}
               onClick={handleBackToPlanRoutes}
+              className="cursor-pointer text-base hover:opacity-75 transition-opacity"
             />
 
-            <div style={{ width: "200px" }}>
+            <div className="flex flex-col justify-center min-w-0">
               {isEditingName ? (
                 <Input
                   size="small"
@@ -1132,7 +1271,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                   autoFocus
                   disabled={isSavingName}
                   maxLength={50}
-                  style={{ width: "100%" }}
+                  className="w-56 text-sm font-semibold rounded-none"
                 />
               ) : (
                 <div
@@ -1142,25 +1281,46 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                 >
                   <Title
                     level={5}
-                    className="mt-2 group-hover:text-primary transition-colors truncate"
+                    className="!m-0 group-hover:text-primary transition-colors truncate font-bold text-gray-900 leading-tight"
+                    style={{ margin: 0 }}
                   >
                     {route.route_name}
                   </Title>
-                  <EditOutlined className="text-gray-400 shrink-0" />
+                  <EditOutlined className="text-gray-400 group-hover:text-primary transition-colors text-xs shrink-0" />
                 </div>
               )}
-            </div>
-          </div>
 
-          {/* Center: Stats */}
-          <div className="flex items-center gap-4">
-            <Text type="secondary">
-              <CalendarOutlined /> {route.scheduled_date}
-            </Text>
-            <Text type="secondary">
-              <TeamOutlined /> {totalVehicles}{" "}
-              {totalVehicles === 1 ? "route" : "routes"}
-            </Text>
+              {/* Stats below Route Name (Sample UI style) */}
+              <div className="flex items-center text-xs text-gray-500 font-normal leading-tight mt-0.5 select-none">
+                {formattedRouteDate && <span>{formattedRouteDate}</span>}
+                {formattedRouteDate && <span className="mx-1 text-gray-400">·</span>}
+                <span>
+                  {totalVehicles} {totalVehicles === 1 ? "route" : "routes"}
+                </span>
+                {hasPendingOptimization ? (
+                  <>
+                    <span className="mx-1 text-gray-400">·</span>
+                    <Tooltip title="Changes were made (jobs added, edited, reordered, or transferred). Click to re-optimize routes.">
+                      <span
+                        onClick={handleReOptimizeAll}
+                        className="inline-flex items-center gap-1 text-amber-600 hover:text-amber-700 font-semibold cursor-pointer transition-colors"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-none bg-amber-500 animate-pulse" />
+                        Optimization Pending
+                      </span>
+                    </Tooltip>
+                  </>
+                ) : isRouteOptimized ? (
+                  <>
+                    <span className="mx-1 text-gray-400">·</span>
+                    <span className="inline-flex items-center gap-1 text-emerald-700 font-medium">
+                      <span className="w-1.5 h-1.5 rounded-none bg-emerald-600" />
+                      Optimized
+                    </span>
+                  </>
+                ) : null}
+              </div>
+            </div>
           </div>
 
           {/* Right: Action Buttons */}
@@ -1187,7 +1347,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
               <Button
                 icon={<ReloadOutlined />}
                 onClick={handleReOptimizeAll}
-                className={hasUnsavedJobEdits
+                className={hasPendingOptimization
                   ? "border-amber-400 text-amber-700 bg-amber-50 font-semibold"
                   : ""}
               >
@@ -1335,6 +1495,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                   onDeleteJob={handleStageDeleteJob}
                   onUndoDeleteJob={handleUndoStageDeleteJob}
                   reorderingRouteIndex={reorderingRouteIndex}
+                  onTransferStops={handleTransferStops}
                 />
               </div>
             </div>
@@ -1399,18 +1560,18 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
               }
             }}
             onEditJob={(jobToEdit) => setEditJobData(jobToEdit)}
-            onRemoveJob={
-              selectedDrawerJob.routeIndex !== undefined &&
-              selectedDrawerJob.routeIndex >= 0 &&
-              selectedDrawerJob.job?.id
-                ? () =>
-                    handleRemoveJob(
-                      selectedDrawerJob.routeIndex!,
-                      selectedDrawerJob.job!.id,
-                      selectedDrawerJob.driverName || "Driver",
-                    )
-                : undefined
-            }
+            // onRemoveJob={
+            //   selectedDrawerJob.routeIndex !== undefined &&
+            //   selectedDrawerJob.routeIndex >= 0 &&
+            //   selectedDrawerJob.job?.id
+            //     ? () =>
+            //         handleRemoveJob(
+            //           selectedDrawerJob.routeIndex!,
+            //           selectedDrawerJob.job!.id,
+            //           selectedDrawerJob.driverName || "Driver",
+            //         )
+            //     : undefined
+            // }
           />
         )}
       </div>

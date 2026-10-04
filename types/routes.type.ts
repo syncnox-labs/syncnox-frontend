@@ -112,5 +112,7 @@ export interface RouteOperationResponse {
   success: boolean;
   message: string;
   route?: Routes | Record<string, unknown>;
+  target_route?: Routes | Record<string, unknown>;
+  routes?: (Routes | Record<string, unknown>)[];
   is_async?: boolean;
 }

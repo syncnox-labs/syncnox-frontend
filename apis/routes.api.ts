@@ -171,6 +171,35 @@ export const reOptimizeRoute = async (
   return response.data;
 };
 
+/** Transfer one or more stops/jobs from source driver's route to another driver's route */
+export const transferRouteStops = async (
+  optimizationId: number,
+  sourceRouteIndex: number,
+  targetRouteIndex: number,
+  jobIds: number[],
+  targetPosition?: number,
+  reoptimize?: boolean,
+): Promise<RouteOperationResponse> => {
+  const payload: {
+    target_route_index: number;
+    job_ids: number[];
+    target_position?: number;
+    reoptimize?: boolean;
+  } = {
+    target_route_index: targetRouteIndex,
+    job_ids: jobIds,
+    reoptimize: reoptimize ?? false,
+  };
+  if (targetPosition !== undefined) {
+    payload.target_position = targetPosition;
+  }
+  const response = await apiClient.post(
+    `optimization/requests/${optimizationId}/routes/${sourceRouteIndex}/transfer-stops`,
+    payload,
+  );
+  return response.data;
+};
+
 // ─────────────────────────────────────────────
 // Route Sharing (Driver Mobile App)
 // ─────────────────────────────────────────────
