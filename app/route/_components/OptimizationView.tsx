@@ -1207,6 +1207,15 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     route?.status === "success" ||
     Boolean(route?.result?.routes && route.result.routes.length > 0);
 
+  const hasPendingOptimization = useMemo(() => {
+    if (hasUnsavedJobEdits) return true;
+    if (undoStack.length > 0) return true;
+    if (!route.result?.routes) return false;
+    return route.result.routes.some((r) =>
+      r.stops?.some((s: any) => s.is_new || s.time_edited || s.is_edited)
+    );
+  }, [hasUnsavedJobEdits, undoStack.length, route.result?.routes]);
+
   const handleBackToPlanRoutes = () => {
     setCurrentTab("routes");
     router.push("/plan");
@@ -1288,12 +1297,28 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                 <span>
                   {totalVehicles} {totalVehicles === 1 ? "route" : "routes"}
                 </span>
-                {isRouteOptimized && (
+                {hasPendingOptimization ? (
                   <>
                     <span className="mx-1 text-gray-400">·</span>
-                    {/* <span className="text-emerald-700 font-medium">Optimized</span> */}
+                    <Tooltip title="Changes were made (jobs added, edited, reordered, or transferred). Click to re-optimize routes.">
+                      <span
+                        onClick={handleReOptimizeAll}
+                        className="inline-flex items-center gap-1 text-amber-600 hover:text-amber-700 font-semibold cursor-pointer transition-colors"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-none bg-amber-500 animate-pulse" />
+                        Optimization Pending
+                      </span>
+                    </Tooltip>
                   </>
-                )}
+                ) : isRouteOptimized ? (
+                  <>
+                    <span className="mx-1 text-gray-400">·</span>
+                    <span className="inline-flex items-center gap-1 text-emerald-700 font-medium">
+                      <span className="w-1.5 h-1.5 rounded-none bg-emerald-600" />
+                      Optimized
+                    </span>
+                  </>
+                ) : null}
               </div>
             </div>
           </div>
@@ -1322,7 +1347,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
               <Button
                 icon={<ReloadOutlined />}
                 onClick={handleReOptimizeAll}
-                className={hasUnsavedJobEdits
+                className={hasPendingOptimization
                   ? "border-amber-400 text-amber-700 bg-amber-50 font-semibold"
                   : ""}
               >
