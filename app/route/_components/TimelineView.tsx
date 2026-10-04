@@ -980,11 +980,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 (stop.time_to_next_stop_seconds ?? 0) / 60,
                               );
 
-                              // If stops are at the exact same location, they are visually grouped together by `groupStopsByLocation`.
-                              // We do NOT want to draw a connection line extending out from the group block into empty space.
-                              if (distanceKm === 0) return null;
+                              // Do not draw a connection line between shifts after depot_end
+                              if (stop.stop_type === "depot_end") return null;
 
-                              const isWaiting = false;
+                              // If stops are at the exact same location with no waiting time, do not draw a connection line
+                              if (distanceKm === 0 && timeMin === 0) return null;
+
+                              const isWaiting = distanceKm === 0 && timeMin > 0;
 
                               return (
                                 <Tooltip
@@ -1189,14 +1191,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   ? dayjs(stop.arrival_time)
                                   : fallbackArrivalTime;
                                 
-                                const lastRawStop = group.rawStops[group.rawStops.length - 1];
-                                const lastArrivalTime = lastRawStop.arrival_time
-                                  ? dayjs(lastRawStop.arrival_time)
-                                  : arrivalTime;
-                                const totalWaitMinutes = Math.max(0, lastArrivalTime.diff(arrivalTime, "minute"));
-
-                                const baseService = stop.service_duration_minutes || 0;
-                                const serviceDuration = baseService + totalWaitMinutes;
+                                const serviceDuration =
+                                  stop.service_duration_minutes || 0;
                                 
                                 const departureTime = arrivalTime.add(
                                   serviceDuration,
