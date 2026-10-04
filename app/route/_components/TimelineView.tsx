@@ -26,6 +26,7 @@ import {
   UndoOutlined,
   LockOutlined,
   MenuOutlined,
+  LoadingOutlined,
 } from "@ant-design/icons";
 import {
   GripVertical,
@@ -117,8 +118,18 @@ interface TimelineViewProps {
   onSwapDriver?: (routeIndex: number) => void;
   onReverseRoute?: (routeIndex: number) => void;
   onReOptimize?: (routeIndex: number) => void;
-  onReorderStops?: (routeIndex: number, orderedJobIds: number[]) => Promise<void> | void;
-  onSaveAndReOptimize?: (routeIndex: number, orderedJobIds: number[]) => Promise<void> | void;
+  onReorderStops?: (
+    routeIndex: number,
+    orderedJobIds: number[],
+    orderedStopIndices?: number[],
+    orderedStops?: any[]
+  ) => Promise<void> | void;
+  onSaveAndReOptimize?: (
+    routeIndex: number,
+    orderedJobIds: number[],
+    orderedStopIndices?: number[],
+    orderedStops?: any[]
+  ) => Promise<void> | void;
   onRemoveStop?: (routeIndex: number, jobId: number) => Promise<void> | void;
   /** Index of the route currently isolated on the map, or null for "show all". */
   focusedRouteIndex?: number | null;
@@ -130,6 +141,7 @@ interface TimelineViewProps {
   pendingDeletedJobIds?: Set<number>;
   onDeleteJob?: (jobId: number) => void;
   onUndoDeleteJob?: (jobId: number) => void;
+  reorderingRouteIndex?: number | null;
 }
 
 const INTERVAL_OPTIONS = [
@@ -237,6 +249,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   pendingDeletedJobIds = new Set<number>(),
   onDeleteJob,
   onUndoDeleteJob,
+  reorderingRouteIndex = null,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [intervalMinutes, setIntervalMinutes] = useState(30);
@@ -247,121 +260,44 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   // Direct Timeline Drag and Drop state
   const [draggedStopInfo, setDraggedStopInfo] = useState<{
     routeIndex: number;
-    jobId: number;
+    rawIndex: number;
+    rawIndices: number[];
+    jobId: number | null;
     displayIndex: number;
   } | null>(null);
 
   const [dragOverStopInfo, setDragOverStopInfo] = useState<{
     routeIndex: number;
-    jobId: number;
-    displayIndex: number;
+    targetFirstRawIndex: number;
+    targetRawIndices: number[];
     side: "before" | "after";
+    indicatorX?: number;
+    targetStopIndex?: number;
+    targetName?: string;
   } | null>(null);
+
+  const dragOverSlotRef = useRef<{
+    routeIndex: number;
+    targetFirstRawIndex: number;
+    side: "before" | "after";
+    indicatorX: number;
+  } | null>(null);
+
+  const [isReordering, setIsReordering] = useState(false);
 
   const handleTimelineStopDragStart = (
     e: React.DragEvent,
     routeIndex: number,
-    jobId: number,
+    rawIndex: number,
+    rawIndices: number[],
+    jobId: number | null,
     displayIndex: number
   ) => {
     e.stopPropagation();
-    setDraggedStopInfo({ routeIndex, jobId, displayIndex });
+    dragOverSlotRef.current = null;
+    setDraggedStopInfo({ routeIndex, rawIndex, rawIndices, jobId, displayIndex });
     e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("application/json", JSON.stringify({ routeIndex, jobId }));
-  };
-
-  const handleTimelineStopDragOver = (
-    e: React.DragEvent,
-    routeIndex: number,
-    jobId: number,
-    displayIndex: number
-  ) => {
-    if (!draggedStopInfo || draggedStopInfo.routeIndex !== routeIndex || draggedStopInfo.jobId === jobId) {
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "move";
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const midX = rect.left + rect.width / 2;
-    const side = e.clientX < midX ? "before" : "after";
-
-    if (
-      !dragOverStopInfo ||
-      dragOverStopInfo.jobId !== jobId ||
-      dragOverStopInfo.side !== side
-    ) {
-      setDragOverStopInfo({ routeIndex, jobId, displayIndex, side });
-    }
-  };
-
-  const handleTimelineStopDragLeave = (e: React.DragEvent) => {
-    e.stopPropagation();
-  };
-
-  const [isReordering, setIsReordering] = useState(false);
-
-  const handleTimelineStopDrop = async (
-    e: React.DragEvent,
-    routeIndex: number,
-    targetJobId: number
-  ) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!draggedStopInfo || draggedStopInfo.routeIndex !== routeIndex || draggedStopInfo.jobId === targetJobId) {
-      setDraggedStopInfo(null);
-      setDragOverStopInfo(null);
-      return;
-    }
-
-    const targetRoute = routes[routeIndex];
-    if (!targetRoute || !targetRoute.stops) return;
-
-    const currentJobIds: number[] = [];
-    targetRoute.stops.forEach((s: any) => {
-      const isDepot =
-        s.stop_type === "depot" ||
-        s.stop_type === "depot_start" ||
-        s.stop_type === "depot_end";
-      if (!isDepot && s.job_id) {
-        currentJobIds.push(Number(s.job_id));
-      }
-    });
-
-    const sourceJobId = draggedStopInfo.jobId;
-    const side = dragOverStopInfo?.side || "before";
-
-    const updatedJobIds = currentJobIds.filter((id) => id !== sourceJobId);
-    const targetIdxInUpdated = updatedJobIds.indexOf(targetJobId);
-
-    if (targetIdxInUpdated === -1) {
-      setDraggedStopInfo(null);
-      setDragOverStopInfo(null);
-      return;
-    }
-
-    const insertIdx = side === "before" ? targetIdxInUpdated : targetIdxInUpdated + 1;
-    updatedJobIds.splice(insertIdx, 0, sourceJobId);
-
-    setDraggedStopInfo(null);
-    setDragOverStopInfo(null);
-
-    if (isReordering) return;
-    setIsReordering(true);
-    try {
-      if (onReorderStops) {
-        await onReorderStops(routeIndex, updatedJobIds);
-      }
-    } finally {
-      setIsReordering(false);
-    }
-  };
-
-  const handleTimelineStopDragEnd = () => {
-    setDraggedStopInfo(null);
-    setDragOverStopInfo(null);
+    e.dataTransfer.setData("application/json", JSON.stringify({ routeIndex, rawIndex, jobId }));
   };
 
   const [internalDriverSearch, setInternalDriverSearch] = useState("");
@@ -485,6 +421,296 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       generateTimeMarkers(startTime, endTime, intervalMinutes, pixelsPerMinute),
     [startTime, endTime, intervalMinutes, pixelsPerMinute],
   );
+
+  /** Precompute grouped stops, occupancy maps, and non-depot groupings per route once,
+   * avoiding re-computation during 60Hz drag operations. */
+  const routeDataMap = useMemo(() => {
+    const map = new Map<
+      number,
+      {
+        groupedStops: GroupedStop[];
+        occupancyMap: Map<number, number>;
+        routeColor: string;
+        nonDepotGroups: GroupedStop[];
+      }
+    >();
+
+    routes.forEach((route, routeIndex) => {
+      const grouped = groupStopsByLocation(route.stops || []);
+      const occMap = new Map<number, number>();
+      let runningLoad = 0;
+      (route.stops || []).forEach((s: any, idx: number) => {
+        const isPickup = s.stop_type === "pickup";
+        const isDropoff =
+          s.stop_type === "dropoff" || s.stop_type === "drop_off";
+        if (isPickup) {
+          runningLoad += s.passenger_count || 1;
+        } else if (isDropoff) {
+          runningLoad = Math.max(
+            0,
+            runningLoad - (s.passenger_count || 1),
+          );
+        }
+        occMap.set(idx, runningLoad);
+      });
+
+      const nonDepot = grouped.filter((g) => {
+        const st = g.representative?.stop_type;
+        return st !== "depot" && st !== "depot_start" && st !== "depot_end";
+      });
+
+      map.set(routeIndex, {
+        groupedStops: grouped,
+        occupancyMap: occMap,
+        routeColor: getRouteColor(routeIndex),
+        nonDepotGroups: nonDepot,
+      });
+    });
+
+    return map;
+  }, [routes]);
+
+  const handleTimelineTrackDragOver = (
+    e: React.DragEvent,
+    routeIndex: number
+  ) => {
+    if (!draggedStopInfo || draggedStopInfo.routeIndex !== routeIndex) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+
+    const routeData = routeDataMap.get(routeIndex);
+    if (!routeData || routeData.nonDepotGroups.length === 0) return;
+
+    const trackRect = e.currentTarget.getBoundingClientRect();
+    const mouseX = e.clientX - trackRect.left;
+
+    const nonDepotGroups = routeData.nonDepotGroups;
+    let closestGroup = nonDepotGroups[0];
+    let minDistance = Infinity;
+    let targetSide: "before" | "after" = "before";
+    let indicatorX = 0;
+    let targetStopIndex = 1;
+
+    let runningStopCounter = 1;
+    for (let i = 0; i < nonDepotGroups.length; i++) {
+      const g = nonDepotGroups[i];
+      const gPos = getPosition(
+        g.representative.arrival_time || startTime.toISOString(),
+        startTime,
+        pixelsPerMinute
+      );
+      const gWidth = Math.max(
+        g.representative?.service_duration_minutes
+          ? g.representative.service_duration_minutes * pixelsPerMinute
+          : 32,
+        28
+      );
+      const midX = gPos + gWidth / 2;
+      const dist = Math.abs(mouseX - midX);
+
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestGroup = g;
+        targetSide = mouseX < midX ? "before" : "after";
+        indicatorX = targetSide === "before" ? gPos - 3 : gPos + gWidth + 3;
+        targetStopIndex = runningStopCounter;
+      }
+      runningStopCounter++;
+    }
+
+    if (draggedStopInfo.rawIndices.includes(closestGroup.firstRawIndex)) {
+      if (dragOverSlotRef.current) {
+        dragOverSlotRef.current = null;
+        setDragOverStopInfo(null);
+      }
+      return;
+    }
+
+    const prev = dragOverSlotRef.current;
+    if (
+      prev &&
+      prev.routeIndex === routeIndex &&
+      prev.targetFirstRawIndex === closestGroup.firstRawIndex &&
+      prev.side === targetSide &&
+      Math.abs(prev.indicatorX - indicatorX) < 2
+    ) {
+      // Slot hasn't changed at all! Skip re-rendering!
+      return;
+    }
+
+    dragOverSlotRef.current = {
+      routeIndex,
+      targetFirstRawIndex: closestGroup.firstRawIndex,
+      side: targetSide,
+      indicatorX,
+    };
+
+    const targetRawIndices = closestGroup.rawStops.map(
+      (_, i) => closestGroup.firstRawIndex + i
+    );
+
+    const targetName =
+      getCandidateName(closestGroup.representative) ||
+      closestGroup.representative?.address_formatted ||
+      `Stop ${targetStopIndex}`;
+
+    setDragOverStopInfo({
+      routeIndex,
+      targetFirstRawIndex: closestGroup.firstRawIndex,
+      targetRawIndices,
+      side: targetSide,
+      indicatorX,
+      targetStopIndex,
+      targetName,
+    });
+  };
+
+  const handleTimelineDrop = async (
+    e: React.DragEvent,
+    routeIndex: number
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const currentSlot = dragOverSlotRef.current;
+    if (!draggedStopInfo || !currentSlot || draggedStopInfo.routeIndex !== routeIndex) {
+      dragOverSlotRef.current = null;
+      setDraggedStopInfo(null);
+      setDragOverStopInfo(null);
+      return;
+    }
+
+    const targetRoute = routes[routeIndex];
+    if (!targetRoute || !targetRoute.stops) {
+      dragOverSlotRef.current = null;
+      setDraggedStopInfo(null);
+      setDragOverStopInfo(null);
+      return;
+    }
+
+    // Collect non-depot items with their original index in targetRoute.stops
+    const nonDepotItems: { originalIndex: number; stop: any }[] = [];
+    targetRoute.stops.forEach((s: any, idx: number) => {
+      const isDepot =
+        s.stop_type === "depot" ||
+        s.stop_type === "depot_start" ||
+        s.stop_type === "depot_end";
+      if (!isDepot && s.job_id) {
+        nonDepotItems.push({ originalIndex: idx, stop: s });
+      }
+    });
+
+    const draggedIndices = draggedStopInfo.rawIndices;
+    const targetFirstIndex = currentSlot.targetFirstRawIndex;
+    const side = currentSlot.side;
+
+    const sourceItems = nonDepotItems.filter((item) =>
+      draggedIndices.includes(item.originalIndex)
+    );
+    if (sourceItems.length === 0) {
+      dragOverSlotRef.current = null;
+      setDraggedStopInfo(null);
+      setDragOverStopInfo(null);
+      return;
+    }
+
+    const remainingItems = nonDepotItems.filter(
+      (item) => !draggedIndices.includes(item.originalIndex)
+    );
+    const targetIdx = remainingItems.findIndex((item) =>
+      item.originalIndex === targetFirstIndex
+    );
+
+    if (targetIdx === -1) {
+      dragOverSlotRef.current = null;
+      setDraggedStopInfo(null);
+      setDragOverStopInfo(null);
+      return;
+    }
+
+    // Determine target group's raw indices
+    const targetGroup = routeDataMap.get(routeIndex)?.groupedStops.find(
+      (g) => g.firstRawIndex === targetFirstIndex
+    );
+    const targetIndices = targetGroup
+      ? targetGroup.rawStops.map((_, i) => targetGroup.firstRawIndex + i)
+      : [targetFirstIndex];
+
+    let insertIdx = targetIdx;
+    if (side === "after") {
+      let lastTargetIdx = targetIdx;
+      for (let i = targetIdx; i < remainingItems.length; i++) {
+        if (targetIndices.includes(remainingItems[i].originalIndex)) {
+          lastTargetIdx = i;
+        }
+      }
+      insertIdx = lastTargetIdx + 1;
+    }
+
+    remainingItems.splice(insertIdx, 0, ...sourceItems);
+
+    // Validate: no candidate's drop-off stop may be positioned before their pickup stop
+    const stopPositions = new Map<number, { pickup?: number; dropoff?: number; name?: string }>();
+    for (let i = 0; i < remainingItems.length; i++) {
+      const s = remainingItems[i].stop;
+      const jid = Number(s.job_id);
+      if (!jid) continue;
+      if (!stopPositions.has(jid)) {
+        stopPositions.set(jid, { name: s.candidate_name });
+      }
+      const entry = stopPositions.get(jid)!;
+      if (s.stop_type === "pickup") {
+        entry.pickup = i;
+      } else if (s.stop_type === "dropoff" || s.stop_type === "drop_off") {
+        entry.dropoff = i;
+      }
+    }
+
+    for (const [jid, entry] of stopPositions.entries()) {
+      if (entry.pickup !== undefined && entry.dropoff !== undefined) {
+        if (entry.pickup > entry.dropoff) {
+          message.warning({
+            content: `Cannot drop off ${entry.name || `Job #${jid}`} before their pickup stop.`,
+            key: "reorder_warn",
+          });
+          dragOverSlotRef.current = null;
+          setDraggedStopInfo(null);
+          setDragOverStopInfo(null);
+          return;
+        }
+      }
+    }
+
+    const orderedStopIndices = remainingItems.map((item) => item.originalIndex);
+    const orderedStops = remainingItems.map((item) => ({
+      job_id: Number(item.stop.job_id),
+      stop_type: item.stop.stop_type,
+    }));
+    const orderedJobIds = remainingItems.map((item) => Number(item.stop.job_id));
+
+    dragOverSlotRef.current = null;
+    setDraggedStopInfo(null);
+    setDragOverStopInfo(null);
+
+    if (isReordering) return;
+    setIsReordering(true);
+    try {
+      if (onReorderStops) {
+        await onReorderStops(routeIndex, orderedJobIds, orderedStopIndices, orderedStops);
+      }
+    } finally {
+      setIsReordering(false);
+    }
+  };
+
+  const handleTimelineStopDragEnd = () => {
+    dragOverSlotRef.current = null;
+    setDraggedStopInfo(null);
+    setDragOverStopInfo(null);
+  };
 
   // Auto-scroll timeline to selected marker / stop position whenever selectedMarkerId changes
   useEffect(() => {
@@ -808,7 +1034,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                 let totalGroupedStopsCount = 0;
                 driverGroup.routes.forEach((r) => {
-                  const gStops = groupStopsByLocation(r.route.stops || []);
+                  const gStops = routeDataMap.get(r.originalIndex)?.groupedStops || [];
                   totalGroupedStopsCount += gStops.filter(
                     (g) =>
                       g.representative.stop_type !== "depot" &&
@@ -865,9 +1091,16 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                           size="default"
                         />
                         <div className="flex flex-col overflow-hidden flex-1 min-w-0">
-                          <span className="font-semibold truncate text-gray-800 text-xs">
-                            {driverGroup.driverName}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold truncate text-gray-800 text-xs">
+                              {driverGroup.driverName}
+                            </span>
+                            {reorderingRouteIndex === primaryIndex && (
+                              <span className="inline-flex items-center gap-1 text-[9px] text-emerald-700 font-bold bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 shrink-0 animate-pulse">
+                                <LoadingOutlined className="text-[9px] animate-spin" /> Recalculating
+                              </span>
+                            )}
+                          </div>
                           {/* Vehicle is shown per-route on the timeline bar, not here */}
                           <span className="text-[11px] text-gray-400 truncate">
                             {Math.round(totalDistanceMeters / 1000)} km
@@ -915,28 +1148,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                       }}
                     >
                       {driverGroup.routes.map(({ route, originalIndex: routeIndex }) => {
-                        const routeColor = getRouteColor(routeIndex);
-                        const groupedStops = groupStopsByLocation(
-                          route.stops || [],
-                        );
-
-                        const occupancyMap = new Map<number, number>();
-                        let runningLoad = 0;
-                        (route.stops || []).forEach((s: any, idx: number) => {
-                          const isPickup = s.stop_type === "pickup";
-                          const isDropoff =
-                            s.stop_type === "dropoff" ||
-                            s.stop_type === "drop_off";
-                          if (isPickup) {
-                            runningLoad += s.passenger_count || 1;
-                          } else if (isDropoff) {
-                            runningLoad = Math.max(
-                              0,
-                              runningLoad - (s.passenger_count || 1),
-                            );
-                          }
-                          occupancyMap.set(idx, runningLoad);
-                        });
+                        const routeData = routeDataMap.get(routeIndex);
+                        const routeColor = routeData?.routeColor || getRouteColor(routeIndex);
+                        const groupedStops = routeData?.groupedStops || [];
+                        const occupancyMap = routeData?.occupancyMap || new Map<number, number>();
 
                         // ── Resolve vehicle label for segment hover tooltips ───────────────
                         const routeVehicleObj = route.vehicle_id
@@ -952,8 +1167,56 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                           (route as any).vehicle_capacity ??
                           getVehicleCapacity(routeVehicleObj);
 
+                        const isTrackBeingDraggedOver =
+                          dragOverStopInfo && dragOverStopInfo.routeIndex === routeIndex;
+                        const isReorderingThisRoute = reorderingRouteIndex === routeIndex;
+
                         return (
-                          <React.Fragment key={`route-${routeIndex}`}>
+                          <div
+                            key={`route-${routeIndex}`}
+                            className={`relative h-full transition-colors duration-150 ${
+                              isTrackBeingDraggedOver
+                                ? "bg-emerald-50/25 ring-1 ring-emerald-400/40 rounded-sm"
+                                : ""
+                            }`}
+                            onDragOver={(e) => handleTimelineTrackDragOver(e, routeIndex)}
+                            onDrop={(e) => handleTimelineDrop(e, routeIndex)}
+                          >
+                            {/* Shimmer loading accent when recalculating ETAs */}
+                            {isReorderingThisRoute && (
+                              <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 animate-pulse z-40" />
+                            )}
+
+                            {/* Track-level High-Precision Drag & Drop Insertion Guide */}
+                            {isTrackBeingDraggedOver &&
+                              typeof dragOverStopInfo.indicatorX === "number" && (
+                                <div
+                                  className="absolute top-0 bottom-0 z-40 pointer-events-none flex flex-col items-center"
+                                  style={{
+                                    left: dragOverStopInfo.indicatorX,
+                                    transform: "translateX(-50%)",
+                                  }}
+                                >
+                                  {/* Top floating pill badge */}
+                                  <div className="absolute -top-7 px-2.5 py-0.5 bg-slate-900/95 text-white text-[10px] font-semibold rounded-full shadow-lg border border-emerald-500/50 flex items-center gap-1.5 whitespace-nowrap z-50 backdrop-blur-xs">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                                    <span>
+                                      Drop {dragOverStopInfo.side === "before" ? "before" : "after"} Stop {dragOverStopInfo.targetStopIndex}
+                                      {dragOverStopInfo.targetName ? ` (${dragOverStopInfo.targetName.slice(0, 24)})` : ""}
+                                    </span>
+                                  </div>
+
+                                  {/* Top bead */}
+                                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white shadow-xs shrink-0 -mt-1" />
+
+                                  {/* Vertical guide line */}
+                                  <div className="w-0.5 flex-1 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.85)]" />
+
+                                  {/* Bottom bead */}
+                                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white shadow-xs shrink-0 -mb-1" />
+                                </div>
+                            )}
+
                             {/* Connection Lines (Segments) */}
                             {route.stops?.map((stop: any, index: number) => {
                               if (index === route.stops.length - 1) return null;
@@ -1051,6 +1314,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       left: startPos,
                                       width: width,
                                       transform: "translateY(-50%)",
+                                      pointerEvents: draggedStopInfo ? "none" : undefined,
                                     }}
                                   />
                                 </Tooltip>
@@ -1108,6 +1372,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         backgroundColor: "#8c8c8c",
                                         opacity: isDimmed ? 0.3 : 0.8,
                                         minWidth: 24,
+                                        pointerEvents: draggedStopInfo ? "none" : undefined,
                                       }}
                                     >
                                       <span className="text-white text-xs">
@@ -1161,6 +1426,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         width: idleWidth,
                                         backgroundColor: "#f5f5f5",
                                         opacity: isDimmed ? 0.3 : 0.6,
+                                        pointerEvents: draggedStopInfo ? "none" : undefined,
                                         backgroundImage: `repeating-linear-gradient(
                                             45deg,
                                             transparent,
@@ -1571,10 +1837,17 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     });
 
                                   const firstJobId = group.rawStops[0]?.job_id ? Number(group.rawStops[0].job_id) : null;
-                                  const isDraggingThis = draggedStopInfo?.jobId === firstJobId && draggedStopInfo?.routeIndex === routeIndex;
-                                  const isDropTarget = dragOverStopInfo?.jobId === firstJobId && dragOverStopInfo?.routeIndex === routeIndex;
-                                  const isDropBefore = isDropTarget && dragOverStopInfo?.side === "before";
-                                  const isDropAfter = isDropTarget && dragOverStopInfo?.side === "after";
+                                  const groupRawIndices = group.rawStops.map((_, i) => group.firstRawIndex + i);
+                                  const isDraggingThis = Boolean(
+                                    draggedStopInfo &&
+                                    draggedStopInfo.routeIndex === routeIndex &&
+                                    draggedStopInfo.rawIndices.includes(group.firstRawIndex)
+                                  );
+                                  const isDropTarget = Boolean(
+                                    dragOverStopInfo &&
+                                    dragOverStopInfo.routeIndex === routeIndex &&
+                                    dragOverStopInfo.targetFirstRawIndex === group.firstRawIndex
+                                  );
 
                                   if (isJob && serviceDuration > 0) {
                                     return (
@@ -1594,15 +1867,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       >
                                         <div
                                           draggable={!isDepot && Boolean(firstJobId)}
-                                          onDragStart={(e) => firstJobId && handleTimelineStopDragStart(e, routeIndex, firstJobId, displayIndex)}
-                                          onDragOver={(e) => firstJobId && handleTimelineStopDragOver(e, routeIndex, firstJobId, displayIndex)}
-                                          onDragLeave={handleTimelineStopDragLeave}
-                                          onDrop={(e) => firstJobId && handleTimelineStopDrop(e, routeIndex, firstJobId)}
+                                          onDragStart={(e) => firstJobId && handleTimelineStopDragStart(e, routeIndex, group.firstRawIndex, groupRawIndices, firstJobId, displayIndex)}
                                           onDragEnd={handleTimelineStopDragEnd}
-                                          className={`absolute top-1/2 -translate-y-1/2 h-8 flex items-center justify-center shadow-md transition-all z-10 border-2 bg-white ${
-                                            !isDepot ? "cursor-grab active:cursor-grabbing hover:scale-105" : "cursor-pointer"
+                                          className={`absolute top-1/2 -translate-y-1/2 h-8 flex items-center justify-center shadow-md z-10 border-2 bg-white transition-[transform,box-shadow,opacity] duration-150 ${
+                                            !isDepot ? "cursor-grab active:cursor-grabbing hover:scale-105 hover:shadow-lg" : "cursor-pointer"
                                           } ${
-                                            isDraggingThis ? "opacity-35 border-dashed border-emerald-500 scale-95" : ""
+                                            isDraggingThis ? "opacity-30 border-2 border-dashed border-emerald-500 bg-emerald-50/50 scale-95 shadow-inner" : ""
+                                          } ${
+                                            isDropTarget ? "ring-2 ring-emerald-400 ring-offset-1" : ""
                                           } ${
                                             isStopNew ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg" : isStopEdited ? "ring-2 ring-purple-500 ring-offset-1 shadow-lg" : ""
                                           } ${
@@ -1613,7 +1885,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             width: Math.max(blockWidth, 28),
                                             backgroundColor: isGroupPendingDelete ? undefined : blockBgColor,
                                             borderColor: isGroupPendingDelete ? undefined : isStopNew ? "#059669" : isStopEdited ? "#9333ea" : blockBorderColor,
-                                            opacity: isDimmed ? 0.4 : isDraggingThis ? 0.35 : 1,
+                                            opacity: isDimmed ? 0.4 : isDraggingThis ? 0.3 : 1,
                                           }}
                                           onClick={() =>
                                             onStopClick?.(
@@ -1622,14 +1894,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                               displayIndex,
                                             )
                                           }
+                                          title={!isDepot ? "Drag to reorder stop" : undefined}
                                         >
-                                          {/* Drag drop insertion line */}
-                                          {isDropBefore && (
-                                            <div className="absolute -left-1.5 top-0 bottom-0 w-1.5 bg-emerald-600 rounded-full shadow-lg z-30 animate-pulse pointer-events-none" />
-                                          )}
-                                          {isDropAfter && (
-                                            <div className="absolute -right-1.5 top-0 bottom-0 w-1.5 bg-emerald-600 rounded-full shadow-lg z-30 animate-pulse pointer-events-none" />
-                                          )}
 
                                           {/* Newly Added Job Badge */}
                                           {isStopNew && (
@@ -1700,15 +1966,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     >
                                       <div
                                         draggable={!isDepot && Boolean(firstJobId)}
-                                        onDragStart={(e) => firstJobId && handleTimelineStopDragStart(e, routeIndex, firstJobId, displayIndex)}
-                                        onDragOver={(e) => firstJobId && handleTimelineStopDragOver(e, routeIndex, firstJobId, displayIndex)}
-                                        onDragLeave={handleTimelineStopDragLeave}
-                                        onDrop={(e) => firstJobId && handleTimelineStopDrop(e, routeIndex, firstJobId)}
+                                        onDragStart={(e) => firstJobId && handleTimelineStopDragStart(e, routeIndex, group.firstRawIndex, groupRawIndices, firstJobId, displayIndex)}
                                         onDragEnd={handleTimelineStopDragEnd}
-                                        className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md transition-all z-10 ${
-                                          !isDepot ? "cursor-grab active:cursor-grabbing hover:scale-110" : "cursor-pointer"
+                                        className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md z-10 transition-[transform,box-shadow,opacity] duration-150 ${
+                                          !isDepot ? "cursor-grab active:cursor-grabbing hover:scale-110 hover:shadow-lg" : "cursor-pointer"
                                         } ${
-                                          isDraggingThis ? "w-8 h-8 opacity-35 border-dashed border-emerald-500 scale-95" : "w-8 h-8 bg-white"
+                                          isDraggingThis ? "w-8 h-8 opacity-30 border-2 border-dashed border-emerald-500 bg-emerald-50/50 scale-95 shadow-inner" : "w-8 h-8 bg-white"
+                                        } ${
+                                          isDropTarget ? "ring-2 ring-emerald-400 ring-offset-1" : ""
                                         } ${
                                           isStopNew ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg" : isStopEdited ? "ring-2 ring-purple-500 ring-offset-1 shadow-lg" : ""
                                         } ${
@@ -1728,7 +1993,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             : isStopEdited
                                             ? "#9333ea"
                                             : blockBorderColor,
-                                          opacity: isDimmed ? 0.4 : isDraggingThis ? 0.35 : 1,
+                                          opacity: isDimmed ? 0.4 : isDraggingThis ? 0.3 : 1,
                                         }}
                                         onClick={() =>
                                           onStopClick?.(
@@ -1737,14 +2002,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             displayIndex,
                                           )
                                         }
+                                        title={!isDepot ? "Drag to reorder stop" : undefined}
                                       >
-                                        {/* Drag drop insertion line */}
-                                        {isDropBefore && (
-                                          <div className="absolute -left-1.5 top-0 bottom-0 w-1.5 bg-emerald-600 rounded-full shadow-lg z-30 animate-pulse pointer-events-none" />
-                                        )}
-                                        {isDropAfter && (
-                                          <div className="absolute -right-1.5 top-0 bottom-0 w-1.5 bg-emerald-600 rounded-full shadow-lg z-30 animate-pulse pointer-events-none" />
-                                        )}
 
                                         {/* Newly Added Job Badge */}
                                         {isStopNew && !isDepot && (
@@ -1769,21 +2028,21 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         ) : (
                                           <>
                                             <span
-                                              className="text-xs font-bold"
+                                              className="text-xs font-bold pointer-events-none"
                                               style={{ color: isGroupPendingDelete ? "#dc2626" : blockTextColor }}
                                             >
                                               {displayIndex}
                                             </span>
                                             {isPickup ? (
                                               <div 
-                                                className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 bg-white rounded-full border border-emerald-500 shadow-sm z-20"
+                                                className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 bg-white rounded-full border border-emerald-500 shadow-sm z-20 pointer-events-none"
                                                 title="Pickup"
                                               >
                                                 <ArrowDown size={12} strokeWidth={3} className="text-emerald-500" />
                                               </div>
                                             ) : isDropoff ? (
                                               <div 
-                                                className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 bg-white rounded-full border border-blue-500 shadow-sm z-20"
+                                                className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 bg-white rounded-full border border-blue-500 shadow-sm z-20 pointer-events-none"
                                                 title="Drop-off"
                                               >
                                                 <ArrowUp size={12} strokeWidth={3} className="text-blue-500" />
@@ -1804,7 +2063,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   );
                               });
                             })()}
-                          </React.Fragment>
+                          </div>
                         );
                       })}
                     </div>
@@ -1825,9 +2084,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         }
         jobs={jobs}
         onClose={() => setReorderModalRouteIndex(null)}
-        onSave={async (rIdx, orderedJobIds) => {
+        onSave={async (rIdx, orderedJobIds, orderedStopIndices, orderedStops) => {
           if (onReorderStops) {
-            await onReorderStops(rIdx, orderedJobIds);
+            await onReorderStops(rIdx, orderedJobIds, orderedStopIndices, orderedStops);
           }
         }}
         onSaveAndReOptimize={onSaveAndReOptimize}
