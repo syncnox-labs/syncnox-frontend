@@ -206,10 +206,10 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     }
   }, []);
 
-  // Route operations modal state
   const [addStopRouteIndex, setAddStopRouteIndex] = useState<number | null>(
     null,
   );
+  const targetRouteIndexRef = useRef<number | null>(null);
   const [swapDriverRouteIndex, setSwapDriverRouteIndex] = useState<
     number | null
   >(null);
@@ -613,12 +613,14 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
 
   const handleJobCreatedForRoute = useCallback(
     async (job: Job) => {
-      if (addStopRouteIndex === null) return;
-      const targetRouteIndex = addStopRouteIndex;
+      const targetRouteIndex = targetRouteIndexRef.current ?? addStopRouteIndex;
+      if (targetRouteIndex === null) return;
       try {
         const res = await addStopToRoute(route.id, targetRouteIndex, job.id);
         if (res.success) {
-          message.success(res.message || "Job added to route! Newly added stop is highlighted.");
+          const routeData = route.result?.routes?.[targetRouteIndex];
+          const driverName = routeData?.team_member_name || "Driver";
+          message.success(res.message || `Job #${job.id} added to ${driverName}'s route! Newly added stop is highlighted.`);
           setHasUnsavedJobEdits(true);
           
           pushUndo(`Add Job #${job.id}`, async () => {
@@ -633,7 +635,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
         message.error(error?.response?.data?.detail || "Failed to add job");
       }
     },
-    [route.id, addStopRouteIndex, fetchOptimization, pushUndo],
+    [route.id, addStopRouteIndex, fetchOptimization, pushUndo, route.result?.routes],
   );
 
   const handleRemoveJob = useCallback(
@@ -1212,7 +1214,10 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                   vehicles={vehicles}
                   selectedMarkerId={selectedMarkerId}
                   onStopClick={handleStopClick}
-                  onAddStop={(idx) => setAddStopRouteIndex(idx)}
+                  onAddStop={(idx) => {
+                    targetRouteIndexRef.current = idx;
+                    setAddStopRouteIndex(idx);
+                  }}
                   onSwapDriver={(idx) => setSwapDriverRouteIndex(idx)}
                   onReverseRoute={handleReverseRoute}
                   onReOptimize={handleReOptimize}
@@ -1315,9 +1320,19 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
       <AddJobsModal
         open={addStopRouteIndex !== null}
         setOpen={(open) => {
-          if (!open) setAddStopRouteIndex(null);
+          if (!open) {
+            setAddStopRouteIndex(null);
+            targetRouteIndexRef.current = null;
+          }
         }}
         onJobCreated={handleJobCreatedForRoute}
+        defaultTemplate={route.result?.routes?.some(r => (r as any).leg !== undefined) ? "worker_shuttle" : undefined}
+        defaultDate={route?.scheduled_date ? String(route.scheduled_date) : undefined}
+        defaultJobType={
+          addStopRouteIndex !== null && route.result?.routes?.[addStopRouteIndex]
+            ? ((route.result.routes[addStopRouteIndex] as any).leg === "RETURN" ? "return_only" : "one_way")
+            : undefined
+        }
       />
 
       {/* Add New Candidate / Job Modal (from Map control overlay) */}
@@ -1325,6 +1340,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
         open={isAddJobOpen}
         setOpen={setIsAddJobOpen}
         onCancel={() => setIsAddJobOpen(false)}
+        defaultTemplate={route.result?.routes?.some(r => (r as any).leg !== undefined) ? "worker_shuttle" : undefined}
         onJobCreated={async (newJob) => {
           if (route.scheduled_date) {
             fetchJobsByDate(route.scheduled_date);
