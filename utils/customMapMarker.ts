@@ -129,7 +129,7 @@ export const createCustomMarkerIcon = (
           : `<path 
             d="M16 0C9.4 0 4 5.4 4 12c0 8 12 24 12 24s12-16 12-24c0-6.6-5.4-12-12-12z" 
             fill="${fillColor}"
-            stroke="${(isNew || isTimeEdited) ? '#059669' : strokeColor}"
+            stroke="${isNew ? '#059669' : isTimeEdited ? '#9333ea' : strokeColor}"
             stroke-width="${(isNew || isTimeEdited) ? 4 : strokeWidth}"
             filter="url(#${(isNew || isTimeEdited) ? 'glow' : 'shadow'})"
           />

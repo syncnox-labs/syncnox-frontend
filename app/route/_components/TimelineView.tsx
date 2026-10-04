@@ -1320,6 +1320,11 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                                 const isStopNew = Boolean(stop.is_new || group.rawStops.some((s: any) => s.is_new));
                                 const isTimeEdited = Boolean(stop.time_edited || group.rawStops.some((s: any) => s.time_edited));
+                                const isStopEdited = Boolean(
+                                  stop.is_edited ||
+                                  stop.time_edited ||
+                                  group.rawStops.some((s: any) => s.is_edited || s.time_edited)
+                                );
 
                                 const tooltipContent = (
                                   <div className="pointer-events-auto select-text p-1 space-y-2.5 w-[310px] text-slate-800">
@@ -1363,7 +1368,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     </div>
 
                                     {/* Highlights Row for New / Edited Stop */}
-                                    {(isStopNew || isTimeEdited) && (
+                                    {(isStopNew || isStopEdited) && (
                                       <div className="flex items-center gap-1.5 py-0.5 select-none">
                                         {isStopNew && (
                                           <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-400 px-2 py-0.5 rounded shadow-xs animate-pulse">
@@ -1371,10 +1376,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             NEWLY ADDED STOP
                                           </span>
                                         )}
-                                        {isTimeEdited && (
+                                        {isStopEdited && (
                                           <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-purple-100 text-purple-900 border border-purple-300 px-2 py-0.5 rounded shadow-xs">
                                             <ClockCircleOutlined className="text-purple-600" />
-                                            TIME EDITED
+                                            EDITED STOP
                                           </span>
                                         )}
                                       </div>
@@ -1502,6 +1507,11 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                                   {candName && (
                                                     <span className="text-slate-600 font-medium truncate shrink" title={candName}>({candName})</span>
                                                   )}
+                                                  {Boolean(s.is_edited || s.time_edited) && (
+                                                    <span className="ml-1 text-[10px] font-bold uppercase bg-purple-100 text-purple-800 px-1 py-0.2 border border-purple-300 shrink-0 flex items-center gap-0.5">
+                                                      <ClockCircleOutlined className="text-[9px]" /> Edited
+                                                    </span>
+                                                  )}
                                                   {isFinished && (
                                                     <span className="ml-1 text-[10px] font-extrabold uppercase bg-slate-200 text-slate-700 px-1 py-0.2 border border-slate-300 shrink-0 flex items-center gap-1">
                                                       <LockOutlined className="text-[10px]" /> Finished
@@ -1598,7 +1608,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           } ${
                                             isDraggingThis ? "opacity-35 border-dashed border-emerald-500 scale-95" : ""
                                           } ${
-                                            isStopNew ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg" : ""
+                                            isStopNew ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg" : isStopEdited ? "ring-2 ring-purple-500 ring-offset-1 shadow-lg" : ""
                                           } ${
                                             isGroupPendingDelete ? "opacity-35 border-dashed border-red-500 bg-red-100" : ""
                                           }`}
@@ -1606,7 +1616,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             left: left,
                                             width: Math.max(blockWidth, 28),
                                             backgroundColor: isGroupPendingDelete ? undefined : blockBgColor,
-                                            borderColor: isGroupPendingDelete ? undefined : isStopNew ? "#059669" : blockBorderColor,
+                                            borderColor: isGroupPendingDelete ? undefined : isStopNew ? "#059669" : isStopEdited ? "#9333ea" : blockBorderColor,
                                             opacity: isDimmed ? 0.4 : isDraggingThis ? 0.35 : 1,
                                           }}
                                           onClick={() =>
@@ -1629,6 +1639,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           {isStopNew && (
                                             <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-emerald-600 text-white text-[8px] font-black uppercase rounded shadow-xs flex items-center gap-0.5 tracking-tight animate-bounce z-30 select-none pointer-events-none whitespace-nowrap">
                                               <SparklesIcon size={8} /> NEW
+                                            </div>
+                                          )}
+
+                                          {/* Edited Job Badge */}
+                                          {!isStopNew && isStopEdited && (
+                                            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded shadow-xs flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
+                                              <ClockCircleOutlined className="text-[8px]" /> EDITED
                                             </div>
                                           )}
 
@@ -1670,7 +1687,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         } ${
                                           isDraggingThis ? "w-8 h-8 opacity-35 border-dashed border-emerald-500 scale-95" : "w-8 h-8 bg-white"
                                         } ${
-                                          isStopNew ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg" : ""
+                                          isStopNew ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg" : isStopEdited ? "ring-2 ring-purple-500 ring-offset-1 shadow-lg" : ""
                                         } ${
                                           isGroupPendingDelete
                                             ? "opacity-35 border-dashed border-red-500 bg-red-100"
@@ -1685,6 +1702,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             ? undefined
                                             : isStopNew
                                             ? "#059669"
+                                            : isStopEdited
+                                            ? "#9333ea"
                                             : blockBorderColor,
                                           opacity: isDimmed ? 0.4 : isDraggingThis ? 0.35 : 1,
                                         }}
@@ -1708,6 +1727,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         {isStopNew && !isDepot && (
                                           <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-emerald-600 text-white text-[8px] font-black uppercase rounded shadow-xs flex items-center gap-0.5 tracking-tight animate-bounce z-30 select-none pointer-events-none whitespace-nowrap">
                                             <SparklesIcon size={8} /> NEW
+                                          </div>
+                                        )}
+
+                                        {/* Edited Job Badge */}
+                                        {!isStopNew && isStopEdited && !isDepot && (
+                                          <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded shadow-xs flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
+                                            <ClockCircleOutlined className="text-[8px]" /> EDITED
                                           </div>
                                         )}
 
@@ -1740,6 +1766,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                                 <ArrowUp size={12} strokeWidth={3} className="text-blue-500" />
                                               </div>
                                             ) : null}
+                                            {!isDepot && isStopEdited && !isStopNew && (
+                                              <div 
+                                                className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-full border border-white shadow-xs z-20"
+                                                title="Job edited"
+                                              >
+                                                <ClockCircleOutlined className="text-[7.5px]" />
+                                              </div>
+                                            )}
                                           </>
                                         )}
                                       </div>

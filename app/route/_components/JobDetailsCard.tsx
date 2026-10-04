@@ -575,7 +575,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
               NEW STOP
             </span>
           )}
-          {Boolean(stopData?.time_edited || (job as any)?.time_edited) && (
+          {Boolean(stopData?.time_edited || (job as any)?.time_edited || stopData?.is_edited || (job as any)?.is_edited) && (
             <span className="shrink-0 text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-300 flex items-center gap-0.5">
               <ClockCircleOutlined className="text-[10px]" /> EDITED
             </span>
