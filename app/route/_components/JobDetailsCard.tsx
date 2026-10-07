@@ -538,7 +538,14 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
       }
       valueClassName="text-xs text-gray-900 font-bold pl-4.5"
     >
-      {arrivalTime}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span>{arrivalTime}</span>
+        {stopData?.arrival_time && dayjs(stopData.arrival_time).isValid() && (
+          <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+            {dayjs(stopData.arrival_time).format("ddd, MMM D")}
+          </span>
+        )}
+      </div>
     </Field>
   );
 

@@ -999,7 +999,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               {timeMarkers.map((marker, i) => (
                 <div
                   key={i}
-                  className={`absolute top-0 bottom-0 select-none transition-colors border-l pl-1 text-xs ${
+                  className={`absolute top-0 bottom-0 select-none transition-colors border-l pl-1 text-xs flex items-center ${
                     marker.isNewDay
                       ? "border-l-2 border-dashed border-[#003220] font-bold text-[#003220] z-10"
                       : "border-gray-200 text-gray-400"
@@ -1024,10 +1024,35 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                         </div>
                       }
                     >
-                      <span className="cursor-pointer hover:underline">{marker.label}</span>
+                      <div className="flex items-center gap-1 whitespace-nowrap bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-300 text-[#003220] shadow-2xs cursor-pointer hover:bg-emerald-100 transition-colors">
+                        <Calendar size={11} className="shrink-0 text-[#003220]" />
+                        <span className="text-[10px] font-black uppercase tracking-wide">{marker.dateLabel}</span>
+                        <span className="text-[11px] font-bold ml-0.5">{marker.label}</span>
+                      </div>
                     </Tooltip>
                   ) : (
-                    marker.label
+                    <Tooltip
+                      color="#ffffff"
+                      overlayInnerStyle={{
+                        padding: "4px 8px",
+                        borderRadius: "4px",
+                        color: "#1e293b",
+                        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
+                        border: "1px solid #e2e8f0",
+                        fontSize: "11px",
+                      }}
+                      title={`${marker.time.format("dddd, MMMM D, YYYY")} at ${marker.label}`}
+                    >
+                      <span className="cursor-default whitespace-nowrap flex items-center gap-1">
+                        {i === 0 && marker.dateLabel ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-1 py-0.2 rounded border border-slate-200 mr-0.5">
+                            <Calendar size={10} className="text-slate-500" />
+                            {marker.dateLabel}
+                          </span>
+                        ) : null}
+                        <span>{marker.label}</span>
+                      </span>
+                    </Tooltip>
                   )}
                 </div>
               ))}
@@ -1330,7 +1355,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               if (index === route.stops.length - 1) return null;
 
                               const nextStop = route.stops[index + 1];
-                              const startPos = getPosition(
+                              let startPos = getPosition(
                                 stop.arrival_time,
                                 startTime,
                                 pixelsPerMinute,
@@ -1340,6 +1365,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 startTime,
                                 pixelsPerMinute,
                               );
+
+                              // If stop is depot_start and next stop is at the same position or within 36px,
+                              // ensure startPos is placed to the left so the segment is clearly drawn.
+                              if (stop.stop_type === "depot_start" && endPos - startPos < 36) {
+                                startPos = Math.max(0, endPos - 36);
+                              }
+
                               const width = endPos - startPos;
 
                               if (width <= 0) return null;
@@ -1354,7 +1386,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               // Do not draw a connection line between shifts after depot_end
                               if (stop.stop_type === "depot_end") return null;
 
-                              // If stops are at the same location (distance is 0 or same coordinates), do not draw a connection line
+                              // If stops are at the same location (distance is 0 or same coordinates), do not draw a connection line,
+                              // unless this is depot_start starting at the same location as the first job stop.
                               const isSameCoordinates =
                                 typeof stop.latitude === "number" &&
                                 typeof nextStop.latitude === "number" &&
@@ -1363,7 +1396,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 typeof nextStop.longitude === "number" &&
                                 stop.longitude.toFixed(4) === nextStop.longitude.toFixed(4);
 
-                              if (distanceKm === 0 || isSameCoordinates) return null;
+                              if (stop.stop_type !== "depot_start" && (distanceKm === 0 || isSameCoordinates)) return null;
 
                               // Do not connect separate shifts (e.g. gap > 3 hours between shifts)
                               const arrivalDiffMinutes = dayjs(nextStop.arrival_time).diff(
@@ -1374,13 +1407,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                               const isWaiting = distanceKm === 0 && timeMin > 0;
 
-                              // Do not draw waiting time or lines after the route is already completed
-                              const isAfterRouteCompleted =
-                                (lastJobStopIndex !== -1 && index >= lastJobStopIndex) ||
-                                nextStop.stop_type === "depot_end" ||
-                                (nextStop.stop_type === "depot" && index === routeStops.length - 2);
-
-                              if (isAfterRouteCompleted) return null;
+                              // Do not draw waiting time after the route is already completed
+                              if (isWaiting && lastJobStopIndex !== -1 && index >= lastJobStopIndex) {
+                                return null;
+                              }
 
                               return (
                                 <Tooltip
@@ -1623,11 +1653,24 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                                 const computedArrivalTimeString = stop.arrival_time || arrivalTime.toISOString();
 
-                                const left = getPosition(
+                                let left = getPosition(
                                   computedArrivalTimeString,
                                   startTime,
                                   pixelsPerMinute,
                                 );
+
+                                // Safeguard: If depot_start is followed by a stop at the exact same arrival time (or within 36px),
+                                // shift depot_start leftward by 36px so the depot house icon is never obscured by the pickup box.
+                                if (stop.stop_type === "depot_start" && groupIndex + 1 < groupedStops.length) {
+                                  const nextGroup = groupedStops[groupIndex + 1];
+                                  const nextTime = nextGroup.representative?.arrival_time;
+                                  if (nextTime) {
+                                    const nextLeft = getPosition(nextTime, startTime, pixelsPerMinute);
+                                    if (nextLeft <= left || nextLeft - left < 36) {
+                                      left = Math.max(0, nextLeft - 36);
+                                    }
+                                  }
+                                }
 
                                 const blockWidth =
                                   serviceDuration * pixelsPerMinute;
@@ -1976,6 +2019,11 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                               ? "End Time: "
                                               : "ETA: "}
                                           <strong className="text-slate-900 font-extrabold">{arrivalTime.isValid() ? arrivalTime.format("hh:mm A") : "--:--"}</strong>
+                                          {arrivalTime.isValid() && arrivalTime.format("YYYY-MM-DD") !== startTime.format("YYYY-MM-DD") && (
+                                            <span className="text-[10px] text-slate-500 font-semibold ml-1">
+                                              ({arrivalTime.format("ddd, MMM D")})
+                                            </span>
+                                          )}
                                         </span>
                                       </div>
                                     </div>
