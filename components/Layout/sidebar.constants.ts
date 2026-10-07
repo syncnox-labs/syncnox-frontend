@@ -13,6 +13,7 @@ import {
   DashboardOutlined,
   FieldStringOutlined,
   SlidersOutlined,
+  MessageOutlined,
 } from "@ant-design/icons";
 
 interface SubMenuItem {
@@ -73,6 +74,12 @@ export const MENU_ITEMS: MenuItem[] = [
         label: "Optimization Rules",
         path: "/settings/optimization-rules",
         tabKey: "team",
+      },
+      {
+        icon: MessageOutlined,
+        label: "Messages",
+        path: "/settings/customer-messages",
+        tabKey: "customer-messages",
       },
     ],
   },
