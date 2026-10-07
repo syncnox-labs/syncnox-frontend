@@ -1410,7 +1410,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 (lastJobStopIndex !== -1 && index >= lastJobStopIndex) ||
                                 (nextStop.stop_type === "depot" && index === routeStops.length - 2);
 
-                              if (isAfterRouteCompleted) return null;
+                              if (isWaiting && isAfterRouteCompleted) return null;
 
                               return (
                                 <Tooltip
