@@ -1354,19 +1354,33 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               // Do not draw a connection line between shifts after depot_end
                               if (stop.stop_type === "depot_end") return null;
 
-                              // If stops are at the exact same location with no waiting time, do not draw a connection line
-                              if (distanceKm === 0 && timeMin === 0) return null;
+                              // If stops are at the same location (distance is 0 or same coordinates), do not draw a connection line
+                              const isSameCoordinates =
+                                typeof stop.latitude === "number" &&
+                                typeof nextStop.latitude === "number" &&
+                                stop.latitude.toFixed(4) === nextStop.latitude.toFixed(4) &&
+                                typeof stop.longitude === "number" &&
+                                typeof nextStop.longitude === "number" &&
+                                stop.longitude.toFixed(4) === nextStop.longitude.toFixed(4);
+
+                              if (distanceKm === 0 || isSameCoordinates) return null;
+
+                              // Do not connect separate shifts (e.g. gap > 3 hours between shifts)
+                              const arrivalDiffMinutes = dayjs(nextStop.arrival_time).diff(
+                                dayjs(stop.arrival_time),
+                                "minute"
+                              );
+                              if (arrivalDiffMinutes > 180) return null;
 
                               const isWaiting = distanceKm === 0 && timeMin > 0;
 
-                              // Do not draw waiting time or zero-distance lines after the route is already completed
+                              // Do not draw waiting time or lines after the route is already completed
                               const isAfterRouteCompleted =
                                 (lastJobStopIndex !== -1 && index >= lastJobStopIndex) ||
                                 nextStop.stop_type === "depot_end" ||
                                 (nextStop.stop_type === "depot" && index === routeStops.length - 2);
 
-                              if (isWaiting && isAfterRouteCompleted) return null;
-                              if (distanceKm === 0 && isAfterRouteCompleted) return null;
+                              if (isAfterRouteCompleted) return null;
 
                               return (
                                 <Tooltip
