@@ -1047,7 +1047,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                         {i === 0 && marker.dateLabel ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-1 py-0.2 rounded border border-slate-200 mr-0.5">
                             <Calendar size={10} className="text-slate-500" />
-                            {marker.dateLabel}
                           </span>
                         ) : null}
                         <span>{marker.label}</span>
@@ -1386,17 +1385,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               // Do not draw a connection line between shifts after depot_end
                               if (stop.stop_type === "depot_end") return null;
 
-                              // If stops are at the same location (distance is 0 or same coordinates), do not draw a connection line,
-                              // unless this is depot_start starting at the same location as the first job stop.
-                              const isSameCoordinates =
-                                typeof stop.latitude === "number" &&
-                                typeof nextStop.latitude === "number" &&
-                                stop.latitude.toFixed(4) === nextStop.latitude.toFixed(4) &&
-                                typeof stop.longitude === "number" &&
-                                typeof nextStop.longitude === "number" &&
-                                stop.longitude.toFixed(4) === nextStop.longitude.toFixed(4);
-
-                              if (stop.stop_type !== "depot_start" && (distanceKm === 0 || isSameCoordinates)) return null;
+                              // Removed the check that returns null for same coordinates, 
+                              // because on a time-based timeline we still need to draw a line spanning the time gap!
 
                               // Do not connect separate shifts (e.g. gap > 3 hours between shifts)
                               const arrivalDiffMinutes = dayjs(nextStop.arrival_time).diff(
@@ -1405,12 +1395,22 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               );
                               if (arrivalDiffMinutes > 180) return null;
 
-                              const isWaiting = distanceKm === 0 && timeMin > 0;
+                              const isSameCoordinates =
+                                typeof stop.latitude === "number" &&
+                                typeof nextStop.latitude === "number" &&
+                                stop.latitude.toFixed(4) === nextStop.latitude.toFixed(4) &&
+                                typeof stop.longitude === "number" &&
+                                typeof nextStop.longitude === "number" &&
+                                stop.longitude.toFixed(4) === nextStop.longitude.toFixed(4);
 
-                              // Do not draw waiting time after the route is already completed
-                              if (isWaiting && lastJobStopIndex !== -1 && index >= lastJobStopIndex) {
-                                return null;
-                              }
+                              const isWaiting = distanceKm === 0 || isSameCoordinates;
+
+                              // Do not draw waiting time or zero-distance lines after the route is already completed
+                              const isAfterRouteCompleted =
+                                (lastJobStopIndex !== -1 && index >= lastJobStopIndex) ||
+                                (nextStop.stop_type === "depot" && index === routeStops.length - 2);
+
+                              if (isAfterRouteCompleted) return null;
 
                               return (
                                 <Tooltip
@@ -1441,12 +1441,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         {isWaiting ? (
                                           <span className="flex items-center gap-1 font-semibold text-amber-700">
                                             <ClockCircleOutlined className="text-amber-600 text-xs" />
-                                            <span>Waiting: <strong className="text-amber-900">{timeMin} min</strong></span>
+                                            <span>Waiting: <strong className="text-amber-900">{timeMin > 0 ? timeMin : arrivalDiffMinutes} min</strong></span>
                                           </span>
                                         ) : (
                                           <span className="flex items-center gap-1">
                                             <ClockCircleOutlined className="text-slate-400 text-xs" />
-                                            <strong className="text-slate-800">{timeMin} min</strong>
+                                            <strong className="text-slate-800">{timeMin > 0 ? timeMin : arrivalDiffMinutes} min</strong>
                                           </span>
                                         )}
                                         <span className="flex items-center gap-1">
