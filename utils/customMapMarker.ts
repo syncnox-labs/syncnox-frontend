@@ -8,6 +8,21 @@ import { STATUS_COLORS } from "./jobs.utils";
  * @param isSelected - Whether the marker is selected (for size adjustment)
  * @returns Google Maps Icon configuration
  */
+export const LOCATION_TYPE_COLORS: Record<string, string> = {
+  customer_site: "#2563eb",
+  end_customer: "#0891b2",
+  pickup: "#059669",
+  warehouse: "#d97706",
+  other: "#64748b",
+};
+
+/**
+ * Creates a custom map marker icon as an SVG data URL
+ * @param number - The number to display on the marker
+ * @param status - The job status for color selection
+ * @param isSelected - Whether the marker is selected (for size adjustment)
+ * @returns Google Maps Icon configuration
+ */
 export const createCustomMarkerIcon = (
   number: string | number,
   status: JobStatus,
@@ -18,7 +33,9 @@ export const createCustomMarkerIcon = (
   depotKind?: string,
   stopType?: string,
   isNew: boolean = false,
-  isTimeEdited: boolean = false
+  isTimeEdited: boolean = false,
+  isAdditionalLocation: boolean = false,
+  locationType?: string
 ): google.maps.Icon => {
   let fillColor = "";
   let strokeColor = "";
@@ -26,11 +43,22 @@ export const createCustomMarkerIcon = (
   let textColor = "";
   let dotColor = "";
 
-  let baseColor = colorOverride || STATUS_COLORS[status] || STATUS_COLORS.draft;
+  const locTypeKey = (locationType || "").toLowerCase().replace(/\s+/g, "_");
+  const locTypeColor = LOCATION_TYPE_COLORS[locTypeKey] || LOCATION_TYPE_COLORS.other;
+
+  let baseColor =
+    colorOverride ||
+    (isAdditionalLocation ? locTypeColor : isDepot ? "#003220" : STATUS_COLORS[status] || STATUS_COLORS.draft);
 
   if (isDepot) {
     fillColor = baseColor;
     strokeColor = "none";
+    textColor = "white";
+    dotColor = baseColor;
+  } else if (isAdditionalLocation) {
+    fillColor = baseColor;
+    strokeColor = "#ffffff";
+    strokeWidth = 1.5;
     textColor = "white";
     dotColor = baseColor;
   } else {
@@ -58,14 +86,14 @@ export const createCustomMarkerIcon = (
   const scale = isSelected ? 1.35 : 1;
   /* 
     Depot markers are square (36x36 base) and centred.
-    Stop markers are pins (32x45 base) and bottom-anchored.
+    Stop and location markers are pins (32x45 base) and bottom-anchored.
   */
   // Rendered dimensions
   const width = (isDepot ? 36 : 32) * scale;
   const height = (isDepot ? 36 : 45) * scale;
 
   let badgeSvg = "";
-  if (!isDepot && stopType) {
+  if (!isDepot && !isAdditionalLocation && stopType) {
     if (stopType === "pickup") {
       badgeSvg = `
         <!-- Pickup Badge (Emerald) -->
@@ -89,6 +117,23 @@ export const createCustomMarkerIcon = (
   const flagSvg = `<g transform="translate(6, 6) scale(1)" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></g>`;
   
   const depotIconSvg = depotKind === "end" ? flagSvg : homeSvg;
+
+  // Custom icon for additional location types
+  let locTypeSvg = "";
+  if (isAdditionalLocation) {
+    if (locTypeKey === "warehouse") {
+      locTypeSvg = `<g transform="translate(8.2, 4.2) scale(0.65)" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M3 21h18M3 10l9-7 9 7v11H3zM9 21v-8h6v8"/></g>`;
+    } else if (locTypeKey === "customer_site") {
+      locTypeSvg = `<g transform="translate(8.2, 4.2) scale(0.65)" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18M6 12h12M6 8h12M6 16h12"/></g>`;
+    } else if (locTypeKey === "end_customer") {
+      locTypeSvg = `<g transform="translate(8.2, 4.2) scale(0.65)" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></g>`;
+    } else if (locTypeKey === "pickup") {
+      locTypeSvg = `<g transform="translate(8.2, 4.2) scale(0.65)" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></g>`;
+    } else {
+      // other / pin
+      locTypeSvg = `<g transform="translate(8.2, 4.2) scale(0.65)" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/><circle cx="12" cy="10" r="3" fill="white"/></g>`;
+    }
+  }
 
   // SVG marker icon
   const svg = `
@@ -120,7 +165,7 @@ export const createCustomMarkerIcon = (
         ` : ""}
       </defs>
 
-      <!-- Main pin body (teardrop for stops, rounded square for depot) -->
+      <!-- Main pin body (teardrop for stops and additional locations, rounded square for depot) -->
       ${
         isDepot
           ? `<rect x="2" y="2" width="28" height="28" rx="6" fill="${fillColor}" filter="url(#${(isNew || isTimeEdited) ? 'glow' : 'shadow'})"/>
@@ -134,19 +179,23 @@ export const createCustomMarkerIcon = (
             filter="url(#${(isNew || isTimeEdited) ? 'glow' : 'shadow'})"
           />
           
-          <!-- Number text -->
-          <text 
-            x="16" 
-            y="12" 
-            font-family="Arial, sans-serif" 
-            font-size="11" 
-            font-weight="bold" 
-            fill="${textColor}" 
-            text-anchor="middle" 
-            dominant-baseline="central"
-          >${number}</text>
-          
-          ${badgeSvg}
+          ${
+            isAdditionalLocation
+              ? locTypeSvg
+              : `<!-- Number text -->
+                 <text 
+                   x="16" 
+                   y="12" 
+                   font-family="Arial, sans-serif" 
+                   font-size="11" 
+                   font-weight="bold" 
+                   fill="${textColor}" 
+                   text-anchor="middle" 
+                   dominant-baseline="central"
+                 >${number}</text>
+                 ${badgeSvg}
+                `
+          }
           `
       }
       

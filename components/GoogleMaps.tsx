@@ -28,14 +28,13 @@ const containerStyle = {
 };
 
 const mapTypeStyles: React.CSSProperties = {
-  position: "absolute",
-  top: "10px",
-  right: "10px",
-  zIndex: 1,
   backgroundColor: "white",
   borderRadius: "0px",
-  boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+  boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
   padding: "8px 0",
+  minWidth: "220px",
+  maxHeight: "80vh",
+  overflowY: "auto",
 };
 
 const defaultCenter = {
@@ -43,7 +42,7 @@ const defaultCenter = {
   lng: -122.4194,
 };
 
-interface MarkerData {
+export interface MarkerData {
   id: string | number;
   position: google.maps.LatLngLiteral;
   title?: string;
@@ -63,20 +62,23 @@ interface MarkerData {
   /** Index of the route this marker belongs to, used for route focus filtering. */
   routeIndex?: number;
   isPendingDelete?: boolean;
+  isAdditionalLocation?: boolean;
+  locationType?: string;
+  zIndex?: number;
 }
 
-interface PolylineData {
+export interface PolylineData {
   id?: string;
   path: google.maps.LatLngLiteral[];
   options?: google.maps.PolylineOptions;
 }
 
-interface GoogleMapsProps {
+export interface GoogleMapsProps {
   center?: google.maps.LatLngLiteral;
   zoom?: number;
   markers?: MarkerData[];
   polylines?: PolylineData[];
-  InfoWindowModal?: React.FC<{ marker: MarkerData }>;
+  InfoWindowModal?: React.FC<{ marker: MarkerData; onClose?: () => void }>;
   selectedMarkerId?: string | number | null;
   onMarkerSelect?: (markerId: string | number | null) => void;
   /** Fired when the user clicks empty map space (not a marker or polyline). */
@@ -91,6 +93,9 @@ interface GoogleMapsProps {
   onToggleFullscreen?: () => void;
   onToggleCollapse?: () => void;
   mapViewState?: "normal" | "fullscreen" | "collapsed";
+  mapToolbarExtra?: React.ReactNode;
+  layersDropdownExtra?: React.ReactNode;
+  showInfoWindow?: (marker: MarkerData) => boolean;
 }
 
 const GoogleMaps: React.FC<GoogleMapsProps> = ({
@@ -109,6 +114,9 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
   onToggleFullscreen,
   onToggleCollapse,
   mapViewState = "normal",
+  mapToolbarExtra,
+  layersDropdownExtra,
+  showInfoWindow,
 }) => {
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script",
@@ -239,6 +247,13 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
             borderRadius: "0px",
           }}
         >
+          {mapToolbarExtra && (
+            <>
+              {mapToolbarExtra}
+              <div className="w-[1px] h-5 bg-gray-200" />
+            </>
+          )}
+
           {onToggleFullscreen && (
             <Tooltip title={mapViewState === "fullscreen" ? "Exit Fullscreen" : "Fullscreen Map"}>
               <Button
@@ -307,7 +322,19 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
               {(onToggleFullscreen || onToggleCollapse) && <div className="w-[1px] h-5 bg-gray-200" />}
               <Dropdown
                 popupRender={() => (
-                  <div style={mapTypeStyles}>
+                  <div
+                    style={mapTypeStyles}
+                    onClick={(e) => e.stopPropagation()}
+                    className="custom-scrollbar"
+                  >
+                    {layersDropdownExtra && (
+                      <div className="px-3 pb-2 mb-2 border-b border-gray-100">
+                        {layersDropdownExtra}
+                      </div>
+                    )}
+                    <div className="px-3 py-1 text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                      Base Map
+                    </div>
                     <Radio.Group
                       value={mapTypeId}
                       onChange={(e) => handleMapTypeChange(e.target.value as MapType)}
@@ -389,6 +416,8 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
           marker.stopType,
           (marker as any).isNew,
           (marker as any).isTimeEdited,
+          marker.isAdditionalLocation,
+          marker.locationType,
         );
 
         return (
@@ -399,7 +428,15 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
             icon={icon}
             opacity={marker.isPendingDelete ? 0.35 : 1.0}
             draggable={marker.draggable}
-            zIndex={isSelected ? 9999 : (marker.sequenceNumber ?? 1)}
+            zIndex={
+              isSelected
+                ? 1000000
+                : marker.zIndex !== undefined
+                  ? marker.zIndex
+                  : marker.isDepot || marker.isAdditionalLocation
+                    ? 99999
+                    : (marker.sequenceNumber ?? 1)
+            }
             animation={
               isBouncing && typeof window !== "undefined" && window.google?.maps?.Animation
                 ? window.google.maps.Animation.BOUNCE
@@ -423,20 +460,29 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
         );
       })}
 
-      {selectedMarker && InfoWindowModal && (
-        <InfoWindow
-          position={selectedMarker.position}
-          onCloseClick={() => {
-            setSelectedMarker(null);
-            onMarkerSelect?.(null);
-          }}
-          options={{
-            pixelOffset: new window.google.maps.Size(0, -30),
-          }}
-        >
-          <InfoWindowModal marker={selectedMarker} />
-        </InfoWindow>
-      )}
+      {selectedMarker &&
+        InfoWindowModal &&
+        (!showInfoWindow || showInfoWindow(selectedMarker)) && (
+          <InfoWindow
+            position={selectedMarker.position}
+            onCloseClick={() => {
+              setSelectedMarker(null);
+              onMarkerSelect?.(null);
+            }}
+            options={{
+              pixelOffset: new window.google.maps.Size(0, -30),
+              maxWidth: 280,
+            }}
+          >
+            <InfoWindowModal
+              marker={selectedMarker}
+              onClose={() => {
+                setSelectedMarker(null);
+                onMarkerSelect?.(null);
+              }}
+            />
+          </InfoWindow>
+        )}
     </GoogleMap>
   );
 };

@@ -225,11 +225,18 @@ export const generateMapMarkers = (
           ? `${stop.address_formatted || "Unknown location"} (Pending Deletion)`
           : stop.address_formatted || "Unknown location",
         description: stop.arrival_time
-          ? `ETA: ${formatTime12h(stop.arrival_time)}`
+          ? isDepot
+            ? stop.stop_type === "depot_start"
+              ? `Start Time: ${formatTime12h(stop.arrival_time)}`
+              : stop.stop_type === "depot_end"
+                ? `End Time: ${formatTime12h(stop.arrival_time)}`
+                : `Time: ${formatTime12h(stop.arrival_time)}`
+            : `ETA: ${formatTime12h(stop.arrival_time)}`
           : undefined,
         jobData: job,
         sequenceNumber: isDepot ? undefined : displayIndex,
         isDepot: isDepot,
+        zIndex: isDepot ? 99999 : undefined,
         isPendingDelete: isPendingDelete,
         // Route start/end hint so the map can draw a "Start"/"End" marker
         // (instead of a generic house icon) on the driver's first/last stops.

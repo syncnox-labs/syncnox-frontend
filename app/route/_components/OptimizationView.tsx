@@ -13,6 +13,7 @@ import {
   Spin,
   Alert,
   Drawer,
+  Switch,
 } from "antd";
 import {
   ArrowLeftOutlined,
@@ -26,8 +27,8 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 
-import GoogleMaps from "@/components/GoogleMaps";
-import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, Map as MapIcon } from "lucide-react";
+import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
+import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, Map as MapIcon, Building2, MapPin, Milestone } from "lucide-react";
 import MapSearch from "./MapSearch";
 import TimelineView from "./TimelineView";
 import AddJobsModal from "@/app/plan/AddJobsModal";
@@ -41,6 +42,10 @@ import { useRouteStore } from "@/store/routes.store";
 import { useIndexStore } from "@/store/index.store";
 import { useTeamStore } from "@/store/team.store";
 import { useVehicleStore } from "@/store/vehicle.store";
+import { useDepotStore } from "@/store/depots.store";
+import { useLocationMappingStore } from "@/store/location-mapping.store";
+import { LOCATION_TYPE_OPTIONS } from "@/apis/location-mapping.api";
+import { LOCATION_TYPE_COLORS } from "@/utils/customMapMarker";
 import RouteInfoWindow from "./RouteInfoWindow";
 import RouteExportPreview from "./RouteExportPreview";
 import {
@@ -68,6 +73,39 @@ import {
 import JobDetailsCard from "./JobDetailsCard";
 
 const { Title, Text } = Typography;
+
+const MAP_OVERLAYS_STORAGE_KEY = "syncnox_map_overlays_visibility";
+
+interface MapOverlaysState {
+  stops: boolean;
+  depots: boolean;
+  additionalLocations: boolean;
+}
+
+const DEFAULT_MAP_OVERLAYS: MapOverlaysState = {
+  stops: true,
+  depots: false,
+  additionalLocations: false,
+};
+
+const getStoredMapOverlays = (): MapOverlaysState => {
+  if (typeof window === "undefined") return DEFAULT_MAP_OVERLAYS;
+  try {
+    const raw = localStorage.getItem(MAP_OVERLAYS_STORAGE_KEY);
+    if (!raw) return DEFAULT_MAP_OVERLAYS;
+    const parsed = JSON.parse(raw);
+    return {
+      stops: typeof parsed?.stops === "boolean" ? parsed.stops : DEFAULT_MAP_OVERLAYS.stops,
+      depots: typeof parsed?.depots === "boolean" ? parsed.depots : DEFAULT_MAP_OVERLAYS.depots,
+      additionalLocations:
+        typeof parsed?.additionalLocations === "boolean"
+          ? parsed.additionalLocations
+          : DEFAULT_MAP_OVERLAYS.additionalLocations,
+    };
+  } catch {
+    return DEFAULT_MAP_OVERLAYS;
+  }
+};
 
 interface OptimizationViewProps {
   route: Route;
@@ -159,6 +197,63 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
   const [selectedMarkerId, setSelectedMarkerId] = useState<
     string | number | null
   >(null);
+
+  // ── Depots & Additional Locations store state & visibility ──
+  const { depots, initializeDepots } = useDepotStore();
+  const { locationMappings, initializeLocationMappings } = useLocationMappingStore();
+
+  useEffect(() => {
+    initializeDepots();
+  }, [initializeDepots]);
+
+  useEffect(() => {
+    initializeLocationMappings();
+  }, [initializeLocationMappings]);
+
+  // ── Depots, Additional Locations & Stops visibility state (persisted to localStorage) ──
+  const [showStops, setShowStops] = useState<boolean>(DEFAULT_MAP_OVERLAYS.stops);
+  const [showDepots, setShowDepots] = useState<boolean>(DEFAULT_MAP_OVERLAYS.depots);
+  const [showAdditionalLocations, setShowAdditionalLocations] = useState<boolean>(DEFAULT_MAP_OVERLAYS.additionalLocations);
+
+  useEffect(() => {
+    const stored = getStoredMapOverlays();
+    setShowStops(stored.stops);
+    setShowDepots(stored.depots);
+    setShowAdditionalLocations(stored.additionalLocations);
+  }, []);
+
+  const handleToggleStops = useCallback((checked: boolean) => {
+    setShowStops(checked);
+    try {
+      const current = getStoredMapOverlays();
+      localStorage.setItem(
+        MAP_OVERLAYS_STORAGE_KEY,
+        JSON.stringify({ ...current, stops: checked })
+      );
+    } catch {}
+  }, []);
+
+  const handleToggleDepots = useCallback((checked: boolean) => {
+    setShowDepots(checked);
+    try {
+      const current = getStoredMapOverlays();
+      localStorage.setItem(
+        MAP_OVERLAYS_STORAGE_KEY,
+        JSON.stringify({ ...current, depots: checked })
+      );
+    } catch {}
+  }, []);
+
+  const handleToggleAdditionalLocations = useCallback((checked: boolean) => {
+    setShowAdditionalLocations(checked);
+    try {
+      const current = getStoredMapOverlays();
+      localStorage.setItem(
+        MAP_OVERLAYS_STORAGE_KEY,
+        JSON.stringify({ ...current, additionalLocations: checked })
+      );
+    } catch {}
+  }, []);
 
   // Map panel layout state & imperative refs
   const [mapViewState, setMapViewState] = useState<"normal" | "fullscreen" | "collapsed">("normal");
@@ -463,14 +558,120 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     return generateRoutePolylines(route, focusedRouteIndex, allowedRouteIndices);
   }, [route, focusedRouteIndex, allowedRouteIndices]);
 
-  const allMarkers = useMemo(() => {
-    return generateMapMarkers(route, jobs, allowedRouteIndices, pendingDeletedJobIds);
-  }, [route, jobs, allowedRouteIndices, pendingDeletedJobIds]);
+  // Registered Depots map markers
+  const registeredDepotMarkers = useMemo<MarkerData[]>(() => {
+    if (!showDepots) return [];
+    return depots
+      .filter((d) => {
+        const lat = Number(d.location?.lat ?? (d as any).latitude);
+        const lng = Number(d.location?.lng ?? (d as any).longitude);
+        return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+      })
+      .map((d) => {
+        const lat = Number(d.location?.lat ?? (d as any).latitude);
+        const lng = Number(d.location?.lng ?? (d as any).longitude);
+        const addr =
+          typeof d.address === "string"
+            ? d.address
+            : d.address?.formatted_address ||
+              [d.address?.street, d.address?.city].filter(Boolean).join(", ") ||
+              "Operational Base";
+        return {
+          id: `depot-${d.id}`,
+          position: { lat, lng },
+          title: `${d.name} (Depot)`,
+          description: addr,
+          isDepot: true,
+          color: "#003220",
+          zIndex: 99999,
+          jobData: {
+            id: d.id,
+            name: d.name,
+            address: addr,
+            is_depot: true,
+          },
+        };
+      });
+  }, [depots, showDepots]);
 
-  // While a route is focused only its own stops stay on the map.
-  const markers = useMemo(() => {
+  // Additional Locations map markers
+  const additionalLocationMarkers = useMemo<MarkerData[]>(() => {
+    if (!showAdditionalLocations) return [];
+    return locationMappings
+      .filter((m) => {
+        const lat = Number(m.latitude);
+        const lng = Number(m.longitude);
+        return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+      })
+      .map((m) => {
+        const raw = (m.type || m.location_type || "other").toLowerCase().replace(/\s+/g, "_");
+        const typeKey = LOCATION_TYPE_COLORS[raw] ? raw : "other";
+        const matchedOpt = LOCATION_TYPE_OPTIONS.find(
+          (opt) => opt.value === raw || opt.label.toLowerCase() === raw
+        );
+        const typeLabel = matchedOpt ? matchedOpt.label : raw;
+        const addr =
+          m.address ||
+          [m.address, m.city].filter(Boolean).join(", ") ||
+          "No address set";
+        return {
+          id: `loc-${m.id}`,
+          position: { lat: Number(m.latitude), lng: Number(m.longitude) },
+          title: `${m.name} (${typeLabel})`,
+          description: addr,
+          isAdditionalLocation: true,
+          locationType: typeKey,
+          color: LOCATION_TYPE_COLORS[typeKey],
+          zIndex: 99999,
+          jobData: {
+            id: m.id,
+            name: m.name,
+            type: typeKey,
+            location_type: typeLabel,
+            address: addr,
+            city: m.city,
+            aliases: m.aliases,
+            is_location_mapping: true,
+          },
+        };
+      });
+  }, [locationMappings, showAdditionalLocations]);
+
+  // Total non-depot stops count across all routes
+  const totalStopsCount = useMemo(() => {
+    if (!route?.result?.routes) return 0;
+    return route.result.routes.reduce(
+      (acc, r) => acc + getGroupedStopsCount(r.stops),
+      0
+    );
+  }, [route]);
+
+  // Route stop markers (accounting for depot & stops visibility)
+  const routeMarkers = useMemo<MarkerData[]>(() => {
+    const rawMarkers = generateMapMarkers(route, jobs, allowedRouteIndices, pendingDeletedJobIds);
+    return rawMarkers.filter((m) => {
+      if (m.isDepot) {
+        if (!showDepots) return false;
+      } else {
+        if (!showStops) return false;
+      }
+      return true;
+    });
+  }, [route, jobs, allowedRouteIndices, pendingDeletedJobIds, showDepots, showStops]);
+
+  const allMarkers = useMemo<MarkerData[]>(() => {
+    return [...routeMarkers, ...registeredDepotMarkers, ...additionalLocationMarkers];
+  }, [routeMarkers, registeredDepotMarkers, additionalLocationMarkers]);
+
+  // While a route is focused only its own stops stay on the map, along with depots and additional locations
+  const markers = useMemo<MarkerData[]>(() => {
     if (focusedRouteIndex === null) return allMarkers;
-    return allMarkers.filter((m) => m.routeIndex === focusedRouteIndex);
+    return allMarkers.filter((m) => {
+      if (m.routeIndex !== undefined) {
+        return m.routeIndex === focusedRouteIndex;
+      }
+      return true;
+    });
   }, [allMarkers, focusedRouteIndex]);
 
   // Derived from the full marker set so focusing a route doesn't yank the map
@@ -575,10 +776,16 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
       return;
     }
 
+    const markerIdStr = String(markerId);
+    if (markerIdStr.startsWith("depot-") || markerIdStr.startsWith("loc-")) {
+      setSelectedDrawerJob(null);
+      return;
+    }
+
     // Marker ids are `${routeIndex}-${stopIndex}`. Resolving the stop by index
     // (rather than searching by job_id) keeps pickup and drop-off apart for
     // shuttle jobs, which appear twice in the same route.
-    const [routeIndexStr, stopIndexStr] = String(markerId).split("-");
+    const [routeIndexStr, stopIndexStr] = markerIdStr.split("-");
     const routeIndex = Number(routeIndexStr);
     const stopIndex = Number(stopIndexStr);
     const routeItem = route.result?.routes?.[routeIndex];
@@ -1406,6 +1613,66 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                 onToggleFullscreen={handleToggleFullscreen}
                 onToggleCollapse={handleToggleCollapse}
                 mapViewState={mapViewState}
+                InfoWindowModal={RouteInfoWindow}
+                showInfoWindow={(m) => Boolean(m.isDepot || m.isAdditionalLocation)}
+                layersDropdownExtra={
+                  <div className="flex flex-col gap-2.5 text-xs font-sans">
+                    <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                      Map Overlays
+                    </div>
+                    <div className="flex items-center justify-between py-0.5">
+                      <span className="font-semibold text-gray-700 flex items-center gap-2">
+                        <Milestone size={14} className="text-[#003220]" />
+                        <span>Stops</span>
+                        {totalStopsCount > 0 && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded-none font-bold">
+                            {totalStopsCount}
+                          </span>
+                        )}
+                      </span>
+                      <Switch
+                        size="small"
+                        checked={showStops}
+                        onChange={handleToggleStops}
+                        className={showStops ? "!bg-[#003220]" : ""}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between py-0.5">
+                      <span className="font-semibold text-gray-700 flex items-center gap-2">
+                        <Building2 size={14} className="text-[#003220]" />
+                        <span>Depots</span>
+                        {depots.length > 0 && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded-none font-bold">
+                            {depots.length}
+                          </span>
+                        )}
+                      </span>
+                      <Switch
+                        size="small"
+                        checked={showDepots}
+                        onChange={handleToggleDepots}
+                        className={showDepots ? "!bg-[#003220]" : ""}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between py-0.5">
+                      <span className="font-semibold text-gray-700 flex items-center gap-2">
+                        <MapPin size={14} className="text-[#003220]" />
+                        <span>Additional Locations</span>
+                        {locationMappings.length > 0 && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded-none font-bold">
+                            {locationMappings.length}
+                          </span>
+                        )}
+                      </span>
+                      <Switch
+                        size="small"
+                        checked={showAdditionalLocations}
+                        onChange={handleToggleAdditionalLocations}
+                        className={showAdditionalLocations ? "!bg-[#003220]" : ""}
+                      />
+                    </div>
+                  </div>
+                }
               />
 
               {/* Top-left overlay column: focus chip + in-map search stacked */}

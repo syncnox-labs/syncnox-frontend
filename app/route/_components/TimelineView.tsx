@@ -891,12 +891,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         <div className="min-w-full inline-block">
           {/* Header Row */}
           <div
-            className="sticky top-0 z-20 bg-gray-50 border-b border-gray-200 flex"
+            className="sticky top-0 z-40 bg-gray-50 border-b border-gray-200 flex"
             style={{ height: HEADER_HEIGHT, minWidth: "100%" }}
           >
             {/* Sticky Driver Column Header */}
             <div
-              className="sticky left-0 z-30 bg-gray-50 border-r border-gray-200 px-3 flex items-center justify-between font-medium text-gray-500 shadow-sm"
+              className="sticky left-0 top-0 z-50 bg-gray-50 border-r border-gray-200 px-3 flex items-center justify-between font-medium text-gray-500 shadow-sm"
               style={{ width: DRIVER_COLUMN_WIDTH, minWidth: DRIVER_COLUMN_WIDTH }}
             >
               {isSearchOpen ? (
@@ -1234,6 +1234,33 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                         const groupedStops = routeData?.groupedStops || [];
                         const occupancyMap = routeData?.occupancyMap || new Map<number, number>();
 
+                        const routeStops = route.stops || [];
+                        // Find the index of the last job (non-depot) stop
+                        const lastJobStopIndex = routeStops.reduce(
+                          (last: number, s: any, idx: number) => {
+                            const isDepot =
+                              s.stop_type === "depot" ||
+                              s.stop_type === "depot_start" ||
+                              s.stop_type === "depot_end";
+                            return !isDepot ? idx : last;
+                          },
+                          -1
+                        );
+                        const lastJobStop =
+                          lastJobStopIndex !== -1 ? routeStops[lastJobStopIndex] : null;
+                        const lastJobCompletionTime = lastJobStop
+                          ? (lastJobStop.departure_time
+                              ? dayjs(lastJobStop.departure_time)
+                              : dayjs(lastJobStop.arrival_time).add(
+                                  lastJobStop.service_duration_minutes || 0,
+                                  "minute"
+                                ))
+                          : null;
+                        const lastRouteStop = routeStops[routeStops.length - 1];
+                        const routeCompletionTime = lastRouteStop?.arrival_time
+                          ? dayjs(lastRouteStop.arrival_time)
+                          : lastJobCompletionTime;
+
                         // ── Resolve vehicle label for segment hover tooltips ───────────────
                         const routeVehicleObj = route.vehicle_id
                           ? vehiclesMap.get(Number(route.vehicle_id))
@@ -1331,6 +1358,15 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               if (distanceKm === 0 && timeMin === 0) return null;
 
                               const isWaiting = distanceKm === 0 && timeMin > 0;
+
+                              // Do not draw waiting time or zero-distance lines after the route is already completed
+                              const isAfterRouteCompleted =
+                                (lastJobStopIndex !== -1 && index >= lastJobStopIndex) ||
+                                nextStop.stop_type === "depot_end" ||
+                                (nextStop.stop_type === "depot" && index === routeStops.length - 2);
+
+                              if (isWaiting && isAfterRouteCompleted) return null;
+                              if (distanceKm === 0 && isAfterRouteCompleted) return null;
 
                               return (
                                 <Tooltip
@@ -1467,6 +1503,31 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                             {/* Idle Time Blocks */}
                             {route.idle_blocks?.map(
                               (idle: any, idleIndex: number) => {
+                                // Do not display any idle / waiting time after the route is already completed
+                                if (
+                                  lastJobStopIndex !== -1 &&
+                                  typeof idle.after_stop_index === "number" &&
+                                  idle.after_stop_index >= lastJobStopIndex
+                                ) {
+                                  return null;
+                                }
+
+                                if (
+                                  lastJobCompletionTime &&
+                                  dayjs(idle.start_time).valueOf() >=
+                                    lastJobCompletionTime.valueOf() - 30000
+                                ) {
+                                  return null;
+                                }
+
+                                if (
+                                  routeCompletionTime &&
+                                  dayjs(idle.start_time).valueOf() >=
+                                    routeCompletionTime.valueOf() - 30000
+                                ) {
+                                  return null;
+                                }
+
                                 const idleStartPos = getPosition(
                                   idle.start_time,
                                   startTime,
@@ -1895,7 +1956,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       <div className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-50 border border-slate-200 text-slate-900 text-[11px] text-center font-medium min-w-0">
                                         <ClockCircleOutlined className="text-slate-600 text-xs shrink-0" />
                                         <span className="truncate">
-                                          ETA: <strong className="text-slate-900 font-extrabold">{arrivalTime.isValid() ? arrivalTime.format("hh:mm A") : "--:--"}</strong>
+                                          {isDepot && (stop.stop_type === "depot_start" || depotLabel === "Start")
+                                            ? "Start Time: "
+                                            : isDepot && (stop.stop_type === "depot_end" || depotLabel === "End")
+                                              ? "End Time: "
+                                              : "ETA: "}
+                                          <strong className="text-slate-900 font-extrabold">{arrivalTime.isValid() ? arrivalTime.format("hh:mm A") : "--:--"}</strong>
                                         </span>
                                       </div>
                                     </div>

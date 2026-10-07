@@ -529,7 +529,13 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   const arrivalField = (
     <Field
       icon={<Clock size={13} className="text-gray-400 shrink-0" />}
-      label="ETA / Arrival"
+      label={
+        stopType === "depot_start"
+          ? "Start Time"
+          : stopType === "depot_end"
+            ? "End Time"
+            : "ETA / Arrival"
+      }
       valueClassName="text-xs text-gray-900 font-bold pl-4.5"
     >
       {arrivalTime}
