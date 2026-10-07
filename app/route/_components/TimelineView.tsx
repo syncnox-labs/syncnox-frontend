@@ -1895,7 +1895,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       <div className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-50 border border-slate-200 text-slate-900 text-[11px] text-center font-medium min-w-0">
                                         <ClockCircleOutlined className="text-slate-600 text-xs shrink-0" />
                                         <span className="truncate">
-                                          ETA: <strong className="text-slate-900 font-extrabold">{arrivalTime.isValid() ? arrivalTime.format("hh:mm A") : "--:--"}</strong>
+                                          {isDepot && (stop.stop_type === "depot_start" || depotLabel === "Start")
+                                            ? "Start Time: "
+                                            : isDepot && (stop.stop_type === "depot_end" || depotLabel === "End")
+                                              ? "End Time: "
+                                              : "ETA: "}
+                                          <strong className="text-slate-900 font-extrabold">{arrivalTime.isValid() ? arrivalTime.format("hh:mm A") : "--:--"}</strong>
                                         </span>
                                       </div>
                                     </div>
