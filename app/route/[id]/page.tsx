@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { Spin, Alert } from "antd";
+import { Spin, Alert, Select, message } from "antd";
 import {
   AlertTriangle,
   AlertCircle,
@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import OptimizationView from "../_components/OptimizationView";
+import { addStopToRoute } from "@/apis/routes.api";
 import { useOptimizationStore } from "@/store/optimization.store";
 import type { UnassignedJob } from "@/types/routes.type";
 
@@ -171,6 +172,17 @@ const RoutePage = () => {
       clearOptimization();
     };
   }, [id, fetchOptimization, clearOptimization]);
+
+  const handleAssignJob = async (jobId: number, routeIndex: number) => {
+    try {
+      message.loading({ content: "Assigning job...", key: "assign" });
+      await addStopToRoute(Number(id), routeIndex, jobId);
+      message.success({ content: "Job assigned successfully", key: "assign" });
+      fetchOptimization(Number(id));
+    } catch (err: any) {
+      message.error({ content: err?.response?.data?.detail || "Failed to assign job", key: "assign" });
+    }
+  };
 
   // ── Auto-poll when a worker is running ──────────────────────────────────────
   // After any async op (re-optimize, swap-driver) status becomes "processing".
@@ -374,15 +386,43 @@ const RoutePage = () => {
                   {unassignedJobs.map((job, idx) => (
                     <div
                       key={job.job_id || idx}
-                      className="bg-gray-50 border border-gray-200 rounded-lg p-2 text-xs space-y-1 hover:border-gray-300 transition-colors"
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(
+                          "application/json",
+                          JSON.stringify({ type: "unassigned_job", jobId: job.job_id })
+                        );
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                      className="bg-gray-50 border border-gray-200 rounded-lg p-2 text-xs space-y-1 hover:border-gray-300 transition-colors cursor-grab active:cursor-grabbing"
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-gray-900 text-[10.5px]">
                           Job #{job.job_id}
                         </span>
-                        <span className="text-[9px] font-semibold text-rose-600 uppercase tracking-wide bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
-                          Unassigned
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-semibold text-rose-600 uppercase tracking-wide bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
+                            Unassigned
+                          </span>
+                          {currentOptimization?.result?.routes && (
+                            <Select
+                              size="small"
+                              placeholder="Assign to..."
+                              style={{ width: 100, fontSize: "10px" }}
+                              dropdownStyle={{ fontSize: "10px" }}
+                              onChange={(val) => {
+                                if (val !== undefined && val !== null && job.job_id) {
+                                  handleAssignJob(job.job_id, Number(val));
+                                }
+                              }}
+                              value={null}
+                              options={currentOptimization.result.routes.map((r, i) => ({
+                                value: i,
+                                label: r.team_member_name || `Route ${i + 1}`,
+                              }))}
+                            />
+                          )}
+                        </div>
                       </div>
 
                       {job.address_formatted && (

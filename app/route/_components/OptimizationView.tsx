@@ -1142,6 +1142,23 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     });
   }, [setOptimizationResult, pollUntilComplete, route.id]);
 
+  const handleAddUnassignedJob = useCallback(
+    async (targetRouteIndex: number, jobId: number, position?: number) => {
+      try {
+        message.loading({ content: "Adding job to route...", key: "add-unassigned" });
+        await addStopToRoute(route.id, targetRouteIndex, jobId, position);
+        message.success({ content: "Job assigned successfully!", key: "add-unassigned" });
+        await fetchOptimization(route.id);
+      } catch (err: any) {
+        message.error({
+          content: err?.response?.data?.detail || "Failed to assign job",
+          key: "add-unassigned",
+        });
+      }
+    },
+    [route.id, fetchOptimization]
+  );
+
   const handleTransferStops = useCallback(
     async (
       sourceRouteIndex: number,
@@ -1746,6 +1763,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                     targetRouteIndexRef.current = idx;
                     setAddStopRouteIndex(idx);
                   }}
+                  onAddUnassignedJob={handleAddUnassignedJob}
                   onSwapDriver={(idx) => setSwapDriverRouteIndex(idx)}
                   onReverseRoute={handleReverseRoute}
                   onReOptimize={handleReOptimize}
