@@ -144,6 +144,7 @@ interface TimelineViewProps {
   onDeleteJob?: (jobId: number) => void;
   onUndoDeleteJob?: (jobId: number) => void;
   reorderingRouteIndex?: number | null;
+  onAddUnassignedJob?: (routeIndex: number, jobId: number, position?: number) => Promise<void> | void;
   onTransferStops?: (
     sourceRouteIndex: number,
     targetRouteIndex: number,
@@ -259,6 +260,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   onDeleteJob,
   onUndoDeleteJob,
   reorderingRouteIndex = null,
+  onAddUnassignedJob,
   onTransferStops,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -491,7 +493,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     e: React.DragEvent,
     routeIndex: number
   ) => {
-    if (!draggedStopInfo) {
+    if (!draggedStopInfo && !e.dataTransfer.types.includes("application/json")) {
       return;
     }
     e.preventDefault();
@@ -558,6 +560,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     }
 
     if (
+      draggedStopInfo &&
       draggedStopInfo.routeIndex === routeIndex &&
       draggedStopInfo.rawIndices.includes(closestGroup.firstRawIndex)
     ) {
@@ -613,6 +616,24 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   ) => {
     e.preventDefault();
     e.stopPropagation();
+
+    try {
+      const dataStr = e.dataTransfer.getData("application/json");
+      if (dataStr) {
+        const data = JSON.parse(dataStr);
+        if (data.type === "unassigned_job" && data.jobId) {
+          if (onAddUnassignedJob) {
+             const targetFirstIndex = dragOverSlotRef.current?.targetFirstRawIndex ?? 0;
+             await onAddUnassignedJob(routeIndex, data.jobId, targetFirstIndex);
+          }
+          dragOverSlotRef.current = null;
+          setDragOverStopInfo(null);
+          return;
+        }
+      }
+    } catch (err) {
+      // Ignore JSON parse error
+    }
 
     const currentSlot = dragOverSlotRef.current;
     if (!draggedStopInfo || !currentSlot) {
