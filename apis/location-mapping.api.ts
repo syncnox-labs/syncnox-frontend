@@ -1,13 +1,22 @@
 import apiClient from "@/config/apiClient.config";
 
 export type LocationTypeEnum =
+  | "metro_station"
   | "customer_site"
   | "end_customer"
   | "pickup"
   | "warehouse"
-  | "other";
+  | "other"
+  | string;
 
-export const LOCATION_TYPE_OPTIONS: { value: LocationTypeEnum; label: string }[] = [
+export interface LocationTypeOption {
+  value: string;
+  label: string;
+  is_custom?: boolean;
+}
+
+export const LOCATION_TYPE_OPTIONS: LocationTypeOption[] = [
+  { value: "metro_station", label: "Metro station" },
   { value: "customer_site", label: "Customer site" },
   { value: "end_customer", label: "End customer" },
   { value: "pickup", label: "Pickup" },
@@ -97,4 +106,19 @@ export const batchCreateLocationMappings = async (stations: LocationMappingCreat
 
 export const deleteLocationMapping = async (id: number): Promise<void> => {
   await apiClient.delete(`/location-mappings/metro-stations/${id}`);
+};
+
+export const fetchLocationTypes = async (): Promise<LocationTypeOption[]> => {
+  try {
+    const response = await apiClient.get("/location-mappings/location-types");
+    return response.data || [];
+  } catch (err) {
+    console.error("Error fetching location types:", err);
+    return LOCATION_TYPE_OPTIONS;
+  }
+};
+
+export const createCustomLocationType = async (name: string): Promise<LocationTypeOption> => {
+  const response = await apiClient.post("/location-mappings/location-types", { name });
+  return response.data;
 };

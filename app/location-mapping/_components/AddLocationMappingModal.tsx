@@ -9,6 +9,7 @@ import {
 import AddressAutocomplete, {
   AddressData,
 } from "@/components/AddressAutocomplete";
+import LocationTypeSelect from "./LocationTypeSelect";
 
 interface AddLocationMappingModalProps {
   open: boolean;
@@ -87,8 +88,8 @@ export default function AddLocationMappingModal({
 
     const success = await createLocationMapping({
       name: values.name.trim(),
-      type: values.type,
-      location_type: values.type,
+      type: values.type || "metro_station",
+      location_type: values.type || "metro_station",
       address: addressInput,
       city: city || undefined,
       country: country || undefined,
@@ -125,6 +126,7 @@ export default function AddLocationMappingModal({
         form={form}
         layout="vertical"
         onFinish={handleFinish}
+        initialValues={{ type: "metro_station" }}
         className="mt-4 space-y-3"
       >
         <Form.Item
@@ -141,10 +143,8 @@ export default function AddLocationMappingModal({
         </Form.Item>
 
         <Form.Item label="Location Type" name="type">
-          <Select
-            placeholder="Select location type (optional)"
-            allowClear
-            options={LOCATION_TYPE_OPTIONS}
+          <LocationTypeSelect
+            placeholder="Select location type"
             className="rounded-none text-xs"
           />
         </Form.Item>

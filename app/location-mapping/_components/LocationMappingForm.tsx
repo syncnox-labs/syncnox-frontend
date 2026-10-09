@@ -21,6 +21,7 @@ import { useLocationMappingStore } from "@/store/location-mapping.store";
 import GoogleMaps from "@/components/GoogleMaps";
 import AddressAutocomplete, { AddressData } from "@/components/AddressAutocomplete";
 import { isTextInput } from "@/utils/form.utils";
+import LocationTypeSelect from "./LocationTypeSelect";
 
 const { Text } = Typography;
 
@@ -89,7 +90,7 @@ const LocationMappingForm = ({
       const initialType =
         (initialData.type as LocationTypeEnum) ||
         (initialData.location_type as LocationTypeEnum) ||
-        undefined;
+        "metro_station";
 
       form.setFieldsValue({
         name: initialData.name,
@@ -137,8 +138,8 @@ const LocationMappingForm = ({
     if (!initialData?.id) return;
     const payload = {
       name: values.name.trim(),
-      type: values.type,
-      location_type: values.type,
+      type: values.type || "metro_station",
+      location_type: values.type || "metro_station",
       address: values.address?.trim() || undefined,
       city: values.city?.trim() || undefined,
       country: values.country?.trim() || undefined,
@@ -246,11 +247,12 @@ const LocationMappingForm = ({
 
         <div className="grid grid-cols-3 gap-3 mb-2 shrink-0">
           <Form.Item label="Location Type" name="type" className="mb-0">
-            <Select
-              placeholder="Select location type (optional)"
-              allowClear
-              options={LOCATION_TYPE_OPTIONS}
+            <LocationTypeSelect
+              placeholder="Select location type"
               className="rounded-none text-xs"
+              onChange={() => {
+                triggerAutoSave();
+              }}
             />
           </Form.Item>
 

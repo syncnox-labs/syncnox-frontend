@@ -2,6 +2,8 @@ import { LocationMapping, LOCATION_TYPE_OPTIONS } from "@/apis/location-mapping.
 import { MapPin } from "lucide-react";
 import { Checkbox } from "antd";
 
+import { useLocationMappingStore } from "@/store/location-mapping.store";
+
 interface LocationMappingCardProps {
   mapping: LocationMapping;
   isSelected: boolean;
@@ -17,12 +19,20 @@ const LocationMappingCard = ({
   onToggleCheck,
   onClick,
 }: LocationMappingCardProps) => {
+  const { locationTypes } = useLocationMappingStore();
   const sub = [mapping.address, mapping.city].filter(Boolean).join(" · ");
-  const rawType = mapping.type || mapping.location_type;
-  const matchedOpt = LOCATION_TYPE_OPTIONS.find(
-    (opt) => opt.value === rawType || opt.label.toLowerCase() === String(rawType).toLowerCase()
+  const rawType = mapping.type || mapping.location_type || "metro_station";
+  const allTypes = locationTypes.length > 0 ? locationTypes : LOCATION_TYPE_OPTIONS;
+  const matchedOpt = allTypes.find(
+    (opt) =>
+      opt.value.toLowerCase() === String(rawType).toLowerCase() ||
+      opt.label.toLowerCase() === String(rawType).toLowerCase()
   );
-  const displayType = matchedOpt ? matchedOpt.label : rawType || null;
+  const displayType = matchedOpt
+    ? matchedOpt.label
+    : String(rawType)
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
     <div

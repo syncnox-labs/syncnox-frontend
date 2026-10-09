@@ -18,7 +18,7 @@ import { MarkerJobData } from "./optimizationView.utils";
 
 import { Home, MapPin, Building2, X } from "lucide-react";
 import { LOCATION_TYPE_OPTIONS } from "@/apis/location-mapping.api";
-import { LOCATION_TYPE_COLORS } from "@/utils/customMapMarker";
+import { LOCATION_TYPE_COLORS, getLocationTypeColor } from "@/utils/customMapMarker";
 
 const { Text } = Typography;
 
@@ -121,8 +121,10 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
     const matchedOpt = LOCATION_TYPE_OPTIONS.find(
       (opt) => opt.value === rawType || opt.label.toLowerCase() === rawType
     );
-    const typeLabel = matchedOpt ? matchedOpt.label : rawType;
-    const badgeColor = LOCATION_TYPE_COLORS[rawType] || LOCATION_TYPE_COLORS.other || "#2563eb";
+    const typeLabel = matchedOpt
+      ? matchedOpt.label
+      : rawType.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+    const badgeColor = getLocationTypeColor(rawType);
     const address =
       description ||
       marker.jobData?.address ||
