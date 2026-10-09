@@ -1756,6 +1756,12 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                 <TimelineView
                   routes={route.result?.routes || []}
                   jobs={jobs}
+                  templateType={
+                    route.result?.routes?.some((r: any) => (r as any).leg !== undefined) ||
+                    jobs?.some((j: any) => j?.template_type === "worker_shuttle" || Boolean(j?.worker_shuttle_detail))
+                      ? "worker_shuttle"
+                      : undefined
+                  }
                   vehicles={vehicles}
                   selectedMarkerId={selectedMarkerId}
                   onStopClick={handleStopClick}
