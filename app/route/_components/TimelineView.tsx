@@ -5,6 +5,7 @@ import type { Job } from "@/types/job.type";
 import type { Vehicle } from "@/types/vehicle.type";
 import { Avatar, Tooltip, Select, Dropdown, Input, message } from "antd";
 import type { MenuProps } from "antd";
+import { useIndexStore } from "@/store/index.store";
 import { isDriverMatch } from "./optimizationView.utils";
 import {
   UserOutlined,
@@ -35,6 +36,7 @@ import {
 } from "lucide-react";
 import ReorderStopsModal from "./ReorderStopsModal";
 import TransferStopsModal from "./TransferStopsModal";
+import TimelineStopArrow from "./TimelineStopArrow";
 import {
   calculateTimeRange,
   generateTimeMarkers,
@@ -111,6 +113,8 @@ function groupStopsByLocation(stops: any[]): GroupedStop[] {
 interface TimelineViewProps {
   routes: any[];
   jobs?: Job[];
+  /** Optional template type indicator (e.g. "worker_shuttle") */
+  templateType?: string;
   /** Vehicle list from vehicle store — used to show vehicle info per route. */
   vehicles?: Vehicle[];
   /** Selected marker ID `${routeIndex}-${stopIndex}` from map click or stop selection */
@@ -240,6 +244,7 @@ const getVehicleCapacity = (v?: Vehicle): number | null => {
 const TimelineView: React.FC<TimelineViewProps> = ({
   routes,
   jobs = [],
+  templateType,
   vehicles = [],
   selectedMarkerId = null,
   onStopClick,
@@ -265,6 +270,28 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [intervalMinutes, setIntervalMinutes] = useState(30);
+
+  const { activeJobTemplate } = useIndexStore();
+
+  const isWorkerShuttle = useMemo(() => {
+    if (templateType === "worker_shuttle") return true;
+    if (activeJobTemplate === "worker_shuttle") return true;
+    if (routes?.some((r: any) => (r as any)?.leg !== undefined || (r as any)?.template_type === "worker_shuttle")) return true;
+    if (jobs?.some((j: any) => j?.template_type === "worker_shuttle" || Boolean(j?.worker_shuttle_detail))) return true;
+    if (
+      routes?.some((r: any) =>
+        r?.stops?.some(
+          (s: any) =>
+            Boolean(s?.worker_shuttle_detail) ||
+            Boolean(s?.job?.worker_shuttle_detail) ||
+            s?.job?.template_type === "worker_shuttle"
+        )
+      )
+    ) {
+      return true;
+    }
+    return false;
+  }, [templateType, activeJobTemplate, routes, jobs]);
 
   // Dedicated Reorder Modal state
   const [reorderModalRouteIndex, setReorderModalRouteIndex] = useState<number | null>(null);
@@ -2114,7 +2141,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     dragOverStopInfo.targetFirstRawIndex === group.firstRawIndex
                                   );
 
-                                  if (isJob && serviceDuration > 0) {
+                                  if (!isWorkerShuttle && isJob && serviceDuration > 0) {
                                     return (
                                       <Tooltip
                                         key={`stop-${routeIndex}-${groupIndex}`}
@@ -2219,6 +2246,65 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             </div>
                                           )}
                                         </div>
+                                      </Tooltip>
+                                    );
+                                  }
+
+                                  // Dedicated Arrow-shaped stops for Worker Shuttle template
+                                  const isShuttleArrow = isWorkerShuttle && !isDepot && (isPickup || isDropoff);
+
+                                  if (isShuttleArrow) {
+                                    const isStopDone = isPickup
+                                      ? jobStatus === "in_transit" ||
+                                        jobStatus === "completed" ||
+                                        jobStatus === "success"
+                                      : jobStatus === "completed" ||
+                                        jobStatus === "success";
+
+                                    return (
+                                      <Tooltip
+                                        key={`stop-${routeIndex}-${groupIndex}`}
+                                        title={tooltipContent}
+                                        color="#ffffff"
+                                        overlayStyle={{ maxWidth: "none" }}
+                                        overlayInnerStyle={{
+                                          maxWidth: "none",
+                                          pointerEvents: "auto",
+                                          padding: "10px",
+                                          borderRadius: "0px",
+                                          boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.05)",
+                                          border: "1px solid #cbd5e1",
+                                        }}
+                                      >
+                                        <TimelineStopArrow
+                                          isPickup={isPickup}
+                                          displayIndex={displayIndex}
+                                          routeColor={routeColor}
+                                          isStopDone={isStopDone}
+                                          jobStatus={jobStatus}
+                                          isStopSelected={isStopSelected}
+                                          isStopNew={isStopNew}
+                                          isStopEdited={isStopEdited}
+                                          isGroupPendingDelete={isGroupPendingDelete}
+                                          isDraggingThis={isDraggingThis}
+                                          isDropTarget={isDropTarget}
+                                          isDimmed={isDimmed}
+                                          left={left}
+                                          onClick={handleStopItemClick}
+                                          draggable={!isDepot && Boolean(firstJobId)}
+                                          onDragStart={(e) =>
+                                            firstJobId &&
+                                            handleTimelineStopDragStart(
+                                              e,
+                                              routeIndex,
+                                              group.firstRawIndex,
+                                              groupRawIndices,
+                                              firstJobId,
+                                              displayIndex
+                                            )
+                                          }
+                                          onDragEnd={handleTimelineStopDragEnd}
+                                        />
                                       </Tooltip>
                                     );
                                   }

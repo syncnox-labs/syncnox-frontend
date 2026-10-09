@@ -14,6 +14,7 @@ import {
   Alert,
   Drawer,
   Switch,
+  Checkbox,
 } from "antd";
 import {
   ArrowLeftOutlined,
@@ -28,7 +29,7 @@ import {
 import dayjs from "dayjs";
 
 import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
-import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, Map as MapIcon, Building2, MapPin, Milestone } from "lucide-react";
+import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone } from "lucide-react";
 import MapSearch from "./MapSearch";
 import TimelineView from "./TimelineView";
 import AddJobsModal from "@/app/plan/AddJobsModal";
@@ -45,7 +46,7 @@ import { useVehicleStore } from "@/store/vehicle.store";
 import { useDepotStore } from "@/store/depots.store";
 import { useLocationMappingStore } from "@/store/location-mapping.store";
 import { LOCATION_TYPE_OPTIONS } from "@/apis/location-mapping.api";
-import { LOCATION_TYPE_COLORS } from "@/utils/customMapMarker";
+import { LOCATION_TYPE_COLORS, getLocationTypeColor } from "@/utils/customMapMarker";
 import RouteInfoWindow from "./RouteInfoWindow";
 import RouteExportPreview from "./RouteExportPreview";
 import {
@@ -80,12 +81,14 @@ interface MapOverlaysState {
   stops: boolean;
   depots: boolean;
   additionalLocations: boolean;
+  visibleLocationTypes?: string[];
 }
 
 const DEFAULT_MAP_OVERLAYS: MapOverlaysState = {
   stops: true,
   depots: false,
   additionalLocations: false,
+  visibleLocationTypes: undefined,
 };
 
 const getStoredMapOverlays = (): MapOverlaysState => {
@@ -101,6 +104,9 @@ const getStoredMapOverlays = (): MapOverlaysState => {
         typeof parsed?.additionalLocations === "boolean"
           ? parsed.additionalLocations
           : DEFAULT_MAP_OVERLAYS.additionalLocations,
+      visibleLocationTypes: Array.isArray(parsed?.visibleLocationTypes)
+        ? parsed.visibleLocationTypes
+        : undefined,
     };
   } catch {
     return DEFAULT_MAP_OVERLAYS;
@@ -200,7 +206,12 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
 
   // ── Depots & Additional Locations store state & visibility ──
   const { depots, initializeDepots } = useDepotStore();
-  const { locationMappings, initializeLocationMappings } = useLocationMappingStore();
+  const {
+    locationMappings,
+    locationTypes,
+    initializeLocationMappings,
+    fetchLocationTypes,
+  } = useLocationMappingStore();
 
   useEffect(() => {
     initializeDepots();
@@ -208,18 +219,22 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
 
   useEffect(() => {
     initializeLocationMappings();
-  }, [initializeLocationMappings]);
+    fetchLocationTypes();
+  }, [initializeLocationMappings, fetchLocationTypes]);
 
   // ── Depots, Additional Locations & Stops visibility state (persisted to localStorage) ──
   const [showStops, setShowStops] = useState<boolean>(DEFAULT_MAP_OVERLAYS.stops);
   const [showDepots, setShowDepots] = useState<boolean>(DEFAULT_MAP_OVERLAYS.depots);
   const [showAdditionalLocations, setShowAdditionalLocations] = useState<boolean>(DEFAULT_MAP_OVERLAYS.additionalLocations);
+  const [visibleLocationTypes, setVisibleLocationTypes] = useState<string[] | undefined>(undefined);
+  const [isAdditionalTypesExpanded, setIsAdditionalTypesExpanded] = useState<boolean>(true);
 
   useEffect(() => {
     const stored = getStoredMapOverlays();
     setShowStops(stored.stops);
     setShowDepots(stored.depots);
     setShowAdditionalLocations(stored.additionalLocations);
+    setVisibleLocationTypes(stored.visibleLocationTypes);
   }, []);
 
   const handleToggleStops = useCallback((checked: boolean) => {
@@ -244,13 +259,175 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     } catch {}
   }, []);
 
+  // Distinct location types aggregated from store options + active locations
+  const availableLocationTypes = useMemo(() => {
+    const typeMap = new Map<
+      string,
+      { value: string; label: string; count: number; color: string }
+    >();
+
+    const baseTypes =
+      locationTypes.length > 0 ? locationTypes : LOCATION_TYPE_OPTIONS;
+    baseTypes.forEach((t) => {
+      const val = t.value.toLowerCase().replace(/\s+/g, "_");
+      typeMap.set(val, {
+        value: val,
+        label:
+          t.label ||
+          val.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        count: 0,
+        color: getLocationTypeColor(val),
+      });
+    });
+
+    locationMappings.forEach((m) => {
+      const raw = (m.type || m.location_type || "metro_station")
+        .toLowerCase()
+        .replace(/\s+/g, "_");
+      if (!typeMap.has(raw)) {
+        const matchedOpt = baseTypes.find(
+          (opt) => opt.value === raw || opt.label.toLowerCase() === raw
+        );
+        typeMap.set(raw, {
+          value: raw,
+          label: matchedOpt
+            ? matchedOpt.label
+            : raw.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+          count: 0,
+          color: getLocationTypeColor(raw),
+        });
+      }
+      const entry = typeMap.get(raw)!;
+      entry.count += 1;
+    });
+
+    return Array.from(typeMap.values()).sort((a, b) => {
+      if (a.value === "metro_station") return -1;
+      if (b.value === "metro_station") return 1;
+      if (b.count !== a.count) return b.count - a.count;
+      return a.label.localeCompare(b.label);
+    });
+  }, [locationTypes, locationMappings]);
+
+  const isTypeVisible = useCallback(
+    (typeValue: string) => {
+      if (visibleLocationTypes === undefined) return true;
+      return visibleLocationTypes.includes(typeValue.toLowerCase());
+    },
+    [visibleLocationTypes]
+  );
+
+  const activeTypesCount = useMemo(() => {
+    if (visibleLocationTypes === undefined) return availableLocationTypes.length;
+    return availableLocationTypes.filter((t) => visibleLocationTypes.includes(t.value))
+      .length;
+  }, [availableLocationTypes, visibleLocationTypes]);
+
   const handleToggleAdditionalLocations = useCallback((checked: boolean) => {
     setShowAdditionalLocations(checked);
+    if (checked) {
+      setIsAdditionalTypesExpanded(true);
+      setVisibleLocationTypes((prev) => {
+        if (prev !== undefined && prev.length === 0) {
+          const allVals = availableLocationTypes.map((t) => t.value);
+          try {
+            const current = getStoredMapOverlays();
+            localStorage.setItem(
+              MAP_OVERLAYS_STORAGE_KEY,
+              JSON.stringify({
+                ...current,
+                additionalLocations: checked,
+                visibleLocationTypes: allVals,
+              })
+            );
+          } catch {}
+          return allVals;
+        }
+        try {
+          const current = getStoredMapOverlays();
+          localStorage.setItem(
+            MAP_OVERLAYS_STORAGE_KEY,
+            JSON.stringify({ ...current, additionalLocations: checked })
+          );
+        } catch {}
+        return prev;
+      });
+    } else {
+      try {
+        const current = getStoredMapOverlays();
+        localStorage.setItem(
+          MAP_OVERLAYS_STORAGE_KEY,
+          JSON.stringify({ ...current, additionalLocations: checked })
+        );
+      } catch {}
+    }
+  }, [availableLocationTypes]);
+
+  const handleToggleType = useCallback(
+    (typeValue: string) => {
+      const norm = typeValue.toLowerCase();
+      setVisibleLocationTypes((prev) => {
+        const currentList =
+          prev !== undefined ? prev : availableLocationTypes.map((t) => t.value);
+        const nextList = currentList.includes(norm)
+          ? currentList.filter((v) => v !== norm)
+          : [...currentList, norm];
+
+        try {
+          const current = getStoredMapOverlays();
+          localStorage.setItem(
+            MAP_OVERLAYS_STORAGE_KEY,
+            JSON.stringify({ ...current, visibleLocationTypes: nextList })
+          );
+        } catch {}
+
+        return nextList;
+      });
+
+      setShowAdditionalLocations((prevMaster) => {
+        if (!prevMaster) {
+          try {
+            const current = getStoredMapOverlays();
+            localStorage.setItem(
+              MAP_OVERLAYS_STORAGE_KEY,
+              JSON.stringify({ ...current, additionalLocations: true })
+            );
+          } catch {}
+          return true;
+        }
+        return prevMaster;
+      });
+    },
+    [availableLocationTypes]
+  );
+
+  const handleSelectAllTypes = useCallback(() => {
+    const allVals = availableLocationTypes.map((t) => t.value);
+    setVisibleLocationTypes(allVals);
+    setShowAdditionalLocations(true);
     try {
       const current = getStoredMapOverlays();
       localStorage.setItem(
         MAP_OVERLAYS_STORAGE_KEY,
-        JSON.stringify({ ...current, additionalLocations: checked })
+        JSON.stringify({
+          ...current,
+          additionalLocations: true,
+          visibleLocationTypes: allVals,
+        })
+      );
+    } catch {}
+  }, [availableLocationTypes]);
+
+  const handleDeselectAllTypes = useCallback(() => {
+    setVisibleLocationTypes([]);
+    try {
+      const current = getStoredMapOverlays();
+      localStorage.setItem(
+        MAP_OVERLAYS_STORAGE_KEY,
+        JSON.stringify({
+          ...current,
+          visibleLocationTypes: [],
+        })
       );
     } catch {}
   }, []);
@@ -594,22 +771,28 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
       });
   }, [depots, showDepots]);
 
-  // Additional Locations map markers
+  // Additional Locations map markers (filtered by enabled types)
   const additionalLocationMarkers = useMemo<MarkerData[]>(() => {
     if (!showAdditionalLocations) return [];
     return locationMappings
       .filter((m) => {
         const lat = Number(m.latitude);
         const lng = Number(m.longitude);
-        return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+        if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return false;
+        const raw = (m.type || m.location_type || "metro_station")
+          .toLowerCase()
+          .replace(/\s+/g, "_");
+        return isTypeVisible(raw);
       })
       .map((m) => {
-        const raw = (m.type || m.location_type || "other").toLowerCase().replace(/\s+/g, "_");
-        const typeKey = LOCATION_TYPE_COLORS[raw] ? raw : "other";
-        const matchedOpt = LOCATION_TYPE_OPTIONS.find(
-          (opt) => opt.value === raw || opt.label.toLowerCase() === raw
-        );
-        const typeLabel = matchedOpt ? matchedOpt.label : raw;
+        const raw = (m.type || m.location_type || "metro_station")
+          .toLowerCase()
+          .replace(/\s+/g, "_");
+        const matchedType = availableLocationTypes.find((t) => t.value === raw);
+        const typeLabel = matchedType
+          ? matchedType.label
+          : raw.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        const markerColor = getLocationTypeColor(raw);
         const addr =
           m.address ||
           [m.address, m.city].filter(Boolean).join(", ") ||
@@ -620,13 +803,13 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
           title: `${m.name} (${typeLabel})`,
           description: addr,
           isAdditionalLocation: true,
-          locationType: typeKey,
-          color: LOCATION_TYPE_COLORS[typeKey],
+          locationType: raw,
+          color: markerColor,
           zIndex: 99999,
           jobData: {
             id: m.id,
             name: m.name,
-            type: typeKey,
+            type: raw,
             location_type: typeLabel,
             address: addr,
             city: m.city,
@@ -635,7 +818,12 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
           },
         };
       });
-  }, [locationMappings, showAdditionalLocations]);
+  }, [
+    locationMappings,
+    showAdditionalLocations,
+    isTypeVisible,
+    availableLocationTypes,
+  ]);
 
   // Total non-depot stops count across all routes
   const totalStopsCount = useMemo(() => {
@@ -1633,7 +1821,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                 InfoWindowModal={RouteInfoWindow}
                 showInfoWindow={(m) => Boolean(m.isDepot || m.isAdditionalLocation)}
                 layersDropdownExtra={
-                  <div className="flex flex-col gap-2.5 text-xs font-sans">
+                  <div className="flex flex-col gap-2.5 text-xs font-sans min-w-[240px] max-w-[280px]">
                     <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
                       Map Overlays
                     </div>
@@ -1671,22 +1859,120 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                         className={showDepots ? "!bg-[#003220]" : ""}
                       />
                     </div>
-                    <div className="flex items-center justify-between py-0.5">
-                      <span className="font-semibold text-gray-700 flex items-center gap-2">
-                        <MapPin size={14} className="text-[#003220]" />
-                        <span>Additional Locations</span>
-                        {locationMappings.length > 0 && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded-none font-bold">
-                            {locationMappings.length}
+
+                    {/* Additional Locations with expandable type configuration */}
+                    <div className="flex flex-col">
+                      <div className="flex items-center justify-between py-0.5">
+                        <div
+                          className="flex items-center gap-1.5 cursor-pointer select-none group"
+                          onClick={() => setIsAdditionalTypesExpanded((prev) => !prev)}
+                        >
+                          <span
+                            className="text-gray-400 group-hover:text-gray-700 transition-transform duration-200 inline-flex items-center justify-center w-4 h-4 -ml-0.5"
+                            style={{
+                              transform: isAdditionalTypesExpanded
+                                ? "rotate(90deg)"
+                                : "rotate(0deg)",
+                            }}
+                          >
+                            <ChevronRight size={13} />
                           </span>
-                        )}
-                      </span>
-                      <Switch
-                        size="small"
-                        checked={showAdditionalLocations}
-                        onChange={handleToggleAdditionalLocations}
-                        className={showAdditionalLocations ? "!bg-[#003220]" : ""}
-                      />
+                          <span className="font-semibold text-gray-700 flex items-center gap-1.5">
+                            <MapPin size={14} className="text-[#003220]" />
+                            <span>Additional Locations</span>
+                            {locationMappings.length > 0 && (
+                              <span className="text-[10px] font-mono px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded-none font-bold">
+                                {showAdditionalLocations &&
+                                visibleLocationTypes !== undefined &&
+                                visibleLocationTypes.length < availableLocationTypes.length
+                                  ? `${additionalLocationMarkers.length}/${locationMappings.length}`
+                                  : locationMappings.length}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        <Switch
+                          size="small"
+                          checked={showAdditionalLocations}
+                          onChange={handleToggleAdditionalLocations}
+                          className={showAdditionalLocations ? "!bg-[#003220]" : ""}
+                        />
+                      </div>
+
+                      {/* Expandable Location Types breakdown */}
+                      {isAdditionalTypesExpanded && availableLocationTypes.length > 0 && (
+                        <div className="ml-5 pl-2.5 pr-1 py-1.5 border-l-2 border-[#003220]/25 bg-gray-50/80 rounded-sm flex flex-col gap-1.5 my-1">
+                          <div className="flex items-center justify-between text-[10px] text-gray-500 font-medium pb-1 border-b border-gray-200/60">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                              By Type ({activeTypesCount}/{availableLocationTypes.length})
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={handleSelectAllTypes}
+                                className="text-[10px] font-semibold text-[#003220] hover:underline bg-transparent border-none cursor-pointer p-0"
+                              >
+                                All
+                              </button>
+                              <span className="text-gray-300">|</span>
+                              <button
+                                type="button"
+                                onClick={handleDeselectAllTypes}
+                                className="text-[10px] font-semibold text-gray-500 hover:underline bg-transparent border-none cursor-pointer p-0"
+                              >
+                                None
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-1 max-h-[170px] overflow-y-auto pr-1 custom-scrollbar">
+                            {availableLocationTypes.map((type) => {
+                              const checked = isTypeVisible(type.value);
+                              return (
+                                <div
+                                  key={type.value}
+                                  onClick={() => handleToggleType(type.value)}
+                                  className={`flex items-center justify-between py-1 px-1.5 rounded cursor-pointer select-none transition-colors ${
+                                    checked && showAdditionalLocations
+                                      ? "hover:bg-gray-200/60"
+                                      : "hover:bg-gray-200/40 opacity-70"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                                    <span
+                                      className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs"
+                                      style={{ backgroundColor: type.color }}
+                                    />
+                                    <span
+                                      className={`text-[11px] truncate ${
+                                        checked && showAdditionalLocations
+                                          ? "text-gray-800 font-medium"
+                                          : "text-gray-500"
+                                      }`}
+                                      title={type.label}
+                                    >
+                                      {type.label}
+                                    </span>
+                                    {type.count > 0 && (
+                                      <span className="text-[10px] font-mono px-1 py-0.1 bg-gray-200/70 text-gray-600 rounded text-center shrink-0">
+                                        {type.count}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <Checkbox
+                                    checked={checked}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleType(type.value);
+                                    }}
+                                    className="!m-0 shrink-0"
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 }
@@ -1756,6 +2042,12 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                 <TimelineView
                   routes={route.result?.routes || []}
                   jobs={jobs}
+                  templateType={
+                    route.result?.routes?.some((r: any) => (r as any).leg !== undefined) ||
+                    jobs?.some((j: any) => j?.template_type === "worker_shuttle" || Boolean(j?.worker_shuttle_detail))
+                      ? "worker_shuttle"
+                      : undefined
+                  }
                   vehicles={vehicles}
                   selectedMarkerId={selectedMarkerId}
                   onStopClick={handleStopClick}

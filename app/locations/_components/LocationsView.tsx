@@ -149,9 +149,11 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
   // ── Additional Locations Store State ─────────────────────────────────────
   const {
     locationMappings,
+    locationTypes,
     isLoading: isLocationLoading,
     isSaving: isLocationSaving,
     fetchLocationMappings,
+    fetchLocationTypes,
     deleteLocationMapping,
     bulkDeleteLocationMappings,
   } = useLocationMappingStore();
@@ -166,7 +168,8 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
 
   useEffect(() => {
     fetchLocationMappings();
-  }, [fetchLocationMappings]);
+    fetchLocationTypes();
+  }, [fetchLocationMappings, fetchLocationTypes]);
 
   useEffect(() => {
     if (locationMappings.length > 0) {
@@ -186,32 +189,47 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
     }
   }, [locationMappings]);
 
+  // All location type options including tenant custom types
+  const allLocationTypeOptions = useMemo(() => {
+    return [
+      { label: "All", type: "all" },
+      ...(locationTypes.length > 0 ? locationTypes : LOCATION_TYPE_OPTIONS).map((opt) => ({
+        label: opt.label,
+        type: opt.value,
+      })),
+    ];
+  }, [locationTypes]);
+
   // Compute location type counts
   const typeCounts = useMemo(() => {
     const counts: Record<string, number> = {
       all: locationMappings.length,
+      metro_station: 0,
       customer_site: 0,
       end_customer: 0,
       pickup: 0,
       warehouse: 0,
       other: 0,
     };
-    locationMappings.forEach((item) => {
-      const raw = item.type || item.location_type;
-      if (!raw) return;
-      const matched = LOCATION_TYPE_OPTIONS.find(
-        (opt) =>
-          opt.value === raw || opt.label.toLowerCase() === String(raw).toLowerCase()
-      );
-      const key = matched ? matched.value : "other";
-      if (counts[key] !== undefined) {
-        counts[key]++;
-      } else {
-        counts.other++;
+    const allTypes = locationTypes.length > 0 ? locationTypes : LOCATION_TYPE_OPTIONS;
+    allTypes.forEach((t) => {
+      if (counts[t.value] === undefined) {
+        counts[t.value] = 0;
       }
     });
+
+    locationMappings.forEach((item) => {
+      const raw = item.type || item.location_type || "metro_station";
+      const matched = allTypes.find(
+        (opt) =>
+          opt.value.toLowerCase() === String(raw).toLowerCase() ||
+          opt.label.toLowerCase() === String(raw).toLowerCase()
+      );
+      const key = matched ? matched.value : raw;
+      counts[key] = (counts[key] || 0) + 1;
+    });
     return counts;
-  }, [locationMappings]);
+  }, [locationMappings, locationTypes]);
 
   // Reset selectedTypeFilter to "all" if active filter has no items
   useEffect(() => {
@@ -227,13 +245,14 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
     let result = locationMappings;
     if (selectedTypeFilter !== "all") {
       result = result.filter((item) => {
-        const raw = item.type || item.location_type;
-        if (!raw) return false;
-        const matched = LOCATION_TYPE_OPTIONS.find(
+        const raw = item.type || item.location_type || "metro_station";
+        const allTypes = locationTypes.length > 0 ? locationTypes : LOCATION_TYPE_OPTIONS;
+        const matched = allTypes.find(
           (opt) =>
-            opt.value === raw || opt.label.toLowerCase() === String(raw).toLowerCase()
+            opt.value.toLowerCase() === String(raw).toLowerCase() ||
+            opt.label.toLowerCase() === String(raw).toLowerCase()
         );
-        const key = matched ? matched.value : "other";
+        const key = matched ? matched.value : raw;
         return key === selectedTypeFilter;
       });
     }
@@ -539,14 +558,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
           {/* Category / Type filter chips (Only show chips if location type exists) */}
           <div className="flex items-center justify-between py-2 px-1 border-b border-gray-200 shrink-0 bg-white">
             <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar py-0.5">
-              {[
-                { label: "All", type: "all" },
-                { label: "Customer site", type: "customer_site" },
-                { label: "End customer", type: "end_customer" },
-                { label: "Pickup", type: "pickup" },
-                { label: "Warehouse", type: "warehouse" },
-                { label: "Other", type: "other" },
-              ]
+              {allLocationTypeOptions
                 .filter(({ type }) => type === "all" || (typeCounts[type] && typeCounts[type] > 0))
                 .map(({ label, type }) => {
                   const count = typeCounts[type] || 0;
@@ -651,11 +663,12 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                           {selectedMapping.name}
                         </span>
                         {(() => {
-                          const raw = selectedMapping.type || selectedMapping.location_type;
-                          const matched = LOCATION_TYPE_OPTIONS.find(
-                            (opt) => opt.value === raw || opt.label.toLowerCase() === String(raw).toLowerCase()
+                          const raw = selectedMapping.type || selectedMapping.location_type || "metro_station";
+                          const allTypes = locationTypes.length > 0 ? locationTypes : LOCATION_TYPE_OPTIONS;
+                          const matched = allTypes.find(
+                            (opt) => opt.value.toLowerCase() === String(raw).toLowerCase() || opt.label.toLowerCase() === String(raw).toLowerCase()
                           );
-                          const label = matched ? matched.label : raw;
+                          const label = matched ? matched.label : String(raw).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
                           return label ? (
                             <span className="px-2 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-800 rounded">
                               {label}

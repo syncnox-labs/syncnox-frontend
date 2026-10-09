@@ -9,11 +9,38 @@ import { STATUS_COLORS } from "./jobs.utils";
  * @returns Google Maps Icon configuration
  */
 export const LOCATION_TYPE_COLORS: Record<string, string> = {
+  metro_station: "#7c3aed",
   customer_site: "#2563eb",
   end_customer: "#0891b2",
   pickup: "#059669",
   warehouse: "#d97706",
   other: "#64748b",
+};
+
+const CUSTOM_TYPE_PALETTE = [
+  "#ec4899", // pink
+  "#8b5cf6", // violet
+  "#f97316", // orange
+  "#06b6d4", // cyan
+  "#10b981", // emerald
+  "#6366f1", // indigo
+  "#14b8a6", // teal
+  "#e11d48", // rose
+  "#84cc16", // lime
+];
+
+export const getLocationTypeColor = (type?: string): string => {
+  if (!type || !type.trim()) return LOCATION_TYPE_COLORS.metro_station;
+  const key = type.toLowerCase().replace(/\s+/g, "_");
+  if (LOCATION_TYPE_COLORS[key]) {
+    return LOCATION_TYPE_COLORS[key];
+  }
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = key.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % CUSTOM_TYPE_PALETTE.length;
+  return CUSTOM_TYPE_PALETTE[index];
 };
 
 /**
@@ -43,8 +70,8 @@ export const createCustomMarkerIcon = (
   let textColor = "";
   let dotColor = "";
 
-  const locTypeKey = (locationType || "").toLowerCase().replace(/\s+/g, "_");
-  const locTypeColor = LOCATION_TYPE_COLORS[locTypeKey] || LOCATION_TYPE_COLORS.other;
+  const locTypeKey = (locationType || "metro_station").toLowerCase().replace(/\s+/g, "_");
+  const locTypeColor = getLocationTypeColor(locationType);
 
   let baseColor =
     colorOverride ||
@@ -121,7 +148,9 @@ export const createCustomMarkerIcon = (
   // Custom icon for additional location types
   let locTypeSvg = "";
   if (isAdditionalLocation) {
-    if (locTypeKey === "warehouse") {
+    if (locTypeKey === "metro_station") {
+      locTypeSvg = `<g transform="translate(8.2, 4.2) scale(0.65)" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"><rect x="4" y="3" width="16" height="14" rx="2"/><path d="M4 10h16M12 3v7M8 21l2-4m6 4l-2-4"/><circle cx="8" cy="14" r="1" fill="white"/><circle cx="16" cy="14" r="1" fill="white"/></g>`;
+    } else if (locTypeKey === "warehouse") {
       locTypeSvg = `<g transform="translate(8.2, 4.2) scale(0.65)" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M3 21h18M3 10l9-7 9 7v11H3zM9 21v-8h6v8"/></g>`;
     } else if (locTypeKey === "customer_site") {
       locTypeSvg = `<g transform="translate(8.2, 4.2) scale(0.65)" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18M6 12h12M6 8h12M6 16h12"/></g>`;
@@ -130,7 +159,7 @@ export const createCustomMarkerIcon = (
     } else if (locTypeKey === "pickup") {
       locTypeSvg = `<g transform="translate(8.2, 4.2) scale(0.65)" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></g>`;
     } else {
-      // other / pin
+      // other / custom pin
       locTypeSvg = `<g transform="translate(8.2, 4.2) scale(0.65)" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/><circle cx="12" cy="10" r="3" fill="white"/></g>`;
     }
   }
