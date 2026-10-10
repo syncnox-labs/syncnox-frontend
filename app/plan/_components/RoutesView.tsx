@@ -6,7 +6,7 @@ import { Typography, Progress, Button, Select, Flex, Popover, Checkbox, Modal, m
 import { ColDef } from "ag-grid-community";
 import { useRouter } from "next/navigation";
 import StatusBadge from "@/components/Jobs/StatusBanner";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createActionsColumn } from "@/components/Table/ActionsColumn";
 import Link from "next/link";
 import { useIndexStore } from "@/store/index.store";
@@ -136,10 +136,16 @@ const DistanceHeader = (props: any) => {
 export default function RoutesView() {
   const router = useRouter();
   const { setCurrentTab } = useIndexStore();
-  const { routes, isLoading, deleteRoute, deleteRoutesBulk, selectedStatus, setSelectedStatus } =
+  const { routes, isLoading, refreshRoutes, deleteRoute, deleteRoutesBulk, selectedStatus, setSelectedStatus } =
     useRouteStore();
   const [distanceUnit, setDistanceUnit] = useState<"km" | "mi">("km");
   const [selectedRouteIds, setSelectedRouteIds] = useState<number[]>([]);
+
+  // The store persists across route detail navigation, so refresh the active
+  // status when this list remounts instead of displaying a stale pre-optimization result.
+  useEffect(() => {
+    void refreshRoutes();
+  }, [refreshRoutes]);
 
   const handleDeleteRoutesRequest = () => {
     if (selectedRouteIds.length === 0) return;

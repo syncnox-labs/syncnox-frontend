@@ -10,6 +10,7 @@ interface RouteStore {
   isLoading: boolean;
   error: string | null;
   fetchRoutes: (status?: string) => Promise<void>;
+  refreshRoutes: () => Promise<void>;
   initializeRoutes: () => Promise<void>;
   hasFetched: boolean;
   selectedStatus: string;
@@ -20,6 +21,8 @@ interface RouteStore {
   deleteRoute: (id: number) => Promise<void>;
   deleteRoutesBulk: (ids: number[]) => Promise<void>;
 }
+
+let latestRoutesRequestId = 0;
 
 export const useRouteStore = create(
   devtools(
@@ -32,25 +35,35 @@ export const useRouteStore = create(
       selectedStatus: "scheduled",
 
       fetchRoutes: async (status?: string) => {
-        set({ isLoading: true });
+        const requestId = ++latestRoutesRequestId;
+        set({ isLoading: true, error: null });
         try {
           const routes = await fetchRoutes(status);
-          set({ routes });
-          set({ hasFetched: true });
+          if (requestId !== latestRoutesRequestId) return;
+          set({ routes, hasFetched: true });
         } catch (error) {
+          if (requestId !== latestRoutesRequestId) return;
           set({ error: error as string });
         } finally {
-          set({ isLoading: false });
+          if (requestId === latestRoutesRequestId) {
+            set({ isLoading: false });
+          }
         }
       },
+      refreshRoutes: async () => {
+        const { selectedStatus } = get();
+        await get().fetchRoutes(
+          selectedStatus === "all" ? undefined : selectedStatus,
+        );
+      },
       initializeRoutes: async () => {
-        const { hasFetched, isLoading, selectedStatus } = get();
+        const { hasFetched, isLoading } = get();
         if (hasFetched || isLoading) return;
-        await get().fetchRoutes(selectedStatus === "all" ? undefined : selectedStatus);
+        await get().refreshRoutes();
       },
       setSelectedStatus: (status: string) => {
         set({ selectedStatus: status });
-        get().fetchRoutes(status === "all" ? undefined : status);
+        void get().refreshRoutes();
       },
       setCurrentRoute: (route: Route | null) => set({ currentRoute: route }),
       updateRoute: (updatedRoute: Route) => {
