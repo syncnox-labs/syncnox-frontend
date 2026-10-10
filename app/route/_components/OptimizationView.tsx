@@ -115,9 +115,15 @@ const getStoredMapOverlays = (): MapOverlaysState => {
 
 interface OptimizationViewProps {
   route: Route;
+  requestedJobDetailsId?: number | null;
+  onRequestedJobDetailsOpened?: () => void;
 }
 
-const OptimizationView = ({ route }: OptimizationViewProps) => {
+const OptimizationView = ({
+  route,
+  requestedJobDetailsId,
+  onRequestedJobDetailsOpened,
+}: OptimizationViewProps) => {
   const router = useRouter();
   const { setCurrentTab } = useIndexStore();
   const {
@@ -198,11 +204,36 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     leg?: string;
     routeIndex?: number;
     stopIndex?: number;
+    isUnassigned?: boolean;
   } | null>(null);
 
   const [selectedMarkerId, setSelectedMarkerId] = useState<
     string | number | null
   >(null);
+
+  useEffect(() => {
+    if (!requestedJobDetailsId) return;
+
+    const matchedJob = jobs.find((job) => job.id === requestedJobDetailsId);
+    if (!matchedJob) return;
+
+    setSelectedMarkerId(null);
+    setSelectedDrawerJob({
+      stopData: {
+        ...matchedJob,
+        job_id: matchedJob.id,
+        stop_type: "unassigned",
+        address_formatted:
+          matchedJob.pick_up_address ||
+          matchedJob.worker_shuttle_detail?.pick_up_address ||
+          matchedJob.address_formatted ||
+          matchedJob.pickup_delivery_detail?.address_formatted,
+      },
+      job: matchedJob,
+      isUnassigned: true,
+    });
+    onRequestedJobDetailsOpened?.();
+  }, [jobs, requestedJobDetailsId, onRequestedJobDetailsOpened]);
 
   // ── Depots & Additional Locations store state & visibility ──
   const { depots, initializeDepots } = useDepotStore();
@@ -2137,6 +2168,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
             stopIndex={selectedDrawerJob.stopIndex}
             driverName={selectedDrawerJob.driverName}
             leg={selectedDrawerJob.leg}
+            isUnassigned={selectedDrawerJob.isUnassigned}
             isFullscreen={mapViewState === "fullscreen"}
             onClose={() => {
               setSelectedDrawerJob(null);

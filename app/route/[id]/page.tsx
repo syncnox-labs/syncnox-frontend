@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { Spin, Alert, Select, message } from "antd";
+import { Spin, Alert, Select, message, Input } from "antd";
 import {
   AlertTriangle,
   AlertCircle,
@@ -17,11 +17,16 @@ import {
   Lightbulb,
   ChevronRight,
   ListChecks,
-  X,
+  UserRound,
+  Building2,
+  Eye,
+  GripVertical,
+  Search,
 } from "lucide-react";
 import OptimizationView from "../_components/OptimizationView";
 import { addStopToRoute } from "@/apis/routes.api";
 import { useOptimizationStore } from "@/store/optimization.store";
+import { useJobsStore } from "@/store/jobs.store";
 import type { UnassignedJob } from "@/types/routes.type";
 
 // ── Reason-code metadata ────────────────────────────────────────────────────
@@ -138,12 +143,17 @@ const RoutePage = () => {
 
   const { fetchOptimization, currentOptimization, clearOptimization, error } =
     useOptimizationStore();
+  const { jobs } = useJobsStore();
   const [isLoading, setIsLoading] = useState(true);
   const [isUnassignedExpanded, setIsUnassignedExpanded] = useState(true);
   /** Which reason-group's fix steps are currently open */
   const [openReasonCode, setOpenReasonCode] = useState<string | null>(null);
   /** Show the full per-job list */
-  const [showJobList, setShowJobList] = useState(false);
+  const [showJobList, setShowJobList] = useState(true);
+  const [requestedJobDetailsId, setRequestedJobDetailsId] = useState<
+    number | null
+  >(null);
+  const [unassignedJobSearch, setUnassignedJobSearch] = useState("");
 
   useEffect(() => {
     if (!id) {
@@ -214,8 +224,72 @@ const RoutePage = () => {
   }, [id, currentOptimization?.status, fetchOptimization]);
 
 
-  const unassignedJobs: UnassignedJob[] =
-    currentOptimization?.result?.unassigned_jobs || [];
+  const unassignedJobs = useMemo<UnassignedJob[]>(
+    () => currentOptimization?.result?.unassigned_jobs || [],
+    [currentOptimization?.result?.unassigned_jobs],
+  );
+
+  const unassignedJobCards = useMemo(() => {
+    const jobsById = new Map(jobs.map((job) => [job.id, job]));
+
+    return unassignedJobs.map((unassignedJob) => {
+      const fullJob = jobsById.get(unassignedJob.job_id);
+      const customFields = fullJob?.custom_fields || {};
+      const shuttleDetails = fullJob?.worker_shuttle_detail;
+      const pickupDetails = fullJob?.pickup_delivery_detail;
+      const fullName = [fullJob?.first_name, fullJob?.last_name]
+        .filter(Boolean)
+        .join(" ");
+      const workerName = unassignedJob.worker_name?.trim();
+      const isGeneratedWorkerName = Boolean(
+        workerName && /^worker\s*\(\s*job\s*#?\d+\s*\)$/i.test(workerName),
+      );
+
+      const candidateName =
+        unassignedJob.candidate_name ||
+        shuttleDetails?.candidate_name ||
+        fullJob?.candidate_name ||
+        customFields.candidate_name ||
+        fullName ||
+        (!isGeneratedWorkerName ? workerName : undefined) ||
+        unassignedJob.job_name ||
+        `Job #${unassignedJob.job_id}`;
+
+      const clientName =
+        unassignedJob.client_name ||
+        shuttleDetails?.client_name ||
+        fullJob?.client_name ||
+        pickupDetails?.client_name ||
+        customFields.client_name ||
+        fullJob?.business_name ||
+        "Client not specified";
+
+      const address =
+        unassignedJob.address_formatted ||
+        fullJob?.pick_up_address ||
+        shuttleDetails?.pick_up_address ||
+        fullJob?.address_formatted ||
+        pickupDetails?.address_formatted;
+
+      return {
+        ...unassignedJob,
+        candidateName: String(candidateName),
+        clientName: String(clientName),
+        address,
+      };
+    });
+  }, [jobs, unassignedJobs]);
+
+  const filteredUnassignedJobCards = useMemo(() => {
+    const query = unassignedJobSearch.trim().toLowerCase();
+    if (!query) return unassignedJobCards;
+
+    return unassignedJobCards.filter((job) =>
+      `${job.candidateName} ${job.job_id} job ${job.job_id} job #${job.job_id}`
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [unassignedJobCards, unassignedJobSearch]);
 
   /** Group jobs by reason_code */
   const reasonGroups = useMemo(() => {
@@ -267,20 +341,24 @@ const RoutePage = () => {
     <div className="absolute inset-0 flex flex-col">
       {/* Optimization View - Full screen */}
       <div className="flex-1 min-h-0">
-        <OptimizationView route={currentOptimization} />
+        <OptimizationView
+          route={currentOptimization}
+          requestedJobDetailsId={requestedJobDetailsId}
+          onRequestedJobDetailsOpened={() => setRequestedJobDetailsId(null)}
+        />
       </div>
 
       {/* Unassigned Jobs Panel - Floating Bottom Right */}
       {unassignedJobs.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-40 w-80 max-w-[calc(100vw-32px)] transition-all duration-300">
+        <div className="fixed bottom-4 right-4 z-40 w-[390px] max-w-[calc(100vw-32px)] transition-all duration-300">
           {isUnassignedExpanded ? (
             /* ── Expanded Panel ──────────────────────────────────────── */
-            <div className="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col">
+            <div className="bg-white rounded-xl shadow-2xl shadow-slate-900/10 border border-rose-200/70 overflow-hidden flex flex-col max-h-[calc(100vh-80px)]">
 
               {/* Header */}
               <div
                 onClick={() => setIsUnassignedExpanded(false)}
-                className="px-3 py-2.5 bg-rose-50 border-b border-rose-100 flex items-center justify-between cursor-pointer select-none hover:bg-rose-100/70 transition-colors"
+                className="px-3.5 py-3 bg-gradient-to-r from-rose-50 via-white to-amber-50 border-b border-rose-100 flex items-center justify-between cursor-pointer select-none hover:from-rose-100/80 transition-colors"
               >
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={14} className="text-rose-600 shrink-0" />
@@ -297,9 +375,9 @@ const RoutePage = () => {
                     setIsUnassignedExpanded(false);
                   }}
                   title="Minimize"
-                  className="text-gray-400 hover:text-gray-700 transition-colors p-0.5 rounded hover:bg-rose-200/60 cursor-pointer"
+                  className="text-gray-400 hover:text-gray-700 transition-colors p-1 rounded-md hover:bg-rose-200/60 cursor-pointer"
                 >
-                  <X size={14} />
+                  <ChevronDown size={15} />
                 </button>
               </div>
 
@@ -367,26 +445,54 @@ const RoutePage = () => {
               </div>
 
               {/* ── Per-Job List Toggle ────────────────────────────────── */}
-              <div className="px-3 py-1.5 border-b border-gray-100">
+              <div className="px-3 py-2 border-b border-gray-100 bg-slate-50/60">
                 <button
                   type="button"
                   onClick={() => setShowJobList((v) => !v)}
-                  className="flex items-center gap-1.5 text-[10.5px] text-gray-500 hover:text-gray-800 transition-colors cursor-pointer"
+                  className="w-full flex items-center justify-between text-[10.5px] text-gray-500 hover:text-gray-800 transition-colors cursor-pointer"
                 >
-                  {showJobList ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-                  <span className="font-semibold">
+                  <span className="flex items-center gap-1.5 font-semibold">
+                    <ListChecks size={12} />
                     {showJobList ? "Hide" : "Show"} job list ({unassignedJobs.length})
                   </span>
+                  {showJobList ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                 </button>
               </div>
 
               {/* ── Per-Job Cards ─────────────────────────────────────── */}
               {showJobList && (
-                <div className="px-2.5 py-2 max-h-48 overflow-y-auto space-y-1.5">
-                  {unassignedJobs.map((job, idx) => (
+                <div className="px-3 py-2.5 max-h-72 overflow-y-auto space-y-2 bg-slate-50/40">
+                  <div className="sticky top-0 z-10 pb-1.5 bg-slate-50">
+                    <Input
+                      size="small"
+                      allowClear
+                      value={unassignedJobSearch}
+                      onChange={(event) =>
+                        setUnassignedJobSearch(event.target.value)
+                      }
+                      placeholder="Search candidate or job ID"
+                      aria-label="Search unassigned jobs by candidate name or job ID"
+                      prefix={<Search size={12} className="text-slate-400" />}
+                    />
+                  </div>
+
+                  {filteredUnassignedJobCards.map((job, idx) => (
                     <div
-                      key={job.job_id || idx}
+                      key={`${job.job_id}-${idx}`}
                       draggable
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        setRequestedJobDetailsId(job.job_id);
+                        setIsUnassignedExpanded(false);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setRequestedJobDetailsId(job.job_id);
+                          setIsUnassignedExpanded(false);
+                        }
+                      }}
                       onDragStart={(e) => {
                         e.dataTransfer.setData(
                           "application/json",
@@ -394,41 +500,75 @@ const RoutePage = () => {
                         );
                         e.dataTransfer.effectAllowed = "move";
                       }}
-                      className="bg-gray-50 border border-gray-200 rounded-lg p-2 text-xs space-y-1 hover:border-gray-300 transition-colors cursor-grab active:cursor-grabbing"
+                      className="group bg-white border border-slate-200 rounded-xl p-2.5 text-xs space-y-2 shadow-sm hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-900/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 transition-all cursor-pointer active:cursor-grabbing"
+                      aria-label={`Open details for ${job.candidateName}`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-gray-900 text-[10.5px]">
-                          Job #{job.job_id}
-                        </span>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-[#003220] text-white flex items-center justify-center shrink-0 shadow-sm">
+                            <UserRound size={15} />
+                          </div>
+                          <div className="min-w-0">
+                            <div
+                              className="font-bold text-slate-900 text-[12px] truncate"
+                              title={job.candidateName}
+                            >
+                              {job.candidateName}
+                            </div>
+                            <div className="text-[9.5px] text-slate-400 font-medium mt-0.5">
+                              Candidate · Job #{job.job_id}
+                            </div>
+                          </div>
+                        </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-[9px] font-semibold text-rose-600 uppercase tracking-wide bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
-                            Unassigned
-                          </span>
                           {currentOptimization?.result?.routes && (
-                            <Select
-                              size="small"
-                              placeholder="Assign to..."
-                              style={{ width: 100, fontSize: "10px" }}
-                              dropdownStyle={{ fontSize: "10px" }}
-                              onChange={(val) => {
-                                if (val !== undefined && val !== null && job.job_id) {
-                                  handleAssignJob(job.job_id, Number(val));
-                                }
-                              }}
-                              value={null}
-                              options={currentOptimization.result.routes.map((r, i) => ({
-                                value: i,
-                                label: r.team_member_name || `Route ${i + 1}`,
-                              }))}
-                            />
+                            <div
+                              onClick={(event) => event.stopPropagation()}
+                              onMouseDown={(event) => event.stopPropagation()}
+                              onKeyDown={(event) => event.stopPropagation()}
+                            >
+                              <Select
+                                size="small"
+                                placeholder="Assign to..."
+                                style={{ width: 108, fontSize: "10px" }}
+                                dropdownStyle={{ fontSize: "10px" }}
+                                onChange={(val) => {
+                                  if (val !== undefined && val !== null && job.job_id) {
+                                    handleAssignJob(job.job_id, Number(val));
+                                  }
+                                }}
+                                value={null}
+                                options={currentOptimization.result.routes.map((r, i) => ({
+                                  value: i,
+                                  label: r.team_member_name || `Route ${i + 1}`,
+                                }))}
+                              />
+                            </div>
                           )}
                         </div>
                       </div>
 
-                      {job.address_formatted && (
-                        <div className="flex items-start gap-1 text-gray-500 leading-tight text-[10.5px]">
-                          <MapPin size={10} className="text-gray-400 shrink-0 mt-0.5" />
-                          <span className="line-clamp-1">{job.address_formatted}</span>
+                      <div className="flex items-start gap-1.5 px-1 text-[10.5px] leading-tight">
+                        <Building2 size={12} className="text-blue-500 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <span className="text-[9px] uppercase tracking-wide text-slate-400 font-semibold mr-1.5">
+                            Client
+                          </span>
+                          <span
+                            className="text-slate-700 font-semibold"
+                            title={job.clientName}
+                          >
+                            {job.clientName}
+                          </span>
+                        </div>
+                      </div>
+
+                      {job.address && (
+                        <div className="flex items-start gap-1.5 px-1 text-slate-500 leading-tight text-[10.5px]">
+                          <MapPin size={12} className="text-emerald-600 shrink-0 mt-0.5" />
+                          <span className="line-clamp-1" title={job.address}>
+                            {job.address}
+                          </span>
                         </div>
                       )}
 
@@ -438,8 +578,25 @@ const RoutePage = () => {
                           <span className="line-clamp-2 text-rose-700">{job.reason}</span>
                         </div>
                       )}
+
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                        <div className="flex items-center gap-1 text-[9.5px] text-emerald-700 font-semibold opacity-70 group-hover:opacity-100 transition-opacity">
+                          <Eye size={11} />
+                          <span>Click to view job details</span>
+                        </div>
+                        <GripVertical
+                          size={14}
+                          className="text-slate-300"
+                          aria-label="Drag job to a route"
+                        />
+                      </div>
                     </div>
                   ))}
+                  {filteredUnassignedJobCards.length === 0 && (
+                    <div className="py-6 text-center text-[11px] text-slate-400">
+                      No jobs match “{unassignedJobSearch.trim()}”
+                    </div>
+                  )}
                 </div>
               )}
             </div>
