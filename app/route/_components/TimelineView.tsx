@@ -486,6 +486,16 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
   const [isReordering, setIsReordering] = useState(false);
 
+  // Global cleanup for drag and drop
+  useEffect(() => {
+    const handleGlobalDragEnd = () => {
+      setDragOverStopInfo(null);
+    };
+    document.addEventListener("dragend", handleGlobalDragEnd);
+    return () => document.removeEventListener("dragend", handleGlobalDragEnd);
+  }, []);
+
+
   const handleTimelineStopDragStart = (
     e: React.DragEvent,
     routeIndex: number,
@@ -1349,7 +1359,20 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   ];
 
   return (
-    <div className="relative flex flex-col h-full bg-white select-none">
+    <div 
+      className="relative flex flex-col h-full bg-white select-none"
+      onDragOver={(e) => {
+        // Since tracks stop propagation, this only fires when dragging over non-track areas
+        e.preventDefault();
+        setDragOverStopInfo(null);
+      }}
+      onDragLeave={(e) => {
+        const relatedTarget = e.relatedTarget as Node | null;
+        if (relatedTarget === null || !e.currentTarget.contains(relatedTarget)) {
+          setDragOverStopInfo(null);
+        }
+      }}
+    >
       <div
         className="flex-1 overflow-auto relative custom-scrollbar"
         ref={containerRef}

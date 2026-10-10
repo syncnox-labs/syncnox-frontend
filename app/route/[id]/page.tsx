@@ -461,8 +461,8 @@ const RoutePage = () => {
 
               {/* ── Per-Job Cards ─────────────────────────────────────── */}
               {showJobList && (
-                <div className="px-3 py-2.5 max-h-72 overflow-y-auto space-y-2 bg-slate-50/40">
-                  <div className="sticky top-0 z-10 pb-1.5 bg-slate-50">
+                <div className="px-3 pb-2.5 max-h-72 overflow-y-auto space-y-2 bg-slate-50/40">
+                  <div className="sticky top-0 z-50 pt-2.5 pb-1.5 -mx-3 px-3 bg-slate-50">
                     <Input
                       size="small"
                       allowClear
@@ -484,13 +484,11 @@ const RoutePage = () => {
                       tabIndex={0}
                       onClick={() => {
                         setRequestedJobDetailsId(job.job_id);
-                        setIsUnassignedExpanded(false);
                       }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
                           setRequestedJobDetailsId(job.job_id);
-                          setIsUnassignedExpanded(false);
                         }
                       }}
                       onDragStart={(e) => {
@@ -499,6 +497,16 @@ const RoutePage = () => {
                           JSON.stringify({ type: "unassigned_job", jobId: job.job_id })
                         );
                         e.dataTransfer.effectAllowed = "move";
+
+                        const dragEl = document.getElementById("custom-drag-image");
+                        const nameEl = document.getElementById("drag-candidate-name");
+                        const idEl = document.getElementById("drag-job-id");
+                        
+                        if (dragEl && nameEl && idEl) {
+                          nameEl.textContent = job.candidateName;
+                          idEl.textContent = `Candidate · Job #${job.job_id}`;
+                          e.dataTransfer.setDragImage(dragEl, 20, 20);
+                        }
                       }}
                       className="group bg-white border border-slate-200 rounded-xl p-2.5 text-xs space-y-2 shadow-sm hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-900/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 transition-all cursor-pointer active:cursor-grabbing"
                       aria-label={`Open details for ${job.candidateName}`}
@@ -623,6 +631,21 @@ const RoutePage = () => {
           )}
         </div>
       )}
+
+      {/* Hidden drag image container */}
+      <div
+        id="custom-drag-image"
+        className="fixed -top-[1000px] -left-[1000px] pointer-events-none bg-white border border-slate-200 rounded-xl p-2.5 shadow-xl flex items-center gap-2.5 z-[-1]"
+        aria-hidden="true"
+      >
+        <div className="w-8 h-8 rounded-full bg-[#003220] text-white flex items-center justify-center shrink-0">
+          <UserRound size={15} />
+        </div>
+        <div className="min-w-0">
+          <div id="drag-candidate-name" className="font-bold text-slate-900 text-[12px] truncate max-w-[200px]"></div>
+          <div id="drag-job-id" className="text-[9.5px] text-slate-400 font-medium mt-0.5"></div>
+        </div>
+      </div>
     </div>
   );
 };
