@@ -1,8 +1,9 @@
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { Truck, Calendar, Home, Flag, ArrowUp, ArrowDown, House } from "lucide-react";
 import dayjs from "dayjs";
 import type { Job } from "@/types/job.type";
 import type { Vehicle } from "@/types/vehicle.type";
+import type { Team } from "@/types/team.type";
 import { Avatar, Tooltip, Select, Dropdown, Input, message } from "antd";
 import type { MenuProps } from "antd";
 import { useIndexStore } from "@/store/index.store";
@@ -113,6 +114,14 @@ function groupStopsByLocation(stops: any[]): GroupedStop[] {
 interface TimelineViewProps {
   routes: any[];
   jobs?: Job[];
+  teams?: Team[];
+  scheduledDate?: string | null;
+  onDriverWorkingHoursChange?: (
+    teamId: number,
+    dayKey: string,
+    startTime: string,
+    endTime: string,
+  ) => Promise<void>;
   /** Optional template type indicator (e.g. "worker_shuttle") */
   templateType?: string;
   /** Vehicle list from vehicle store — used to show vehicle info per route. */
@@ -213,6 +222,145 @@ interface DriverGroup {
   }>;
 }
 
+interface DriverShift {
+  startMinutes: number;
+  endMinutes: number;
+}
+
+interface DriverAvailabilityWindow {
+  start: dayjs.Dayjs;
+  end: dayjs.Dayjs;
+}
+
+interface DriverScheduleLike {
+  enabled?: boolean | string | number;
+  is_working?: boolean | string | number;
+  start_time?: string | null;
+  end_time?: string | null;
+  start?: string | null;
+  end?: string | null;
+}
+
+interface TimelineCompletionStop {
+  arrival_time?: string | null;
+  departure_time?: string | null;
+  service_duration_minutes?: number | null;
+}
+
+interface ShiftDragState extends DriverShift {
+  teamId: number;
+  driverName: string;
+  edge: "start" | "end";
+  initialClientX: number;
+}
+
+const SHIFT_SNAP_MINUTES = 15;
+const MIN_SHIFT_MINUTES = 60;
+const MAX_SHIFT_MINUTES = 24 * 60 - 1;
+
+const parseTimeToMinutes = (value?: string | null): number | null => {
+  if (!value) return null;
+  const [hoursText, minutesText] = value.split(":");
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+};
+
+const formatMinutesAsTime = (minutes: number): string => {
+  const safeMinutes = ((Math.round(minutes) % 1440) + 1440) % 1440;
+  const hours = Math.floor(safeMinutes / 60);
+  const mins = safeMinutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+};
+
+const isScheduleEnabled = (value: unknown): boolean =>
+  value !== false && value !== 0 && String(value).toLowerCase() !== "false";
+
+const getDriverShiftForDay = (team: Team, dayKey: string): DriverShift | null => {
+  const rawSchedules = (team.day_schedules || {}) as Record<
+    string,
+    DriverScheduleLike | undefined
+  >;
+  const scheduleKey = Object.keys(rawSchedules).find(
+    (key) => key.trim().toLowerCase() === dayKey.trim().toLowerCase(),
+  );
+  const daySchedule = scheduleKey ? rawSchedules[scheduleKey] : undefined;
+
+  if (
+    daySchedule &&
+    (!isScheduleEnabled(daySchedule.enabled) ||
+      !isScheduleEnabled(daySchedule.is_working))
+  ) {
+    return null;
+  }
+
+  const startMinutes = parseTimeToMinutes(
+    daySchedule?.start_time ?? daySchedule?.start ?? team.work_start_time,
+  );
+  const rawEndMinutes = parseTimeToMinutes(
+    daySchedule?.end_time ?? daySchedule?.end ?? team.work_end_time,
+  );
+  if (startMinutes === null || rawEndMinutes === null) return null;
+
+  // An end time at or before the start is an overnight shift, not an invalid
+  // schedule (for example 18:00–01:00 ends on the following calendar day).
+  const endMinutes =
+    rawEndMinutes <= startMinutes ? rawEndMinutes + 24 * 60 : rawEndMinutes;
+  return { startMinutes, endMinutes };
+};
+
+const buildAvailabilityWindows = (
+  team: Team,
+  rangeStart: dayjs.Dayjs,
+  rangeEnd: dayjs.Dayjs,
+  scheduledDay: dayjs.Dayjs,
+  scheduledDayOverride?: DriverShift,
+): DriverAvailabilityWindow[] => {
+  const windows: DriverAvailabilityWindow[] = [];
+  let cursor = rangeStart.startOf("day").subtract(1, "day");
+  const lastDay = rangeEnd.startOf("day").add(1, "day");
+
+  while (cursor.isBefore(lastDay) || cursor.isSame(lastDay, "day")) {
+    const dayKey = cursor.format("dddd").toLowerCase();
+    const shift = cursor.isSame(scheduledDay, "day") && scheduledDayOverride
+      ? scheduledDayOverride
+      : getDriverShiftForDay(team, dayKey);
+    if (shift) {
+      windows.push({
+        start: cursor.add(shift.startMinutes, "minute"),
+        end: cursor.add(shift.endMinutes, "minute"),
+      });
+    }
+    cursor = cursor.add(1, "day");
+  }
+
+  // Adjacent daily windows such as 00:00–23:59 followed by 00:00–23:59
+  // represent continuous availability. Merge the one-minute boundary so the
+  // UI and overtime calculations cannot disagree around midnight.
+  return windows
+    .sort((a, b) => a.start.valueOf() - b.start.valueOf())
+    .reduce<DriverAvailabilityWindow[]>((merged, window) => {
+      const previous = merged[merged.length - 1];
+      if (previous && !window.start.isAfter(previous.end.add(1, "minute"))) {
+        if (window.end.isAfter(previous.end)) previous.end = window.end;
+      } else {
+        merged.push({ ...window });
+      }
+      return merged;
+    }, []);
+};
+
+const formatMinutesAsDuration = (minutes: number): string => {
+  const rounded = Math.max(0, Math.round(minutes));
+  const hours = Math.floor(rounded / 60);
+  const mins = rounded % 60;
+  if (hours && mins) return `${hours}h ${mins}m`;
+  if (hours) return `${hours}h`;
+  return `${mins}m`;
+};
+
 const getVehicleCapacity = (v?: Vehicle): number | null => {
   if (!v) return null;
   if (Array.isArray(v.load_constraints)) {
@@ -244,6 +392,9 @@ const getVehicleCapacity = (v?: Vehicle): number | null => {
 const TimelineView: React.FC<TimelineViewProps> = ({
   routes,
   jobs = [],
+  teams = [],
+  scheduledDate,
+  onDriverWorkingHoursChange,
   templateType,
   vehicles = [],
   selectedMarkerId = null,
@@ -270,6 +421,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [intervalMinutes, setIntervalMinutes] = useState(30);
+  const [shiftOverrides, setShiftOverrides] = useState<Record<number, DriverShift>>({});
+  const [shiftDrag, setShiftDrag] = useState<ShiftDragState | null>(null);
+  const shiftDragValueRef = useRef<DriverShift | null>(null);
+  const [savingShiftTeamId, setSavingShiftTeamId] = useState<number | null>(null);
 
   const { activeJobTemplate } = useIndexStore();
 
@@ -418,10 +573,72 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     return Array.from(groupsMap.values());
   }, [filteredRoutes]);
 
-  const { startTime, endTime } = useMemo(
-    () => calculateTimeRange(routes),
-    [routes],
-  );
+  const baseTimeRange = useMemo(() => calculateTimeRange(routes), [routes]);
+
+  const scheduleDay = useMemo(() => {
+    const requestedDay = scheduledDate ? dayjs(scheduledDate) : null;
+    return requestedDay?.isValid()
+      ? requestedDay.startOf("day")
+      : baseTimeRange.startTime.startOf("day");
+  }, [scheduledDate, baseTimeRange.startTime]);
+
+  const scheduleDayKey = scheduleDay.format("dddd").toLowerCase();
+
+  const persistedShiftsByTeamId = useMemo(() => {
+    const shifts = new Map<number, DriverShift>();
+    teams.forEach((team) => {
+      const shift = getDriverShiftForDay(team, scheduleDayKey);
+      if (shift) shifts.set(team.id, shift);
+    });
+    return shifts;
+  }, [teams, scheduleDayKey]);
+
+  const { startTime, endTime } = useMemo(() => {
+    let earliest = baseTimeRange.startTime;
+    let latest = baseTimeRange.endTime;
+
+    persistedShiftsByTeamId.forEach((shift) => {
+      const shiftStart = scheduleDay.add(shift.startMinutes, "minute");
+      const shiftEnd = scheduleDay.add(shift.endMinutes, "minute");
+      if (shiftStart.subtract(30, "minute").isBefore(earliest)) {
+        earliest = shiftStart.subtract(30, "minute");
+      }
+      if (shiftEnd.add(60, "minute").isAfter(latest)) {
+        latest = shiftEnd.add(60, "minute");
+      }
+    });
+
+    return { startTime: earliest, endTime: latest };
+  }, [baseTimeRange, persistedShiftsByTeamId, scheduleDay]);
+
+  const teamsById = useMemo(() => {
+    const map = new Map<number, Team>();
+    teams.forEach((team) => map.set(team.id, team));
+    return map;
+  }, [teams]);
+
+  const teamsByName = useMemo(() => {
+    const map = new Map<string, Team>();
+    teams.forEach((team) => map.set(team.name.trim().toLowerCase(), team));
+    return map;
+  }, [teams]);
+
+  const availabilityWindowsByTeamId = useMemo(() => {
+    const map = new Map<number, DriverAvailabilityWindow[]>();
+    teams.forEach((team) => {
+      map.set(
+        team.id,
+        buildAvailabilityWindows(
+          team,
+          startTime,
+          endTime,
+          scheduleDay,
+          shiftOverrides[team.id],
+        ),
+      );
+    });
+    return map;
+  }, [teams, startTime, endTime, scheduleDay, shiftOverrides]);
 
   const jobsMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -467,6 +684,207 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       generateTimeMarkers(startTime, endTime, intervalMinutes, pixelsPerMinute),
     [startTime, endTime, intervalMinutes, pixelsPerMinute],
   );
+
+  useEffect(() => {
+    setShiftOverrides({});
+    setShiftDrag(null);
+    shiftDragValueRef.current = null;
+  }, [scheduledDate, scheduleDayKey]);
+
+  const persistDriverShift = useCallback(
+    async (
+      teamId: number,
+      driverName: string,
+      nextShift: DriverShift,
+      previousShift: DriverShift,
+    ) => {
+      if (!onDriverWorkingHoursChange) {
+        setShiftOverrides((current) => ({
+          ...current,
+          [teamId]: previousShift,
+        }));
+        message.warning("Working hours cannot be updated from this view.");
+        return;
+      }
+
+      setSavingShiftTeamId(teamId);
+      try {
+        await onDriverWorkingHoursChange(
+          teamId,
+          scheduleDayKey,
+          formatMinutesAsTime(nextShift.startMinutes),
+          formatMinutesAsTime(nextShift.endMinutes),
+        );
+        message.success({
+          content: `${driverName}'s ${scheduleDay.format("dddd")} working hours updated`,
+          key: `driver-shift-${teamId}`,
+        });
+      } catch (error: unknown) {
+        setShiftOverrides((current) => ({
+          ...current,
+          [teamId]: previousShift,
+        }));
+        message.error({
+          content:
+            error instanceof Error
+              ? error.message
+              : "Unable to update the driver's working hours",
+          key: `driver-shift-${teamId}`,
+        });
+      } finally {
+        setSavingShiftTeamId((current) => (current === teamId ? null : current));
+      }
+    },
+    [onDriverWorkingHoursChange, scheduleDay, scheduleDayKey],
+  );
+
+  const beginShiftResize = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    teamId: number,
+    driverName: string,
+    edge: "start" | "end",
+    shift: DriverShift,
+  ) => {
+    if (savingShiftTeamId === teamId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const dragState: ShiftDragState = {
+      teamId,
+      driverName,
+      edge,
+      initialClientX: event.clientX,
+      ...shift,
+    };
+    shiftDragValueRef.current = shift;
+    setShiftDrag(dragState);
+  };
+
+  const adjustShiftWithKeyboard = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    teamId: number,
+    driverName: string,
+    edge: "start" | "end",
+    shift: DriverShift,
+  ) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    if (savingShiftTeamId === teamId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    const delta = direction * SHIFT_SNAP_MINUTES;
+    const nextShift =
+      edge === "start"
+        ? {
+            ...shift,
+            startMinutes: Math.max(
+              0,
+              Math.min(
+                1439,
+                shift.endMinutes - MIN_SHIFT_MINUTES,
+                shift.startMinutes + delta,
+              ),
+            ),
+          }
+        : {
+            ...shift,
+            endMinutes: Math.min(
+              shift.startMinutes + MAX_SHIFT_MINUTES,
+              Math.max(shift.startMinutes + MIN_SHIFT_MINUTES, shift.endMinutes + delta),
+            ),
+          };
+    if (
+      nextShift.startMinutes === shift.startMinutes &&
+      nextShift.endMinutes === shift.endMinutes
+    ) {
+      return;
+    }
+    setShiftOverrides((current) => ({ ...current, [teamId]: nextShift }));
+    void persistDriverShift(teamId, driverName, nextShift, shift);
+  };
+
+  useEffect(() => {
+    if (!shiftDrag) return;
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
+
+    const handlePointerMove = (event: PointerEvent) => {
+      event.preventDefault();
+      const deltaMinutes =
+        Math.round(
+          (event.clientX - shiftDrag.initialClientX) /
+            pixelsPerMinute /
+            SHIFT_SNAP_MINUTES,
+        ) * SHIFT_SNAP_MINUTES;
+
+      const nextShift =
+        shiftDrag.edge === "start"
+          ? {
+              startMinutes: Math.max(
+                0,
+                Math.min(
+                  1439,
+                  shiftDrag.endMinutes - MIN_SHIFT_MINUTES,
+                  shiftDrag.startMinutes + deltaMinutes,
+                ),
+              ),
+              endMinutes: shiftDrag.endMinutes,
+            }
+          : {
+              startMinutes: shiftDrag.startMinutes,
+              endMinutes: Math.min(
+                shiftDrag.startMinutes + MAX_SHIFT_MINUTES,
+                Math.max(
+                  shiftDrag.startMinutes + MIN_SHIFT_MINUTES,
+                  shiftDrag.endMinutes + deltaMinutes,
+                ),
+              ),
+            };
+
+      shiftDragValueRef.current = nextShift;
+      setShiftOverrides((current) => ({
+        ...current,
+        [shiftDrag.teamId]: nextShift,
+      }));
+    };
+
+    const handlePointerUp = () => {
+      const nextShift = shiftDragValueRef.current || {
+        startMinutes: shiftDrag.startMinutes,
+        endMinutes: shiftDrag.endMinutes,
+      };
+      const previousShift = {
+        startMinutes: shiftDrag.startMinutes,
+        endMinutes: shiftDrag.endMinutes,
+      };
+      setShiftDrag(null);
+      shiftDragValueRef.current = null;
+      if (
+        nextShift.startMinutes !== previousShift.startMinutes ||
+        nextShift.endMinutes !== previousShift.endMinutes
+      ) {
+        void persistDriverShift(
+          shiftDrag.teamId,
+          shiftDrag.driverName,
+          nextShift,
+          previousShift,
+        );
+      }
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+    window.addEventListener("pointercancel", handlePointerUp, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [shiftDrag, pixelsPerMinute, persistDriverShift]);
 
   /** Precompute grouped stops, occupancy maps, and non-depot groupings per route once,
    * avoiding re-computation during 60Hz drag operations. */
@@ -931,7 +1349,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   ];
 
   return (
-    <div className="flex flex-col h-full bg-white select-none">
+    <div className="relative flex flex-col h-full bg-white select-none">
       <div
         className="flex-1 overflow-auto relative custom-scrollbar"
         ref={containerRef}
@@ -1197,6 +1615,122 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                   .map((r) => r.originalIndex)
                   .join(",");
 
+                const routeTeamId = Number(primaryRoute.team_member_id);
+                const matchedTeam =
+                  (Number.isFinite(routeTeamId)
+                    ? teamsById.get(routeTeamId)
+                    : undefined) ||
+                  teamsByName.get(driverGroup.driverName.trim().toLowerCase());
+                const teamId = matchedTeam?.id ?? routeTeamId;
+                const persistedShift = Number.isFinite(teamId)
+                  ? persistedShiftsByTeamId.get(teamId)
+                  : undefined;
+                const activeShift = Number.isFinite(teamId)
+                  ? shiftOverrides[teamId] || persistedShift
+                  : undefined;
+                const driverAvailabilityWindows = Number.isFinite(teamId)
+                  ? availabilityWindowsByTeamId.get(teamId) || []
+                  : [];
+                const shiftStartTime = activeShift
+                  ? scheduleDay.add(activeShift.startMinutes, "minute")
+                  : null;
+                const shiftEndTime = activeShift
+                  ? scheduleDay.add(activeShift.endMinutes, "minute")
+                  : null;
+                const availabilityLeft = shiftStartTime
+                  ? Math.max(
+                      0,
+                      Math.min(
+                        timelineWidth,
+                        shiftStartTime.diff(startTime, "minute", true) * pixelsPerMinute,
+                      ),
+                    )
+                  : 0;
+                const availabilityRight = shiftEndTime
+                  ? Math.max(
+                      availabilityLeft,
+                      Math.min(
+                        timelineWidth,
+                        shiftEndTime.diff(startTime, "minute", true) * pixelsPerMinute,
+                      ),
+                    )
+                  : 0;
+
+                const driverWorkRange = driverGroup.routes.reduce<{
+                  start: dayjs.Dayjs | null;
+                  end: dayjs.Dayjs | null;
+                }>(
+                  (range, { route: driverRoute }) =>
+                    ((driverRoute.stops || []) as TimelineCompletionStop[]).reduce(
+                      (currentRange, stop) => {
+                        if (!stop.arrival_time) return currentRange;
+                        const arrival = dayjs(stop.arrival_time);
+                        const completion = stop.departure_time
+                          ? dayjs(stop.departure_time)
+                          : arrival.add(stop.service_duration_minutes || 0, "minute");
+                        if (!arrival.isValid() || !completion.isValid()) return currentRange;
+                        if (arrival.isBefore(startTime) || arrival.isAfter(endTime)) {
+                          return currentRange;
+                        }
+                        return {
+                          start:
+                            !currentRange.start || arrival.isBefore(currentRange.start)
+                              ? arrival
+                              : currentRange.start,
+                          end:
+                            !currentRange.end || completion.isAfter(currentRange.end)
+                              ? completion
+                              : currentRange.end,
+                        };
+                      },
+                      range,
+                    ),
+                  { start: null, end: null },
+                );
+
+                const overtimeWindows: DriverAvailabilityWindow[] = [];
+                if (
+                  driverWorkRange.start &&
+                  driverWorkRange.end &&
+                  driverAvailabilityWindows.length > 0
+                ) {
+                  let coveredUntil = driverWorkRange.start;
+                  driverAvailabilityWindows.forEach((window) => {
+                    if (
+                      window.end.isBefore(coveredUntil) ||
+                      window.end.isSame(coveredUntil) ||
+                      window.start.isAfter(driverWorkRange.end!)
+                    ) {
+                      return;
+                    }
+                    if (window.start.isAfter(coveredUntil)) {
+                      overtimeWindows.push({
+                        start: coveredUntil,
+                        end: window.start.isBefore(driverWorkRange.end!)
+                          ? window.start
+                          : driverWorkRange.end!,
+                      });
+                    }
+                    if (window.end.isAfter(coveredUntil)) coveredUntil = window.end;
+                  });
+                  if (coveredUntil.isBefore(driverWorkRange.end)) {
+                    overtimeWindows.push({
+                      start: coveredUntil,
+                      end: driverWorkRange.end,
+                    });
+                  }
+                }
+                const isDraggingShift = shiftDrag?.teamId === teamId;
+                const liveShift = Number.isFinite(teamId)
+                  ? shiftOverrides[teamId] || activeShift
+                  : activeShift;
+                const dragDeltaMinutes =
+                  isDraggingShift && liveShift && shiftDrag
+                    ? shiftDrag.edge === "start"
+                      ? liveShift.startMinutes - shiftDrag.startMinutes
+                      : liveShift.endMinutes - shiftDrag.endMinutes
+                    : 0;
+
                 return (
                   <div
                     key={driverGroup.driverKey}
@@ -1300,6 +1834,171 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                         width: timelineWidth,
                       }}
                     >
+                      {Number.isFinite(teamId) &&
+                        (driverAvailabilityWindows.length > 0 || activeShift) && (
+                        <div className="absolute inset-0 pointer-events-none">
+                          {driverAvailabilityWindows.map((window, windowIndex) => {
+                            const left = Math.max(
+                              0,
+                              Math.min(
+                                timelineWidth,
+                                window.start.diff(startTime, "minute", true) * pixelsPerMinute,
+                              ),
+                            );
+                            const right = Math.max(
+                              left,
+                              Math.min(
+                                timelineWidth,
+                                window.end.diff(startTime, "minute", true) * pixelsPerMinute,
+                              ),
+                            );
+                            if (right <= left) return null;
+                            return (
+                              <div
+                                key={`availability-${teamId}-${windowIndex}`}
+                                className={`absolute top-2 bottom-2 border shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-[left,width,background-color,border-color] duration-75 ${
+                                  isDraggingShift
+                                    ? "border-emerald-500 bg-emerald-100/90"
+                                    : "border-emerald-200 bg-emerald-50/85"
+                                }`}
+                                style={{ left, width: right - left }}
+                              />
+                            );
+                          })}
+
+                          {overtimeWindows.map((window, windowIndex) => {
+                            const left = Math.max(
+                              0,
+                              Math.min(
+                                timelineWidth,
+                                window.start.diff(startTime, "minute", true) * pixelsPerMinute,
+                              ),
+                            );
+                            const right = Math.max(
+                              left,
+                              Math.min(
+                                timelineWidth,
+                                window.end.diff(startTime, "minute", true) * pixelsPerMinute,
+                              ),
+                            );
+                            if (right <= left) return null;
+                            return (
+                              <div
+                                key={`overtime-${teamId}-${windowIndex}`}
+                                className="absolute top-2 bottom-2 border border-orange-300"
+                                style={{
+                                  left,
+                                  width: right - left,
+                                  backgroundColor: "rgba(255, 237, 213, 0.72)",
+                                }}
+                              />
+                            );
+                          })}
+
+                          {activeShift && (
+                            <>
+                          <button
+                            type="button"
+                            aria-label={`Change ${driverGroup.driverName} shift start. Current start ${formatMinutesAsTime(activeShift.startMinutes)}`}
+                            title="Drag to change shift start. Use arrow keys for 15-minute adjustments."
+                            className="absolute top-1.5 bottom-1.5 z-30 w-5 -translate-x-1/2 border-0 bg-transparent p-0 cursor-ew-resize pointer-events-auto touch-none group outline-none"
+                            style={{ left: availabilityLeft }}
+                            onPointerDown={(event) =>
+                              beginShiftResize(
+                                event,
+                                teamId,
+                                driverGroup.driverName,
+                                "start",
+                                activeShift,
+                              )
+                            }
+                            onKeyDown={(event) =>
+                              adjustShiftWithKeyboard(
+                                event,
+                                teamId,
+                                driverGroup.driverName,
+                                "start",
+                                activeShift,
+                              )
+                            }
+                          >
+                            <span className="absolute left-1/2 top-2 bottom-2 w-1 -translate-x-1/2 rounded-full border border-emerald-800 bg-white shadow-sm transition-all group-hover:w-1.5 group-focus-visible:w-1.5 group-focus-visible:ring-2 group-focus-visible:ring-emerald-400 group-focus-visible:ring-offset-1" />
+                          </button>
+
+                          <button
+                            type="button"
+                            aria-label={`Change ${driverGroup.driverName} shift end. Current end ${formatMinutesAsTime(activeShift.endMinutes)}`}
+                            title="Drag to change shift end. Use arrow keys for 15-minute adjustments."
+                            className="absolute top-1.5 bottom-1.5 z-30 w-5 -translate-x-1/2 border-0 bg-transparent p-0 cursor-ew-resize pointer-events-auto touch-none group outline-none"
+                            style={{ left: availabilityRight }}
+                            onPointerDown={(event) =>
+                              beginShiftResize(
+                                event,
+                                teamId,
+                                driverGroup.driverName,
+                                "end",
+                                activeShift,
+                              )
+                            }
+                            onKeyDown={(event) =>
+                              adjustShiftWithKeyboard(
+                                event,
+                                teamId,
+                                driverGroup.driverName,
+                                "end",
+                                activeShift,
+                              )
+                            }
+                          >
+                            <span className="absolute left-1/2 top-2 bottom-2 w-1 -translate-x-1/2 rounded-full border border-emerald-800 bg-white shadow-sm transition-all group-hover:w-1.5 group-focus-visible:w-1.5 group-focus-visible:ring-2 group-focus-visible:ring-emerald-400 group-focus-visible:ring-offset-1" />
+                          </button>
+
+                          {isDraggingShift && liveShift && shiftDrag && (
+                            <div
+                              className="absolute z-50 -translate-x-1/2 rounded-md bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white shadow-lg whitespace-nowrap"
+                              style={{
+                                left:
+                                  shiftDrag.edge === "start"
+                                    ? Math.max(
+                                        0,
+                                        Math.min(
+                                          timelineWidth,
+                                          scheduleDay
+                                            .add(liveShift.startMinutes, "minute")
+                                            .diff(startTime, "minute", true) * pixelsPerMinute,
+                                        ),
+                                      )
+                                    : Math.max(
+                                        0,
+                                        Math.min(
+                                          timelineWidth,
+                                          scheduleDay
+                                            .add(liveShift.endMinutes, "minute")
+                                            .diff(startTime, "minute", true) * pixelsPerMinute,
+                                        ),
+                                      ),
+                                top: ROW_HEIGHT - 3,
+                              }}
+                            >
+                              {shiftDrag.edge === "start" ? "Starts" : "Ends"}{" "}
+                              {formatMinutesAsTime(
+                                shiftDrag.edge === "start"
+                                  ? liveShift.startMinutes
+                                  : liveShift.endMinutes,
+                              )}
+                              {dragDeltaMinutes !== 0 && (
+                                <span className="ml-1 text-emerald-300">
+                                  · {dragDeltaMinutes > 0 ? "+" : "−"}
+                                  {formatMinutesAsDuration(Math.abs(dragDeltaMinutes))}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                            </>
+                          )}
+                        </div>
+                      )}
+
                       {driverGroup.routes.map(({ route, originalIndex: routeIndex }) => {
                         const routeData = routeDataMap.get(routeIndex);
                         const routeColor = routeData?.routeColor || getRouteColor(routeIndex);
@@ -1354,7 +2053,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                         return (
                           <div
                             key={`route-${routeIndex}`}
-                            className={`relative h-full transition-colors duration-150 ${
+                            className={`relative z-10 h-full transition-colors duration-150 ${
                               isTrackBeingDraggedOver
                                 ? "bg-emerald-50/25 ring-1 ring-emerald-400/40 rounded-sm"
                                 : ""

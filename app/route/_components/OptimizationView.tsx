@@ -138,7 +138,7 @@ const OptimizationView = ({
   } = useOptimizationStore();
   const { jobs, fetchJobsByDate, fetchJobsByIds } = useJobsStore();
   const { updateRoute } = useRouteStore();
-  const { teams, initializeTeams } = useTeamStore();
+  const { teams, initializeTeams, updateTeamAction } = useTeamStore();
   const { vehicles, initializeVehicles } = useVehicleStore();
 
   useEffect(() => {
@@ -158,6 +158,33 @@ const OptimizationView = ({
   useEffect(() => {
     initializeVehicles();
   }, [initializeVehicles]);
+
+  const handleDriverWorkingHoursChange = useCallback(
+    async (
+      teamId: number,
+      dayKey: string,
+      startTime: string,
+      endTime: string,
+    ) => {
+      const team = teams.find((member) => member.id === teamId);
+      if (!team) {
+        throw new Error("Driver details are unavailable. Refresh and try again.");
+      }
+
+      await updateTeamAction({
+        ...team,
+        day_schedules: {
+          ...(team.day_schedules || {}),
+          [dayKey]: {
+            enabled: true,
+            start_time: startTime,
+            end_time: endTime,
+          },
+        },
+      });
+    },
+    [teams, updateTeamAction],
+  );
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempRouteName, setTempRouteName] = useState(route.route_name);
@@ -2123,6 +2150,9 @@ const OptimizationView = ({
                 <TimelineView
                   routes={route.result?.routes || []}
                   jobs={jobs}
+                  teams={teams}
+                  scheduledDate={route.scheduled_date}
+                  onDriverWorkingHoursChange={handleDriverWorkingHoursChange}
                   templateType={
                     route.result?.routes?.some((r: any) => (r as any).leg !== undefined) ||
                     jobs?.some((j: any) => j?.template_type === "worker_shuttle" || Boolean(j?.worker_shuttle_detail))
