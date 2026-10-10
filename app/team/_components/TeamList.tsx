@@ -209,6 +209,7 @@ const TeamList = () => {
                         ? selectedTeam.status.charAt(0).toUpperCase() +
                           selectedTeam.status.slice(1)
                         : null,
+                      `ID ${selectedTeam.id}`,
                     ]
                       .filter(Boolean)
                       .join(" · ")}

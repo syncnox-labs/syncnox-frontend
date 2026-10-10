@@ -25,6 +25,7 @@ import { useVehicleStore } from "@/store/vehicle.store";
 import { isTextInput } from "@/utils/form.utils";
 import { CustomFieldDefinition, getCustomFields } from "@/apis/custom-fields.api";
 import { DynamicCustomFieldsForm } from "@/components/DynamicCustomFieldsForm";
+import { AutoSaveSource, useQueuedAutoSave } from "@/hooks/useQueuedAutoSave";
 
 const { Text } = Typography;
 
@@ -118,6 +119,7 @@ const VehicleForm = ({
   const [activeSection, setActiveSection] = useState<SectionKey>("basic");
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
+  const customFieldValuesRef = useRef<Record<string, any>>({});
 
   useEffect(() => {
     getCustomFields("vehicle")
@@ -127,6 +129,7 @@ const VehicleForm = ({
 
   useEffect(() => {
     if (initialData?.custom_fields) {
+      customFieldValuesRef.current = initialData.custom_fields;
       setCustomFieldValues(initialData.custom_fields);
     }
   }, [initialData]);
@@ -137,18 +140,11 @@ const VehicleForm = ({
 
   const triggerAutoSave = () => {
     if (!initialData?.id || isPrefillingRef.current) return;
-    form
-      .validateFields()
-      .then(() => {
-        form.submit();
-      })
-      .catch(() => {});
+    scheduleAutoSave();
   };
 
   const handleValuesChange = () => {
-    if (!isTextInput(document.activeElement)) {
-      triggerAutoSave();
-    }
+    triggerAutoSave();
   };
 
   const handleBlurCapture = (e: React.FocusEvent) => {
@@ -194,8 +190,8 @@ const VehicleForm = ({
     }
   }, [initialData, form]);
 
-  const onFinish = async (values: any) => {
-
+  const persistVehicle = async (source: AutoSaveSource) => {
+    const values = await form.validateFields();
     try {
       const payload = {
         ...values,
@@ -209,7 +205,7 @@ const VehicleForm = ({
             label: c.label ?? null,
           })
         ),
-        custom_fields: customFieldValues,
+        custom_fields: customFieldValuesRef.current,
       };
 
       if (initialData?.id) {
@@ -217,14 +213,17 @@ const VehicleForm = ({
           ...initialData,
           ...payload,
         });
-        messageApi.success("Vehicle saved successfully");
+        if (source === "manual") {
+          messageApi.success("Vehicle saved successfully");
+        }
       } else {
         await createVehicleAction(payload);
         messageApi.success("Vehicle created successfully");
         form.resetFields();
+        customFieldValuesRef.current = {};
         setCustomFieldValues({});
       }
-      onSubmit?.();
+      if (source === "manual") onSubmit?.();
     } catch (e: any) {
       console.error(e?.detail || e);
       let errorMessage = "Something went wrong";
@@ -239,6 +238,24 @@ const VehicleForm = ({
         errorMessage = e.detail;
       }
       messageApi.error(errorMessage);
+      throw e;
+    }
+  };
+
+  const { scheduleAutoSave, saveNow } = useQueuedAutoSave({
+    enabled: Boolean(initialData?.id),
+    save: persistVehicle,
+  });
+
+  const onFinish = async () => {
+    try {
+      if (initialData?.id) {
+        await saveNow();
+      } else {
+        await persistVehicle("manual");
+      }
+    } catch {
+      // The persistence function already displays the actionable error.
     }
   };
 
@@ -541,7 +558,11 @@ const VehicleForm = ({
               <DynamicCustomFieldsForm
                 customFields={customFieldDefs}
                 values={customFieldValues}
-                onChange={(updated) => setCustomFieldValues(updated)}
+                onChange={(updated) => {
+                  customFieldValuesRef.current = updated;
+                  setCustomFieldValues(updated);
+                  triggerAutoSave();
+                }}
               />
             </div>
           </Form>

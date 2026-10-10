@@ -36,7 +36,7 @@ const TeamMemberCard = ({
   onToggleCheck,
   onClick,
 }: TeamMemberCardProps) => {
-  const sub = [capitalize(team.role_type)]
+  const sub = [capitalize(team.role_type), `ID ${team.id}`]
     .filter(Boolean)
     .join(" · ");
 

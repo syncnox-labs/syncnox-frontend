@@ -73,6 +73,8 @@ const BasicInformation = ({
   const { depots } = useDepotStore();
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const customFieldValues = form.getFieldValue("custom_fields") || {};
+  const startAddress = Form.useWatch("start_address", form);
+  const endAddress = Form.useWatch("end_address", form);
 
   useEffect(() => {
     getCustomFields("team_member")
@@ -209,19 +211,13 @@ const BasicInformation = ({
                 <Form.Item
                   name="start_address"
                   noStyle
-                  rules={[
-                    {
-                      required: !startLocationSameAsDepot,
-                      message: "Start location is required",
-                    },
-                  ]}
                 >
                   <AddressAutocomplete
-                    value={form.getFieldValue("start_address")}
+                    value={startAddress}
                     placeholder="Type to search address"
-                    onChange={() => {
+                    onChange={(value) => {
                       form.setFieldsValue({
-                        start_address: undefined,
+                        start_address: value || null,
                         start_location: undefined,
                       });
                     }}
@@ -266,19 +262,13 @@ const BasicInformation = ({
                 <Form.Item
                   name="end_address"
                   noStyle
-                  rules={[
-                    {
-                      required: !endLocationSameAsDepot,
-                      message: "End location is required",
-                    },
-                  ]}
                 >
                   <AddressAutocomplete
-                    value={form.getFieldValue("end_address")}
+                    value={endAddress}
                     placeholder="Type to search address"
-                    onChange={() => {
+                    onChange={(value) => {
                       form.setFieldsValue({
-                        end_address: undefined,
+                        end_address: value || null,
                         end_location: undefined,
                       });
                     }}
