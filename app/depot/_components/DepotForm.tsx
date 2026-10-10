@@ -12,6 +12,7 @@ import { isTextInput } from "@/utils/form.utils";
 
 import { CustomFieldDefinition, getCustomFields } from "@/apis/custom-fields.api";
 import { DynamicCustomFieldsForm } from "@/components/DynamicCustomFieldsForm";
+import { AutoSaveSource, useQueuedAutoSave } from "@/hooks/useQueuedAutoSave";
 
 interface DepotFormProps {
   initialValues?: Depot;
@@ -55,7 +56,6 @@ const DepotForm = ({
 
   const isPrefillingRef = useRef<boolean>(true);
   const prevInitialValuesIdRef = useRef<any>(null);
-  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep ref of latest state to prevent stale closure in auto-save
   const latestValuesRef = useRef({ name, address, location, custom_fields: customFieldValues });
@@ -63,21 +63,17 @@ const DepotForm = ({
     latestValuesRef.current = { name, address, location, custom_fields: customFieldValues };
   }, [name, address, location, customFieldValues]);
 
-  const handleSave = async () => {
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-
+  const persistDepot = async (source: AutoSaveSource) => {
     const { name: currentName, address: currentAddress, location: currentLocation } =
       latestValuesRef.current;
 
     if (!currentName.trim()) {
       messageApi.error("Please enter a depot name");
-      return;
+      throw new Error("Depot name is required");
     }
     if (!currentLocation) {
       messageApi.error("Please select a location");
-      return;
+      throw new Error("Depot location is required");
     }
 
     const success = await onSubmit({
@@ -90,16 +86,36 @@ const DepotForm = ({
     });
 
     if (success) {
-      messageApi.success(
-        initialValues
-          ? "Depot saved successfully"
-          : "Depot created successfully",
-      );
+      if (source === "manual") {
+        messageApi.success(
+          initialValues
+            ? "Depot saved successfully"
+            : "Depot created successfully",
+        );
+      }
       if (!initialValues) {
         onCancel(); // Close form on new creation success
       }
     } else {
       messageApi.error("Failed to save depot");
+      throw new Error("Failed to save depot");
+    }
+  };
+
+  const { scheduleAutoSave, saveNow } = useQueuedAutoSave({
+    enabled: Boolean(initialValues?.id),
+    save: persistDepot,
+  });
+
+  const handleSave = async () => {
+    try {
+      if (initialValues?.id) {
+        await saveNow();
+      } else {
+        await persistDepot("manual");
+      }
+    } catch {
+      // The persistence function already displays the actionable error.
     }
   };
 
@@ -107,7 +123,7 @@ const DepotForm = ({
     if (!initialValues?.id || isPrefillingRef.current) return;
     const { name: currentName, location: currentLocation } = latestValuesRef.current;
     if (currentName.trim() && currentLocation) {
-      handleSave();
+      scheduleAutoSave();
     }
   };
 
@@ -133,14 +149,29 @@ const DepotForm = ({
           lng: initialValues.location.lng,
         });
       }
+      latestValuesRef.current = {
+        name: initialValues.name || "",
+        address: initialValues.address?.formatted_address || "",
+        location: initialValues.location
+          ? { lat: initialValues.location.lat, lng: initialValues.location.lng }
+          : null,
+        custom_fields: initialValues.custom_fields || {},
+      };
       setTimeout(() => {
         isPrefillingRef.current = false;
       }, 200);
     } else {
       // Reset form
+      latestValuesRef.current = {
+        name: "",
+        address: "",
+        location: null,
+        custom_fields: {},
+      };
       setName("");
       setAddress("");
       setLocation(null);
+      setCustomFieldValues({});
     }
   }, [initialValues]);
 
@@ -156,9 +187,10 @@ const DepotForm = ({
       name !== originalName ||
       address !== originalAddress ||
       location?.lat !== originalLat ||
-      location?.lng !== originalLng
+      location?.lng !== originalLng ||
+      JSON.stringify(customFieldValues) !== JSON.stringify(initialValues.custom_fields || {})
     );
-  }, [initialValues, name, address, location]);
+  }, [initialValues, name, address, location, customFieldValues]);
 
   // ─── Map markers ────────────────────────────────────────────────────────────
   // All existing depots as non-draggable read-only markers
@@ -221,7 +253,9 @@ const DepotForm = ({
           <Input
             value={name}
             onChange={(e) => {
+              latestValuesRef.current.name = e.target.value;
               setName(e.target.value);
+              triggerAutoSave();
             }}
             placeholder="Enter depot name"
           />
@@ -230,10 +264,15 @@ const DepotForm = ({
           <AddressAutocomplete
             value={address}
             placeholder="Search depot address..."
-            onChange={() => {
+            onChange={(value) => {
+              latestValuesRef.current.address = value;
+              latestValuesRef.current.location = null;
+              setAddress(value);
               setLocation(null);
             }}
             onSelect={(addressData: AddressData) => {
+              latestValuesRef.current.address = addressData.address_formatted;
+              latestValuesRef.current.location = addressData.location;
               setAddress(addressData.address_formatted);
               setLocation(addressData.location);
               triggerAutoSave();
@@ -248,10 +287,9 @@ const DepotForm = ({
             customFields={customFieldDefs}
             values={customFieldValues}
             onChange={(updated) => {
+              latestValuesRef.current.custom_fields = updated;
               setCustomFieldValues(updated);
-              if (!isTextInput(document.activeElement)) {
-                triggerAutoSave();
-              }
+              triggerAutoSave();
             }}
           />
         </div>
@@ -266,6 +304,7 @@ const DepotForm = ({
           markers={allMarkers}
           selectedMarkerId={currentMarkerId}
           onMarkerDragEnd={(_, newPosition) => {
+            latestValuesRef.current.location = newPosition;
             setLocation(newPosition);
             triggerAutoSave();
           }}

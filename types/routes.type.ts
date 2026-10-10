@@ -44,6 +44,8 @@ export interface UnassignedJob {
   job_id: number;
   job_name?: string;
   worker_name?: string;
+  candidate_name?: string;
+  client_name?: string;
   reason: string;
   reason_code?: string;
   suggested_actions?: string[];

@@ -18,6 +18,7 @@ import BasicInformation from "./BasicInformation";
 import SkillsAndCost from "./SkillsAndCost";
 import MobileAppSection from "./MobileAppSection";
 import ServiceZonesSection from "./ServiceZonesSection";
+import { AutoSaveSource, useQueuedAutoSave } from "@/hooks/useQueuedAutoSave";
 
 const TeamMemberForm = ({
   initialData = null,
@@ -46,25 +47,30 @@ const TeamMemberForm = ({
     undefined
   );
   const [endDepotId, setEndDepotId] = useState<number | undefined>(undefined);
+  const latestAuxValuesRef = useRef({
+    zones: [] as any[],
+    skills: [] as string[],
+    scheduleBreak: true,
+    startLocationSameAsDepot: true,
+    endLocationSameAsDepot: true,
+    startDepotId: undefined as number | undefined,
+    endDepotId: undefined as number | undefined,
+  });
 
   // Auto-save ref
   const isPrefillingRef = useRef<boolean>(true);
   const prevInitialDataIdRef = useRef<number | null>(null);
+  const locationsInitializedRef = useRef(false);
   const triggerAutoSave = () => {
     if (!initialData?.id || isPrefillingRef.current) return;
-    form
-      .validateFields()
-      .then(() => {
-        form.submit();
-      })
-      .catch(() => {
-        // Ignore validation errors during intermediate typing
-      });
+    scheduleAutoSave();
   };
 
   // Initialize depot IDs when depots are loaded
   useEffect(() => {
     if (depots.length > 0 && !startDepotId && !endDepotId && !initialData) {
+      latestAuxValuesRef.current.startDepotId = depots[0].id;
+      latestAuxValuesRef.current.endDepotId = depots[0].id;
       setStartDepotId(depots[0].id);
       setEndDepotId(depots[0].id);
     }
@@ -80,10 +86,7 @@ const TeamMemberForm = ({
       }
     }
     
-    // Auto-save immediately for non-text inputs (Switch, Select, etc.)
-    if (!isTextInput(document.activeElement)) {
-      triggerAutoSave();
-    }
+    triggerAutoSave();
   };
 
   const handleBlurCapture = (e: React.FocusEvent) => {
@@ -93,19 +96,20 @@ const TeamMemberForm = ({
     }
   };
 
-  const onFinish = async (values: any) => {
-
-    const startDepot = depots.find((d) => d.id === startDepotId);
-    const endDepot = depots.find((d) => d.id === endDepotId);
+  const persistTeamMember = async (source: AutoSaveSource) => {
+    const values = await form.validateFields();
+    const latestAuxValues = latestAuxValuesRef.current;
+    const startDepot = depots.find((d) => d.id === latestAuxValues.startDepotId);
+    const endDepot = depots.find((d) => d.id === latestAuxValues.endDepotId);
 
     const transformedValues = transformFormToApi(
       values,
-      skills,
-      scheduleBreak,
+      latestAuxValues.skills,
+      latestAuxValues.scheduleBreak,
       initialData,
       {
-        startLocationSameAsDepot,
-        endLocationSameAsDepot,
+        startLocationSameAsDepot: latestAuxValues.startLocationSameAsDepot,
+        endLocationSameAsDepot: latestAuxValues.endLocationSameAsDepot,
         startDepot,
         endDepot,
       }
@@ -114,16 +118,18 @@ const TeamMemberForm = ({
     try {
       if (initialData?.id) {
         await updateTeamAction(transformedValues);
-        if (roleType === "driver") {
+        if (values.role_type === "driver") {
           try {
-            await saveDriverZones(initialData.id, zones);
+            await saveDriverZones(initialData.id, latestAuxValues.zones);
           } catch (zoneError) {
             console.error("Failed to save service zones:", zoneError);
             messageApi.error("Failed to save service zones");
           }
         }
-        messageApi.success("Team member saved successfully");
-        onSubmit?.();
+        if (source === "manual") {
+          messageApi.success("Team member saved successfully");
+          onSubmit?.();
+        }
       } else {
         await createTeamAction(transformedValues);
         messageApi.success("Team member created successfully");
@@ -147,19 +153,49 @@ const TeamMemberForm = ({
       }
       
       messageApi.error(errorMessage);
+      throw e;
+    }
+  };
+
+  const { scheduleAutoSave, saveNow } = useQueuedAutoSave({
+    enabled: Boolean(initialData?.id),
+    save: persistTeamMember,
+  });
+
+  const onFinish = async () => {
+    try {
+      if (initialData?.id) {
+        await saveNow();
+      } else {
+        await persistTeamMember("manual");
+      }
+    } catch {
+      // The persistence function already displays the actionable error.
     }
   };
 
   // Prefill form when initialData changes (for editing)
   useEffect(() => {
-    if (initialData?.id && initialData.id === prevInitialDataIdRef.current) {
+    if (
+      initialData?.id &&
+      initialData.id === prevInitialDataIdRef.current &&
+      (locationsInitializedRef.current || depots.length === 0)
+    ) {
       return; // Already initialized for this team member, ignore background refetches to prevent overwriting user input
     }
 
     if (initialData) {
+      const isNewTeamMember = initialData.id !== prevInitialDataIdRef.current;
       prevInitialDataIdRef.current = initialData.id;
       isPrefillingRef.current = true;
       const formValues = transformApiToForm(initialData);
+
+      // The parent shares one Ant Design form instance between selected rows.
+      // Reset it before prefilling a different member so omitted/null import
+      // fields cannot leak from the previously selected driver.
+      if (isNewTeamMember) {
+        form.resetFields();
+      }
 
       // Set role type
       if (initialData.role_type) {
@@ -172,43 +208,31 @@ const TeamMemberForm = ({
       }
 
       // Set schedule break flag
-      if (initialData.break_time_start) {
-        setScheduleBreak(true);
-      }
+      setScheduleBreak(Boolean(initialData.break_time_start));
 
-      // Check if start/end location matches any depot
-      let matchingStartDepot = depots[0];
-      let matchingEndDepot = depots[0];
+      // Missing locations must stay empty. Only mark "same as depot" when the
+      // imported address actually matches a depot; previously NULL addresses
+      // incorrectly fell back to depots[0].
+      const normalizeAddress = (value?: string | null) =>
+        value?.trim().toLocaleLowerCase() || "";
+      const startAddress = normalizeAddress(initialData.start_address);
+      const endAddress = normalizeAddress(initialData.end_address);
+      const matchingStartDepot = startAddress
+        ? depots.find(
+            (depot) =>
+              normalizeAddress(depot.address?.formatted_address) === startAddress
+          )
+        : undefined;
+      const matchingEndDepot = endAddress
+        ? depots.find(
+            (depot) =>
+              normalizeAddress(depot.address?.formatted_address) === endAddress
+          )
+        : undefined;
 
-      if (initialData.start_address) {
-        const found = depots.find(
-          (d) => d.address?.formatted_address === initialData.start_address
-        );
-        if (found) {
-          matchingStartDepot = found;
-        }
-      }
-
-      const isStartSameAsDepot =
-        !initialData.start_address ||
-        (!!matchingStartDepot &&
-          initialData.start_address ===
-            matchingStartDepot.address?.formatted_address);
-
-      if (initialData.end_address) {
-        const found = depots.find(
-          (d) => d.address?.formatted_address === initialData.end_address
-        );
-        if (found) {
-          matchingEndDepot = found;
-        }
-      }
-
-      const isEndSameAsDepot =
-        !initialData.end_address ||
-        (!!matchingEndDepot &&
-          initialData.end_address ===
-            matchingEndDepot.address?.formatted_address);
+      const isStartSameAsDepot = Boolean(matchingStartDepot);
+      const isEndSameAsDepot = Boolean(matchingEndDepot);
+      locationsInitializedRef.current = depots.length > 0;
 
       setStartLocationSameAsDepot(isStartSameAsDepot);
       setEndLocationSameAsDepot(isEndSameAsDepot);
@@ -220,7 +244,23 @@ const TeamMemberForm = ({
         setEndDepotId(matchingEndDepot.id);
       }
 
-      form.setFieldsValue(formValues);
+      latestAuxValuesRef.current = {
+        ...latestAuxValuesRef.current,
+        skills: Array.isArray(initialData.skills) ? initialData.skills : [],
+        scheduleBreak: Boolean(initialData.break_time_start),
+        startLocationSameAsDepot: isStartSameAsDepot,
+        endLocationSameAsDepot: isEndSameAsDepot,
+        startDepotId: matchingStartDepot?.id,
+        endDepotId: matchingEndDepot?.id,
+      };
+
+      form.setFieldsValue({
+        ...formValues,
+        start_address: initialData.start_address ?? null,
+        start_location: initialData.start_location ?? null,
+        end_address: initialData.end_address ?? null,
+        end_location: initialData.end_location ?? null,
+      });
       setTimeout(() => {
         isPrefillingRef.current = false;
       }, 500);
@@ -229,14 +269,18 @@ const TeamMemberForm = ({
 
   const handleAddSkill = () => {
     if (skillInput.trim() && !skills.includes(skillInput.trim())) {
-      setSkills([...skills, skillInput.trim()]);
+      const updatedSkills = [...skills, skillInput.trim()];
+      latestAuxValuesRef.current.skills = updatedSkills;
+      setSkills(updatedSkills);
       setSkillInput("");
       triggerAutoSave();
     }
   };
 
   const handleRemoveSkill = (skillToRemove: string) => {
-    setSkills(skills.filter((skill) => skill !== skillToRemove));
+    const updatedSkills = skills.filter((skill) => skill !== skillToRemove);
+    latestAuxValuesRef.current.skills = updatedSkills;
+    setSkills(updatedSkills);
     triggerAutoSave();
   };
 
@@ -319,27 +363,32 @@ const TeamMemberForm = ({
                     form={form}
                     scheduleBreak={scheduleBreak}
                     onScheduleBreakChange={(val) => {
+                      latestAuxValuesRef.current.scheduleBreak = val;
                       setScheduleBreak(val);
                       triggerAutoSave();
                     }}
                     isDriver={isDriver}
                     startLocationSameAsDepot={startLocationSameAsDepot}
                     onStartLocationSameAsDepotChange={(val) => {
+                      latestAuxValuesRef.current.startLocationSameAsDepot = val;
                       setStartLocationSameAsDepot(val);
                       triggerAutoSave();
                     }}
                     endLocationSameAsDepot={endLocationSameAsDepot}
                     onEndLocationSameAsDepotChange={(val) => {
+                      latestAuxValuesRef.current.endLocationSameAsDepot = val;
                       setEndLocationSameAsDepot(val);
                       triggerAutoSave();
                     }}
                     startDepotId={startDepotId}
                     setStartDepotId={(val) => {
+                      latestAuxValuesRef.current.startDepotId = val;
                       setStartDepotId(val);
                       triggerAutoSave();
                     }}
                     endDepotId={endDepotId}
                     setEndDepotId={(val) => {
+                      latestAuxValuesRef.current.endDepotId = val;
                       setEndDepotId(val);
                       triggerAutoSave();
                     }}
@@ -371,6 +420,7 @@ const TeamMemberForm = ({
                     driverId={initialData?.id}
                     zones={zones}
                     onZonesChange={(newZones, isUserEdit = true) => {
+                      latestAuxValuesRef.current.zones = newZones;
                       setZones(newZones);
                       if (isUserEdit) {
                         triggerAutoSave();
@@ -397,27 +447,32 @@ const TeamMemberForm = ({
                 form={form}
                 scheduleBreak={scheduleBreak}
                 onScheduleBreakChange={(val) => {
+                  latestAuxValuesRef.current.scheduleBreak = val;
                   setScheduleBreak(val);
                   triggerAutoSave();
                 }}
                 isDriver={isDriver}
                 startLocationSameAsDepot={startLocationSameAsDepot}
                 onStartLocationSameAsDepotChange={(val) => {
+                  latestAuxValuesRef.current.startLocationSameAsDepot = val;
                   setStartLocationSameAsDepot(val);
                   triggerAutoSave();
                 }}
                 endLocationSameAsDepot={endLocationSameAsDepot}
                 onEndLocationSameAsDepotChange={(val) => {
+                  latestAuxValuesRef.current.endLocationSameAsDepot = val;
                   setEndLocationSameAsDepot(val);
                   triggerAutoSave();
                 }}
                 startDepotId={startDepotId}
                 setStartDepotId={(val) => {
+                  latestAuxValuesRef.current.startDepotId = val;
                   setStartDepotId(val);
                   triggerAutoSave();
                 }}
                 endDepotId={endDepotId}
                 setEndDepotId={(val) => {
+                  latestAuxValuesRef.current.endDepotId = val;
                   setEndDepotId(val);
                   triggerAutoSave();
                 }}

@@ -46,6 +46,7 @@ interface JobDetailsCardProps {
   stopIndex?: number;
   driverName?: string;
   leg?: string;
+  isUnassigned?: boolean;
   onClose: () => void;
   onRemoveJob?: () => void;
   onJobSaved?: (info: { requiresReOptimization: boolean, timeChanged: boolean, startTime?: string, endTime?: string, oldStartTime?: string, oldEndTime?: string }) => void;
@@ -83,6 +84,10 @@ const STOP_TYPE_BADGES: Record<string, { label: string; className: string }> = {
     label: "Break",
     className: "bg-amber-50 text-amber-700 border-amber-200",
   },
+  unassigned: {
+    label: "Unassigned",
+    className: "bg-rose-50 text-rose-700 border-rose-200 font-extrabold",
+  },
 };
 
 const LEG_LABELS: Record<string, string> = {
@@ -117,6 +122,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   stopIndex = 0,
   driverName,
   leg,
+  isUnassigned = false,
   onClose,
   onRemoveJob,
   onJobSaved,
@@ -573,7 +579,9 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
           <div className="font-bold text-gray-900 text-sm truncate">
             {isDepotStop
               ? "Depot Station"
-              : `Stop No - ${stopIndex} (${driverLabel})`}
+              : isUnassigned
+                ? `Unassigned Job #${jobId}`
+                : `Stop No - ${stopIndex} (${driverLabel})`}
           </div>
           {stopBadge && !isDepotStop && (
             <span

@@ -39,7 +39,9 @@ export interface Team {
   tenant_id: number;
   service_zones?: ServiceZone[];
   start_address?: string | null;
+  start_location?: { lat: number; lng: number } | null;
   end_address?: string | null;
+  end_location?: { lat: number; lng: number } | null;
   activation_code?: string | null;
   created_at: string;
   updated_at: string;

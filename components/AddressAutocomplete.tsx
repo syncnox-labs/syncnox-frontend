@@ -13,7 +13,7 @@ export interface AddressData {
 }
 
 interface AddressAutocompleteProps {
-  value?: string;
+  value?: string | null;
   onChange?: (value: string) => void;
   onSelect?: (addressData: AddressData) => void;
   placeholder?: string;
@@ -26,8 +26,8 @@ interface AddressAutocompleteProps {
 interface PredictionOption {
   value: string;
   label: React.ReactNode;
-  placeId?: string;
-  addressData?: AddressData;
+  _placeId?: string;
+  _addressData?: AddressData;
 }
 
 /**
@@ -70,8 +70,14 @@ const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
   // When the user is actively typing we own the state; parent re-renders triggered
   // by onChange callbacks must not overwrite the current input text.
   useEffect(() => {
-    if (!isFocusedRef.current && value !== undefined && value !== searchValue) {
-      setSearchValue(value);
+    if (!isFocusedRef.current) {
+      const externalValue = value || "";
+      if (externalValue !== searchValue) {
+        setSearchValue(externalValue);
+      }
+      if (externalValue !== confirmedValue) {
+        setConfirmedValue(externalValue);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
@@ -147,8 +153,7 @@ const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
 
   // Handle address selection
   const handleSelectAddress = (selectedValue: string) => {
-    // We are casting it because our state actually holds extra properties
-    const selectedOption = options.find((opt) => opt.value === selectedValue) as any;
+    const selectedOption = options.find((opt) => opt.value === selectedValue);
 
     if (!selectedOption) {
       return;
@@ -222,6 +227,7 @@ const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
     if (searchValue !== confirmedValue && !options.length) {
       // User typed but didn't select - revert to confirmed value
       setSearchValue(confirmedValue);
+      onChange?.(confirmedValue);
       setOptions([]);
     }
   };

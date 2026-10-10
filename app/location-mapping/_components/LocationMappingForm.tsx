@@ -22,6 +22,7 @@ import GoogleMaps from "@/components/GoogleMaps";
 import AddressAutocomplete, { AddressData } from "@/components/AddressAutocomplete";
 import { isTextInput } from "@/utils/form.utils";
 import LocationTypeSelect from "./LocationTypeSelect";
+import { AutoSaveSource, useQueuedAutoSave } from "@/hooks/useQueuedAutoSave";
 
 const { Text } = Typography;
 
@@ -52,6 +53,7 @@ const LocationMappingForm = ({
   const { updateLocationMapping } = useLocationMappingStore();
 
   const [mapLocation, setMapLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const mapLocationRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // Auto-save refs
   const isPrefillingRef = useRef<boolean>(true);
@@ -59,18 +61,11 @@ const LocationMappingForm = ({
 
   const triggerAutoSave = () => {
     if (!initialData?.id || isPrefillingRef.current) return;
-    form
-      .validateFields()
-      .then(() => {
-        form.submit();
-      })
-      .catch(() => {});
+    scheduleAutoSave();
   };
 
   const handleValuesChange = () => {
-    if (!isTextInput(document.activeElement)) {
-      triggerAutoSave();
-    }
+    triggerAutoSave();
   };
 
   const handleBlurCapture = (e: React.FocusEvent) => {
@@ -103,6 +98,7 @@ const LocationMappingForm = ({
 
       const coords = getCoords(initialData);
       if (coords) {
+        mapLocationRef.current = coords;
         setMapLocation(coords);
       } else if (initialData.address || initialData.city || initialData.name) {
         const fullAddress = [initialData.address, initialData.city, initialData.country]
@@ -116,16 +112,23 @@ const LocationMappingForm = ({
                 lat: results[0].geometry.location.lat(),
                 lng: results[0].geometry.location.lng(),
               };
+              mapLocationRef.current = loc;
               setMapLocation(loc);
             } else {
-              setMapLocation({ lat: 45.5017, lng: -73.5673 });
+              const fallback = { lat: 45.5017, lng: -73.5673 };
+              mapLocationRef.current = fallback;
+              setMapLocation(fallback);
             }
           });
         } else {
-          setMapLocation({ lat: 45.5017, lng: -73.5673 });
+          const fallback = { lat: 45.5017, lng: -73.5673 };
+          mapLocationRef.current = fallback;
+          setMapLocation(fallback);
         }
       } else {
-        setMapLocation({ lat: 45.5017, lng: -73.5673 });
+        const fallback = { lat: 45.5017, lng: -73.5673 };
+        mapLocationRef.current = fallback;
+        setMapLocation(fallback);
       }
 
       setTimeout(() => {
@@ -134,8 +137,9 @@ const LocationMappingForm = ({
     }
   }, [initialData, form]);
 
-  const onFinish = async (values: LocationMappingFormValues) => {
+  const persistLocationMapping = async (source: AutoSaveSource) => {
     if (!initialData?.id) return;
+    const values = await form.validateFields();
     const payload = {
       name: values.name.trim(),
       type: values.type || "metro_station",
@@ -143,8 +147,8 @@ const LocationMappingForm = ({
       address: values.address?.trim() || undefined,
       city: values.city?.trim() || undefined,
       country: values.country?.trim() || undefined,
-      latitude: mapLocation?.lat,
-      longitude: mapLocation?.lng,
+      latitude: mapLocationRef.current?.lat,
+      longitude: mapLocationRef.current?.lng,
       aliases: values.aliases
         ? values.aliases
             .split(",")
@@ -154,11 +158,25 @@ const LocationMappingForm = ({
     };
     const success = await updateLocationMapping(initialData.id, payload);
     if (success) {
-      message.success("Location mapping updated");
+      if (source === "manual") message.success("Location mapping updated");
     } else {
       message.error("Failed to update location mapping");
+      throw new Error("Failed to update location mapping");
     }
     return success;
+  };
+
+  const { scheduleAutoSave, saveNow } = useQueuedAutoSave({
+    enabled: Boolean(initialData?.id),
+    save: persistLocationMapping,
+  });
+
+  const onFinish = async () => {
+    try {
+      await saveNow();
+    } catch {
+      // The persistence function already displays the actionable error.
+    }
   };
 
   const existingMarkers = useMemo(() => {
@@ -237,6 +255,7 @@ const LocationMappingForm = ({
                   country: addressData.country || form.getFieldValue("country"),
                 });
                 if (addressData.location) {
+                  mapLocationRef.current = addressData.location;
                   setMapLocation(addressData.location);
                 }
                 triggerAutoSave();
@@ -286,6 +305,7 @@ const LocationMappingForm = ({
             zoom={mapLocation ? 15 : 11}
             onMarkerDragEnd={(_markerId, newPosition) => {
               if (newPosition) {
+                mapLocationRef.current = newPosition;
                 setMapLocation(newPosition);
                 triggerAutoSave();
               }

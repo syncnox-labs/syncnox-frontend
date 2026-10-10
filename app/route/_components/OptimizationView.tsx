@@ -29,7 +29,7 @@ import {
 import dayjs from "dayjs";
 
 import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
-import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone } from "lucide-react";
+import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search } from "lucide-react";
 import MapSearch from "./MapSearch";
 import TimelineView from "./TimelineView";
 import AddJobsModal from "@/app/plan/AddJobsModal";
@@ -115,9 +115,15 @@ const getStoredMapOverlays = (): MapOverlaysState => {
 
 interface OptimizationViewProps {
   route: Route;
+  requestedJobDetailsId?: number | null;
+  onRequestedJobDetailsOpened?: () => void;
 }
 
-const OptimizationView = ({ route }: OptimizationViewProps) => {
+const OptimizationView = ({
+  route,
+  requestedJobDetailsId,
+  onRequestedJobDetailsOpened,
+}: OptimizationViewProps) => {
   const router = useRouter();
   const { setCurrentTab } = useIndexStore();
   const {
@@ -132,7 +138,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
   } = useOptimizationStore();
   const { jobs, fetchJobsByDate, fetchJobsByIds } = useJobsStore();
   const { updateRoute } = useRouteStore();
-  const { teams, initializeTeams } = useTeamStore();
+  const { teams, initializeTeams, updateTeamAction } = useTeamStore();
   const { vehicles, initializeVehicles } = useVehicleStore();
 
   useEffect(() => {
@@ -152,6 +158,33 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
   useEffect(() => {
     initializeVehicles();
   }, [initializeVehicles]);
+
+  const handleDriverWorkingHoursChange = useCallback(
+    async (
+      teamId: number,
+      dayKey: string,
+      startTime: string,
+      endTime: string,
+    ) => {
+      const team = teams.find((member) => member.id === teamId);
+      if (!team) {
+        throw new Error("Driver details are unavailable. Refresh and try again.");
+      }
+
+      await updateTeamAction({
+        ...team,
+        day_schedules: {
+          ...(team.day_schedules || {}),
+          [dayKey]: {
+            enabled: true,
+            start_time: startTime,
+            end_time: endTime,
+          },
+        },
+      });
+    },
+    [teams, updateTeamAction],
+  );
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempRouteName, setTempRouteName] = useState(route.route_name);
@@ -198,11 +231,36 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
     leg?: string;
     routeIndex?: number;
     stopIndex?: number;
+    isUnassigned?: boolean;
   } | null>(null);
 
   const [selectedMarkerId, setSelectedMarkerId] = useState<
     string | number | null
   >(null);
+
+  useEffect(() => {
+    if (!requestedJobDetailsId) return;
+
+    const matchedJob = jobs.find((job) => job.id === requestedJobDetailsId);
+    if (!matchedJob) return;
+
+    setSelectedMarkerId(null);
+    setSelectedDrawerJob({
+      stopData: {
+        ...matchedJob,
+        job_id: matchedJob.id,
+        stop_type: "unassigned",
+        address_formatted:
+          matchedJob.pick_up_address ||
+          matchedJob.worker_shuttle_detail?.pick_up_address ||
+          matchedJob.address_formatted ||
+          matchedJob.pickup_delivery_detail?.address_formatted,
+      },
+      job: matchedJob,
+      isUnassigned: true,
+    });
+    onRequestedJobDetailsOpened?.();
+  }, [jobs, requestedJobDetailsId, onRequestedJobDetailsOpened]);
 
   // ── Depots & Additional Locations store state & visibility ──
   const { depots, initializeDepots } = useDepotStore();
@@ -228,6 +286,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
   const [showAdditionalLocations, setShowAdditionalLocations] = useState<boolean>(DEFAULT_MAP_OVERLAYS.additionalLocations);
   const [visibleLocationTypes, setVisibleLocationTypes] = useState<string[] | undefined>(undefined);
   const [isAdditionalTypesExpanded, setIsAdditionalTypesExpanded] = useState<boolean>(true);
+  const [locationTypeSearch, setLocationTypeSearch] = useState("");
 
   useEffect(() => {
     const stored = getStoredMapOverlays();
@@ -323,6 +382,19 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
       .length;
   }, [availableLocationTypes, visibleLocationTypes]);
 
+  const filteredLocationTypes = useMemo(() => {
+    const query = locationTypeSearch.trim().toLowerCase();
+    if (!query) return availableLocationTypes;
+
+    return availableLocationTypes.filter((type) => {
+      const normalizedValue = type.value.replace(/_/g, " ");
+      return (
+        type.label.toLowerCase().includes(query) ||
+        normalizedValue.includes(query)
+      );
+    });
+  }, [availableLocationTypes, locationTypeSearch]);
+
   const handleToggleAdditionalLocations = useCallback((checked: boolean) => {
     setShowAdditionalLocations(checked);
     if (checked) {
@@ -353,6 +425,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
         return prev;
       });
     } else {
+      setLocationTypeSearch("");
       try {
         const current = getStoredMapOverlays();
         localStorage.setItem(
@@ -1863,12 +1936,27 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                     {/* Additional Locations with expandable type configuration */}
                     <div className="flex flex-col">
                       <div className="flex items-center justify-between py-0.5">
-                        <div
-                          className="flex items-center gap-1.5 cursor-pointer select-none group"
+                        <button
+                          type="button"
+                          disabled={!showAdditionalLocations}
+                          aria-expanded={
+                            showAdditionalLocations
+                              ? isAdditionalTypesExpanded
+                              : false
+                          }
+                          className={`flex items-center gap-1.5 select-none group bg-transparent border-none p-0 text-left ${
+                            showAdditionalLocations
+                              ? "cursor-pointer"
+                              : "cursor-default"
+                          }`}
                           onClick={() => setIsAdditionalTypesExpanded((prev) => !prev)}
                         >
                           <span
-                            className="text-gray-400 group-hover:text-gray-700 transition-transform duration-200 inline-flex items-center justify-center w-4 h-4 -ml-0.5"
+                            className={`text-gray-400 transition-transform duration-200 inline-flex items-center justify-center w-4 h-4 -ml-0.5 ${
+                              showAdditionalLocations
+                                ? "group-hover:text-gray-700"
+                                : "invisible"
+                            }`}
                             style={{
                               transform: isAdditionalTypesExpanded
                                 ? "rotate(90deg)"
@@ -1890,7 +1978,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                               </span>
                             )}
                           </span>
-                        </div>
+                        </button>
                         <Switch
                           size="small"
                           checked={showAdditionalLocations}
@@ -1900,7 +1988,9 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                       </div>
 
                       {/* Expandable Location Types breakdown */}
-                      {isAdditionalTypesExpanded && availableLocationTypes.length > 0 && (
+                      {showAdditionalLocations &&
+                        isAdditionalTypesExpanded &&
+                        availableLocationTypes.length > 0 && (
                         <div className="ml-5 pl-2.5 pr-1 py-1.5 border-l-2 border-[#003220]/25 bg-gray-50/80 rounded-sm flex flex-col gap-1.5 my-1">
                           <div className="flex items-center justify-between text-[10px] text-gray-500 font-medium pb-1 border-b border-gray-200/60">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
@@ -1925,8 +2015,23 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                             </div>
                           </div>
 
+                          <Input
+                            size="small"
+                            allowClear
+                            value={locationTypeSearch}
+                            onChange={(event) =>
+                              setLocationTypeSearch(event.target.value)
+                            }
+                            placeholder="Search location types"
+                            aria-label="Search additional location types"
+                            prefix={
+                              <Search size={12} className="text-gray-400" />
+                            }
+                            className="!text-[11px]"
+                          />
+
                           <div className="flex flex-col gap-1 max-h-[170px] overflow-y-auto pr-1 custom-scrollbar">
-                            {availableLocationTypes.map((type) => {
+                            {filteredLocationTypes.map((type) => {
                               const checked = isTypeVisible(type.value);
                               return (
                                 <div
@@ -1961,15 +2066,18 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                                   </div>
                                   <Checkbox
                                     checked={checked}
-                                    onChange={(e) => {
-                                      e.stopPropagation();
-                                      handleToggleType(type.value);
-                                    }}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onChange={() => handleToggleType(type.value)}
                                     className="!m-0 shrink-0"
                                   />
                                 </div>
                               );
                             })}
+                            {filteredLocationTypes.length === 0 && (
+                              <div className="py-3 px-2 text-center text-[11px] text-gray-400">
+                                No location types found
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
@@ -2042,6 +2150,9 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
                 <TimelineView
                   routes={route.result?.routes || []}
                   jobs={jobs}
+                  teams={teams}
+                  scheduledDate={route.scheduled_date}
+                  onDriverWorkingHoursChange={handleDriverWorkingHoursChange}
                   templateType={
                     route.result?.routes?.some((r: any) => (r as any).leg !== undefined) ||
                     jobs?.some((j: any) => j?.template_type === "worker_shuttle" || Boolean(j?.worker_shuttle_detail))
@@ -2087,6 +2198,7 @@ const OptimizationView = ({ route }: OptimizationViewProps) => {
             stopIndex={selectedDrawerJob.stopIndex}
             driverName={selectedDrawerJob.driverName}
             leg={selectedDrawerJob.leg}
+            isUnassigned={selectedDrawerJob.isUnassigned}
             isFullscreen={mapViewState === "fullscreen"}
             onClose={() => {
               setSelectedDrawerJob(null);
