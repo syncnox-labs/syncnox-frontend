@@ -1,5 +1,5 @@
 import apiClient from "@/config/apiClient.config";
-import { AllRoutes, Route } from "@/types/routes.type";
+import { AllRoutes, Route, Routes } from "@/types/routes.type";
 
 export const fetchRoutes = async (status?: string, date?: string): Promise<AllRoutes[]> => {
   if (status === "all") status = "";
@@ -90,14 +90,30 @@ export const addStopToRoute = async (
   return response.data;
 };
 
+/** Restore an exact route snapshot for undoing a removal. */
+export const restoreRouteSnapshot = async (
+  optimizationId: number,
+  routeIndex: number,
+  jobId: number,
+  routeSnapshot: Routes,
+): Promise<RouteOperationResponse> => {
+  const response = await apiClient.post(
+    "optimization/requests/" + optimizationId + "/routes/" + routeIndex + "/add-stop",
+    { job_id: jobId, restore_route: routeSnapshot },
+  );
+  return response.data;
+};
+
 /** Remove a job from a specific driver's route (synchronous) */
 export const removeStopFromRoute = async (
   optimizationId: number,
   routeIndex: number,
   jobId: number,
+  stopType?: string,
 ): Promise<RouteOperationResponse> => {
   const response = await apiClient.delete(
     `optimization/requests/${optimizationId}/routes/${routeIndex}/stops/${jobId}`,
+    { params: stopType ? { stop_type: stopType } : undefined },
   );
   return response.data;
 };
