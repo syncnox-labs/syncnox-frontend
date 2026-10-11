@@ -95,9 +95,11 @@ export const removeStopFromRoute = async (
   optimizationId: number,
   routeIndex: number,
   jobId: number,
+  stopType?: string,
 ): Promise<RouteOperationResponse> => {
   const response = await apiClient.delete(
     `optimization/requests/${optimizationId}/routes/${routeIndex}/stops/${jobId}`,
+    { params: stopType ? { stop_type: stopType } : undefined },
   );
   return response.data;
 };

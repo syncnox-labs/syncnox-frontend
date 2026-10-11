@@ -200,6 +200,13 @@ const OptimizationView = ({
   const [pendingDeletedJobIds, setPendingDeletedJobIds] = useState<Set<number>>(new Set());
   const [isAddJobOpen, setIsAddJobOpen] = useState(false);
   const [reorderingRouteIndex, setReorderingRouteIndex] = useState<number | null>(null);
+  const [removeJobTarget, setRemoveJobTarget] = useState<{
+    routeIndex: number;
+    jobId: number;
+    stopType?: string;
+    driverName: string;
+  } | null>(null);
+  const [isRemovingJob, setIsRemovingJob] = useState(false);
 
   // Undo Stack (up to 5 ops)
   const [undoStack, setUndoStack] = useState<Array<{ label: string; action: () => Promise<void> }>>([]);
@@ -1110,19 +1117,29 @@ const OptimizationView = ({
   );
 
   const handleRemoveJob = useCallback(
-    (routeIndex: number, jobId: number, driverName?: string) => {
+    (routeIndex: number, jobId: number, stopType?: string, driverName?: string) => {
+      setSelectedDrawerJob(null);
       const routeData = route.result?.routes?.[routeIndex];
       const dName = driverName || routeData?.team_member_name || "Driver";
       
       const stopCount = routeData?.stops?.filter(s => s.job_id === jobId).length || 1;
       const isRoundTrip = stopCount > 1;
 
+      if (isRoundTrip) {
+        setRemoveJobTarget({
+          routeIndex,
+          jobId,
+          stopType,
+          driverName: dName,
+        });
+        return;
+      }
+
       Modal.confirm({
-        title: isRoundTrip ? "Remove Round-Trip Job" : "Remove Job",
-        content: isRoundTrip 
-          ? `Remove Job #${jobId} from ${dName}'s route? This is a round-trip job, so BOTH the pickup and drop-off legs will be removed and moved back to Unassigned.`
-          : `Remove Job #${jobId} from ${dName}'s route? It will be moved back to Unassigned.`,
+        title: "Remove Job",
+        content: `Remove Job #${jobId} from ${dName}'s route? It will be moved back to Unassigned.`,
         okText: "Remove",
+        maskClosable: true,
         okButtonProps: {
           style: { backgroundColor: "#dc2626", borderColor: "#dc2626" },
         },
@@ -1152,7 +1169,61 @@ const OptimizationView = ({
         },
       });
     },
-    [route.id, route.result?.routes, fetchOptimization],
+    [route.id, route.result?.routes, fetchOptimization, pushUndo],
+  );
+
+  const handleRoundTripRemoval = useCallback(
+    async (removeAllLegs: boolean) => {
+      const target = removeJobTarget;
+      if (!target || (!removeAllLegs && !target.stopType)) return;
+
+      const routeData = route.result?.routes?.[target.routeIndex];
+      const jobStops =
+        routeData?.stops?.filter(
+          (stop) =>
+            stop.stop_type !== "depot_start" && stop.stop_type !== "depot_end",
+        ) || [];
+      const originalPosition = jobStops.findIndex(
+        (stop) =>
+          stop.job_id === target.jobId &&
+          (removeAllLegs || stop.stop_type === target.stopType),
+      );
+
+      setIsRemovingJob(true);
+      try {
+        const response = await removeStopFromRoute(
+          route.id,
+          target.routeIndex,
+          target.jobId,
+          removeAllLegs ? undefined : target.stopType,
+        );
+        if (response.success) {
+          message.success(response.message || "Job removed from route");
+          setHasUnsavedJobEdits(true);
+
+          if (removeAllLegs) {
+            pushUndo(`Remove Job #${target.jobId}`, async () => {
+              await addStopToRoute(
+                route.id,
+                target.routeIndex,
+                target.jobId,
+                originalPosition >= 0 ? originalPosition : undefined,
+              );
+              await fetchOptimization(route.id);
+              setHasUnsavedJobEdits(true);
+            });
+          }
+
+          setRemoveJobTarget(null);
+          await fetchOptimization(route.id);
+        }
+      } catch (error: any) {
+        message.error(error?.response?.data?.detail || "Failed to remove job");
+      } finally {
+        setIsRemovingJob(false);
+      }
+    },
+    [removeJobTarget, route.id, route.result?.routes, fetchOptimization, pushUndo],
   );
 
   const handleReorderStops = useCallback(
@@ -2172,7 +2243,7 @@ const OptimizationView = ({
                   onReOptimize={handleReOptimize}
                   onReorderStops={handleReorderStops}
                   onSaveAndReOptimize={handleSaveAndReOptimize}
-                  onRemoveStop={(rIdx, jId) => handleRemoveJob(rIdx, jId)}
+                  onRemoveStop={(rIdx, jId, stopType) => handleRemoveJob(rIdx, jId, stopType)}
                   focusedRouteIndex={focusedRouteIndex}
                   onFocusRoute={handleFocusRoute}
                   driverSearch={driverSearch}
@@ -2412,6 +2483,46 @@ const OptimizationView = ({
           }}
         />
       </Drawer>
+
+      <Modal
+        open={removeJobTarget !== null}
+        title="Remove Round-Trip Job"
+        onCancel={() => {
+          if (!isRemovingJob) setRemoveJobTarget(null);
+        }}
+        maskClosable={!isRemovingJob}
+        closable={!isRemovingJob}
+        centered
+        footer={[
+          <Button
+            key="current-leg"
+            danger
+            disabled={!removeJobTarget?.stopType}
+            loading={isRemovingJob}
+            onClick={() => handleRoundTripRemoval(false)}
+          >
+            Delete Current Leg
+          </Button>,
+          <Button
+            key="all-legs"
+            type="primary"
+            danger
+            loading={isRemovingJob}
+            onClick={() => handleRoundTripRemoval(true)}
+          >
+            Delete All Jobs
+          </Button>,
+        ]}
+      >
+        {removeJobTarget && (
+          <p className="m-0 text-gray-700">
+            Job #{removeJobTarget.jobId} has pickup and drop-off legs on{" "}
+            {removeJobTarget.driverName}&apos;s route. Delete only the selected{" "}
+            {removeJobTarget.stopType === "pickup" ? "pickup" : "drop-off"} leg,
+            or delete all legs and move the job back to Unassigned.
+          </p>
+        )}
+      </Modal>
 
       <Modal
         open={shareResult !== null}

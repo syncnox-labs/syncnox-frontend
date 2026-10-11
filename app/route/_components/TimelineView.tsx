@@ -145,7 +145,11 @@ interface TimelineViewProps {
     orderedStopIndices?: number[],
     orderedStops?: any[]
   ) => Promise<void> | void;
-  onRemoveStop?: (routeIndex: number, jobId: number) => Promise<void> | void;
+  onRemoveStop?: (
+    routeIndex: number,
+    jobId: number,
+    stopType?: string,
+  ) => Promise<void> | void;
   /** Index of the route currently isolated on the map, or null for "show all". */
   focusedRouteIndex?: number | null;
   onFocusRoute?: (routeIndex: number) => void;
@@ -425,6 +429,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   const [shiftDrag, setShiftDrag] = useState<ShiftDragState | null>(null);
   const shiftDragValueRef = useRef<DriverShift | null>(null);
   const [savingShiftTeamId, setSavingShiftTeamId] = useState<number | null>(null);
+  const [openStopTooltipKey, setOpenStopTooltipKey] = useState<string | null>(null);
 
   const { activeJobTemplate } = useIndexStore();
 
@@ -2557,6 +2562,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   group.rawStops.some((s: any) => s.is_edited || s.time_edited)
                                 );
 
+                                const stopTooltipKey = `${routeIndex}-${groupIndex}`;
                                 const tooltipContent = (
                                   <div className="pointer-events-auto select-text p-1 space-y-2.5 w-[310px] text-slate-800">
                                     {/* Header Badge Row */}
@@ -2754,7 +2760,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                                     type="button"
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      onRemoveStop(routeIndex, numJobId);
+                                                      setOpenStopTooltipKey(null);
+                                                      onRemoveStop(routeIndex, numJobId, s.stop_type);
                                                     }}
                                                     className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors border-none bg-transparent flex items-center shrink-0 cursor-pointer opacity-80 group-hover/jobrow:opacity-100"
                                                     title="Remove job from route"
@@ -2869,6 +2876,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         key={`stop-${routeIndex}-${groupIndex}`}
                                         title={tooltipContent}
                                         color="#ffffff"
+                                        open={openStopTooltipKey === stopTooltipKey}
+                                        onOpenChange={(open) =>
+                                          setOpenStopTooltipKey(open ? stopTooltipKey : null)
+                                        }
                                         overlayStyle={{ maxWidth: "none" }}
                                         overlayInnerStyle={{
                                           maxWidth: "none",
@@ -2988,6 +2999,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         key={`stop-${routeIndex}-${groupIndex}`}
                                         title={tooltipContent}
                                         color="#ffffff"
+                                        open={openStopTooltipKey === stopTooltipKey}
+                                        onOpenChange={(open) =>
+                                          setOpenStopTooltipKey(open ? stopTooltipKey : null)
+                                        }
                                         overlayStyle={{ maxWidth: "none" }}
                                         overlayInnerStyle={{
                                           maxWidth: "none",
@@ -3036,6 +3051,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       key={`stop-${routeIndex}-${groupIndex}`}
                                       title={tooltipContent}
                                       color="#ffffff"
+                                      open={openStopTooltipKey === stopTooltipKey}
+                                      onOpenChange={(open) =>
+                                        setOpenStopTooltipKey(open ? stopTooltipKey : null)
+                                      }
                                       overlayStyle={{ maxWidth: "none" }}
                                       overlayInnerStyle={{
                                         maxWidth: "none",
