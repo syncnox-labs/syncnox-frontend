@@ -5,6 +5,8 @@ import {
   useJsApiLoader,
   Marker,
   InfoWindow,
+  Polygon,
+  DrawingManager,
 } from "@react-google-maps/api";
 import { Button, Dropdown, Radio, Tooltip } from "antd";
 import { Layers, Maximize2, Minimize2, ChevronUp, ChevronDown } from "lucide-react";
@@ -96,6 +98,12 @@ export interface GoogleMapsProps {
   mapToolbarExtra?: React.ReactNode;
   layersDropdownExtra?: React.ReactNode;
   showInfoWindow?: (marker: MarkerData) => boolean;
+  /** When true, the next map clicks draw a selection polygon. */
+  isDrawingArea?: boolean;
+  /** Fired when the user closes a polygon while drawing. */
+  onAreaDrawn?: (path: google.maps.LatLngLiteral[]) => void;
+  /** A finished selection polygon to render on the map. */
+  selectionArea?: google.maps.LatLngLiteral[] | null;
 }
 
 const GoogleMaps: React.FC<GoogleMapsProps> = ({
@@ -117,6 +125,9 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
   mapToolbarExtra,
   layersDropdownExtra,
   showInfoWindow,
+  isDrawingArea = false,
+  onAreaDrawn,
+  selectionArea = null,
 }) => {
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script",
@@ -231,6 +242,45 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
         ],
       }}
     >
+      {onAreaDrawn && (
+        <DrawingManager
+          drawingMode={
+            isDrawingArea ? google.maps.drawing.OverlayType.POLYGON : null
+          }
+          onPolygonComplete={(polygon) => {
+            const path = polygon
+              .getPath()
+              .getArray()
+              .map((p) => ({ lat: p.lat(), lng: p.lng() }));
+            polygon.setMap(null);
+            onAreaDrawn(path);
+          }}
+          options={{
+            drawingControl: false,
+            polygonOptions: {
+              fillColor: "#E8834B",
+              fillOpacity: 0.2,
+              strokeColor: "#E8834B",
+              strokeWeight: 2,
+              clickable: false,
+              zIndex: 1,
+            },
+          }}
+        />
+      )}
+      {selectionArea && selectionArea.length > 2 && (
+        <Polygon
+          paths={selectionArea}
+          options={{
+            fillColor: "#E8834B",
+            fillOpacity: 0.2,
+            strokeColor: "#E8834B",
+            strokeWeight: 2.5,
+            clickable: false,
+            zIndex: 1,
+          }}
+        />
+      )}
       {/* Unified Map Controls Toolbar (Fullscreen, Collapse, Layers) */}
       {(onToggleFullscreen || onToggleCollapse || showMapTypeControl) && (
         <div

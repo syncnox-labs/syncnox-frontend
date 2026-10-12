@@ -17,6 +17,11 @@ export interface Stop {
   address_formatted: string;
   time_to_next_stop_seconds?: number;
   distance_to_next_stop_meters?: number;
+  travel_time_to_next_stop_seconds?: number;
+  service_duration_seconds?: number;
+  waiting_time_to_next_stop_seconds?: number;
+  leg?: "GO" | "RETURN";
+  segment_type_to_next?: "team_leader_work";
   is_new?: boolean;
   time_edited?: boolean;
   candidate_name?: string;
