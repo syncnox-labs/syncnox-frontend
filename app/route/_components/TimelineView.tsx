@@ -38,6 +38,7 @@ import {
 import ReorderStopsModal from "./ReorderStopsModal";
 import TransferStopsModal from "./TransferStopsModal";
 import TimelineStopArrow from "./TimelineStopArrow";
+import { getTimelineSegment } from "./timelineSegment.utils";
 import {
   calculateTimeRange,
   generateTimeMarkers,
@@ -2352,35 +2353,16 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                               if (width <= 0) return null;
 
-                              const distanceKm =
-                                (stop.distance_to_next_stop_meters ?? 0) /
-                                1000;
-                              const timeMin = Math.round(
-                                (stop.time_to_next_stop_seconds ?? 0) / 60,
-                              );
+                              const segment = getTimelineSegment(stop, nextStop);
+                              const distanceKm = segment.distanceMeters === null ? null : segment.distanceMeters / 1000;
+                              const timeMin = Math.round(segment.elapsedSeconds / 60);
 
                               // Do not draw a connection line between shifts after depot_end
                               if (stop.stop_type === "depot_end") return null;
 
-                              // Removed the check that returns null for same coordinates, 
-                              // because on a time-based timeline we still need to draw a line spanning the time gap!
-
-                              // Do not connect separate shifts (e.g. gap > 3 hours between shifts)
-                              const arrivalDiffMinutes = dayjs(nextStop.arrival_time).diff(
-                                dayjs(stop.arrival_time),
-                                "minute"
-                              );
-                              if (arrivalDiffMinutes > 180) return null;
-
-                              const isSameCoordinates =
-                                typeof stop.latitude === "number" &&
-                                typeof nextStop.latitude === "number" &&
-                                stop.latitude.toFixed(4) === nextStop.latitude.toFixed(4) &&
-                                typeof stop.longitude === "number" &&
-                                typeof nextStop.longitude === "number" &&
-                                stop.longitude.toFixed(4) === nextStop.longitude.toFixed(4);
-
-                              const isWaiting = distanceKm === 0 || isSameCoordinates;
+                              // A long interval can include valid travel/waiting. Only an
+                              // explicit depot_end above separates shifts, not its length.
+                              const isWaiting = segment.isWaiting && (segment.serviceSeconds ?? 0) === 0;
 
                               // Do not draw waiting time or zero-distance lines after the route is already completed
                               const isAfterRouteCompleted =
@@ -2388,6 +2370,17 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 (nextStop.stop_type === "depot" && index === routeStops.length - 2);
 
                               if (isWaiting && isAfterRouteCompleted) return null;
+
+                              if (segment.isWorking) {
+                                return (
+                                  <Tooltip key={`work-${routeIndex}-${index}`} title={`Working at client · ${timeMin} min · vehicle stays with the team leader`}>
+                                    <div
+                                      className="absolute top-1/2 border-y border-slate-300 bg-slate-100 cursor-pointer"
+                                      style={{ left: startPos, width, height: 8, transform: "translateY(-50%)", opacity: isDimmed ? 0.15 : 0.85, pointerEvents: draggedStopInfo ? "none" : undefined }}
+                                    />
+                                  </Tooltip>
+                                );
+                              }
 
                               return (
                                 <Tooltip
@@ -2418,22 +2411,35 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         {isWaiting ? (
                                           <span className="flex items-center gap-1 font-semibold text-amber-700">
                                             <ClockCircleOutlined className="text-amber-600 text-xs" />
-                                            <span>Waiting: <strong className="text-amber-900">{timeMin > 0 ? timeMin : arrivalDiffMinutes} min</strong></span>
+                                            <span>Waiting: <strong className="text-amber-900">{Math.round((segment.waitingSeconds ?? 0) / 60)} min</strong></span>
                                           </span>
                                         ) : (
                                           <span className="flex items-center gap-1">
                                             <ClockCircleOutlined className="text-slate-400 text-xs" />
-                                            <strong className="text-slate-800">{timeMin > 0 ? timeMin : arrivalDiffMinutes} min</strong>
+                                            <strong className="text-slate-800">{timeMin} min elapsed</strong>
                                           </span>
                                         )}
                                         <span className="flex items-center gap-1">
                                           <EnvironmentOutlined className="text-slate-400 text-xs" />
-                                          <strong className="text-slate-800">{distanceKm.toFixed(2)} km</strong>
+                                          <strong className="text-slate-800">{distanceKm === null ? "Distance unavailable" : `${distanceKm.toFixed(2)} km`}</strong>
                                         </span>
                                       </div>
+                                      {segment.travelSeconds !== null && (
+                                        <div>Travel: {Math.round(segment.travelSeconds / 60)} min</div>
+                                      )}
+                                      {segment.serviceSeconds !== null && segment.serviceSeconds > 0 && (
+                                        <div>Boarding / alighting: {Math.round(segment.serviceSeconds / 60)} min</div>
+                                      )}
+                                      {!isWaiting && segment.waitingSeconds !== null && segment.waitingSeconds > 0 && (
+                                        <div>Waiting: {Math.round(segment.waitingSeconds / 60)} min</div>
+                                      )}
                                     </div>
                                   }
                                 >
+                                  <div
+                                    className="absolute top-1/2"
+                                    style={{ left: startPos, width, height: 6, transform: "translateY(-50%)", pointerEvents: draggedStopInfo ? "none" : undefined }}
+                                  >
                                   <div
                                     className="absolute top-1/2 left-0 transition-opacity cursor-pointer border-t border-b border-slate-300 rounded-xs"
                                     style={{
@@ -2449,12 +2455,28 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           )`
                                         : undefined,
                                       opacity: isDimmed ? 0.15 : isWaiting ? 0.85 : 0.35,
-                                      left: startPos,
+                                      left: 0,
                                       width: width,
                                       transform: "translateY(-50%)",
                                       pointerEvents: draggedStopInfo ? "none" : undefined,
                                     }}
                                   />
+                                  {!isWaiting && (segment.waitingSeconds ?? 0) > 0 && (
+                                    <div
+                                      className="absolute top-1/2 cursor-pointer border-y border-slate-300"
+                                      style={{
+                                        left: Math.max(0, width - (segment.waitingSeconds! / 60) * pixelsPerMinute),
+                                        width: Math.min(width, (segment.waitingSeconds! / 60) * pixelsPerMinute),
+                                        height: "6px",
+                                        backgroundColor: "#e2e8f0",
+                                        backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 6px)",
+                                        opacity: isDimmed ? 0.15 : 0.85,
+                                        transform: "translateY(-50%)",
+                                        pointerEvents: draggedStopInfo ? "none" : undefined,
+                                      }}
+                                    />
+                                  )}
+                                  </div>
                                 </Tooltip>
                               );
                             })}

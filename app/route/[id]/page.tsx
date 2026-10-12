@@ -40,6 +40,18 @@ type ReasonMeta = {
 };
 
 const REASON_META: Record<string, ReasonMeta> = {
+  NO_FEASIBLE_ROUTE_FOUND: {
+    label: "No Route Found",
+    Icon: Clock,
+    color: "text-orange-600",
+    bgColor: "bg-orange-50",
+    borderColor: "border-orange-200",
+    fixSteps: [
+      "Review the job's fixed driver, compatible vehicles and confirmed bookings.",
+      "Review driver hours and configured earlier/later allowances.",
+      "Retry optimization after reviewing constraints; this is not proof of a travel-time violation.",
+    ],
+  },
   TIME_DISTANCE_REACH: {
     label: "Timing / Distance Constraint",
     Icon: Clock,

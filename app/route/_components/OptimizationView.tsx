@@ -15,6 +15,7 @@ import {
   Drawer,
   Switch,
   Checkbox,
+  Select,
 } from "antd";
 import {
   ArrowLeftOutlined,
@@ -29,7 +30,8 @@ import {
 import dayjs from "dayjs";
 
 import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
-import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search } from "lucide-react";
+import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft } from "lucide-react";
+import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
 import TimelineView from "./TimelineView";
 import AddJobsModal from "@/app/plan/AddJobsModal";
@@ -48,6 +50,7 @@ import { useLocationMappingStore } from "@/store/location-mapping.store";
 import { LOCATION_TYPE_OPTIONS } from "@/apis/location-mapping.api";
 import { LOCATION_TYPE_COLORS, getLocationTypeColor } from "@/utils/customMapMarker";
 import RouteInfoWindow from "./RouteInfoWindow";
+import { findRoundTripPartner, getTripRemovalTargets } from "./tripRemoval.utils";
 import RouteExportPreview from "./RouteExportPreview";
 import {
   generateRoutePolylines,
@@ -75,6 +78,23 @@ import {
 import JobDetailsCard from "./JobDetailsCard";
 
 const { Title, Text } = Typography;
+
+// Ray-casting point-in-polygon test (lat/lng treated as planar; fine at city scale).
+const isPointInPolygon = (
+  point: google.maps.LatLngLiteral,
+  polygon: google.maps.LatLngLiteral[],
+): boolean => {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lng, yi = polygon[i].lat;
+    const xj = polygon[j].lng, yj = polygon[j].lat;
+    const crosses =
+      yi > point.lat !== yj > point.lat &&
+      point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+};
 
 const MAP_OVERLAYS_STORAGE_KEY = "syncnox_map_overlays_visibility";
 
@@ -210,7 +230,8 @@ const OptimizationView = ({
   const [removeJobTarget, setRemoveJobTarget] = useState<{
     routeIndex: number;
     jobId: number;
-    stopType?: string;
+    partnerJobId: number;
+    tripLabel: string;
     driverName: string;
   } | null>(null);
   const [isRemovingJob, setIsRemovingJob] = useState(false);
@@ -1160,19 +1181,20 @@ const OptimizationView = ({
   );
 
   const handleRemoveJob = useCallback(
-    (routeIndex: number, jobId: number, stopType?: string, driverName?: string) => {
+    (routeIndex: number, jobId: number, _stopType?: string, driverName?: string) => {
       setSelectedDrawerJob(null);
       const routeData = route.result?.routes?.[routeIndex];
       const dName = driverName || routeData?.team_member_name || "Driver";
       
-      const stopCount = routeData?.stops?.filter(s => s.job_id === jobId).length || 1;
-      const isRoundTrip = stopCount > 1;
+      const selectedJob = jobs.find((job) => job.id === jobId);
+      const partner = findRoundTripPartner(selectedJob, jobs);
 
-      if (isRoundTrip) {
+      if (partner) {
         setRemoveJobTarget({
           routeIndex,
           jobId,
-          stopType,
+          partnerJobId: partner.id,
+          tripLabel: selectedJob?.job_type === "return_only" ? "return" : "outbound",
           driverName: dName,
         });
         return;
@@ -1212,56 +1234,73 @@ const OptimizationView = ({
         },
       });
     },
-    [route.id, route.result?.routes, fetchOptimization, pushUndo],
+    [route.id, route.result?.routes, jobs, fetchOptimization, pushUndo],
   );
 
   const handleRoundTripRemoval = useCallback(
     async (removeAllLegs: boolean) => {
       const target = removeJobTarget;
-      if (!target || (!removeAllLegs && !target.stopType)) return;
-
-      const routeData = route.result?.routes?.[target.routeIndex];
-      if (!routeData) return;
-      const routeSnapshot = structuredClone(routeData);
+      if (!target || isRemovingJob) return;
+      const targets = getTripRemovalTargets(
+        route.result?.routes || [], target.routeIndex, target.jobId,
+        removeAllLegs ? target.partnerJobId : undefined,
+      );
+      const undoSteps: Array<() => Promise<void>> = [];
+      const undoLabel = removeAllLegs
+        ? `Remove Round Trip #${target.jobId} / #${target.partnerJobId}`
+        : `Remove ${target.tripLabel} Trip #${target.jobId}`;
 
       setIsRemovingJob(true);
       try {
-        const response = await removeStopFromRoute(
-          route.id,
-          target.routeIndex,
-          target.jobId,
-          removeAllLegs ? undefined : target.stopType,
-        );
-        if (response.success) {
-          message.success(response.message || "Job removed from route");
-          setHasUnsavedJobEdits(true);
-
-          pushUndo(
-            removeAllLegs
-              ? "Remove Job #" + target.jobId
-              : "Remove " + target.stopType + " Leg for Job #" + target.jobId,
-            async () => {
-              await restoreRouteSnapshot(
-                route.id,
-                target.routeIndex,
-                target.jobId,
-                routeSnapshot,
-              );
-              await fetchOptimization(route.id);
-              setHasUnsavedJobEdits(true);
-            },
-          );
-
-          setRemoveJobTarget(null);
-          await fetchOptimization(route.id);
+        const protectedTarget = targets.find((item) => {
+          const job = jobs.find((entry) => entry.id === item.jobId);
+          return job && ["in_progress", "in_transit", "completed"].includes(job.status);
+        });
+        if (protectedTarget) {
+          throw new Error(`Job #${protectedTarget.jobId} is in progress or completed and cannot be removed`);
         }
+        let currentOptimization = route;
+        for (const item of targets) {
+          const routeData = currentOptimization.result?.routes?.[item.routeIndex];
+          if (!routeData) throw new Error("Route details are unavailable");
+          const routeSnapshot = structuredClone(routeData);
+          // Omitting stop_type removes both pickup and drop-off for this trip.
+          const response = await removeStopFromRoute(route.id, item.routeIndex, item.jobId);
+          if (!response.success) throw new Error(response.message || "Failed to remove trip");
+          undoSteps.push(async () => {
+            await restoreRouteSnapshot(
+              route.id,
+              item.routeIndex,
+              item.jobId,
+              routeSnapshot,
+            );
+            await fetchOptimization(route.id);
+          });
+          currentOptimization = await fetchOptimization(route.id);
+        }
+        message.success(removeAllLegs ? "Both round-trip jobs removed from routes" : "Pickup and drop-off removed for the current trip");
+        setRemoveJobTarget(null);
       } catch (error: any) {
-        message.error(error?.response?.data?.detail || "Failed to remove job");
+        message.error(error?.response?.data?.detail || error?.message || "Failed to remove job");
       } finally {
+        if (undoSteps.length > 0) {
+          setHasUnsavedJobEdits(true);
+          let undoIndex = undoSteps.length - 1;
+          pushUndo(undoLabel, async () => {
+            // Reverse intermediate snapshots, including two removals from the
+            // same driver, so each restore only re-adds its own deleted job.
+            while (undoIndex >= 0) {
+              await undoSteps[undoIndex]();
+              undoIndex -= 1;
+            }
+            setHasUnsavedJobEdits(true);
+          });
+          setRemoveJobTarget(null);
+        }
         setIsRemovingJob(false);
       }
     },
-    [removeJobTarget, route.id, route.result?.routes, fetchOptimization, pushUndo],
+    [removeJobTarget, isRemovingJob, route, jobs, fetchOptimization, pushUndo],
   );
 
   const handleReorderStops = useCallback(
@@ -1769,6 +1808,123 @@ const OptimizationView = ({
     message.info(`Job #${jobId} deletion undone.`);
   }, []);
 
+  // ── Area selection (draw a polygon → bulk move / delete jobs inside) ──
+  const [isDrawingArea, setIsDrawingArea] = useState(false);
+  const [selectionArea, setSelectionArea] = useState<google.maps.LatLngLiteral[] | null>(null);
+  const [isMoveAreaModalOpen, setIsMoveAreaModalOpen] = useState(false);
+  const [moveAreaTargetIndex, setMoveAreaTargetIndex] = useState<number | null>(null);
+  const [isMovingAreaJobs, setIsMovingAreaJobs] = useState(false);
+  const transferStopsRef = useRef(handleTransferStops);
+  transferStopsRef.current = handleTransferStops;
+
+  const areaSelectedJobs = useMemo(() => {
+    if (!selectionArea || selectionArea.length < 3) return [];
+    const found = new Map<string, { jobId: number; routeIndex: number }>();
+    route.result?.routes?.forEach((r: any, routeIndex: number) => {
+      if (allowedRouteIndices && !allowedRouteIndices.has(routeIndex)) return;
+      if (focusedRouteIndex !== null && focusedRouteIndex !== routeIndex) return;
+      (r.stops || []).forEach((stop: any) => {
+        if (!stop.job_id || typeof stop.latitude !== "number" || typeof stop.longitude !== "number") return;
+        if (["depot", "depot_start", "depot_end", "break"].includes(stop.stop_type)) return;
+        if (pendingDeletedJobIds.has(Number(stop.job_id))) return;
+        if (!isPointInPolygon({ lat: stop.latitude, lng: stop.longitude }, selectionArea)) return;
+        found.set(`${routeIndex}-${stop.job_id}`, { jobId: Number(stop.job_id), routeIndex });
+      });
+    });
+    return Array.from(found.values());
+  }, [selectionArea, route.result?.routes, allowedRouteIndices, focusedRouteIndex, pendingDeletedJobIds]);
+
+  const areaSelectedJobCount = useMemo(
+    () => new Set(areaSelectedJobs.map((j) => j.jobId)).size,
+    [areaSelectedJobs],
+  );
+
+  const clearAreaSelection = useCallback(() => {
+    setSelectionArea(null);
+    setIsDrawingArea(false);
+    setIsMoveAreaModalOpen(false);
+    setMoveAreaTargetIndex(null);
+  }, []);
+
+  const handleAreaDrawn = useCallback((path: google.maps.LatLngLiteral[]) => {
+    setIsDrawingArea(false);
+    if (path.length < 3) return;
+    setSelectionArea(path);
+  }, []);
+
+  const handleToggleAreaDrawing = useCallback(() => {
+    if (isDrawingArea) {
+      setIsDrawingArea(false);
+      return;
+    }
+    setSelectionArea(null);
+    setIsDrawingArea(true);
+  }, [isDrawingArea]);
+
+  useEffect(() => {
+    if (!isDrawingArea && !selectionArea) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isMoveAreaModalOpen) clearAreaSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isDrawingArea, selectionArea, isMoveAreaModalOpen, clearAreaSelection]);
+
+  const handleDeleteAreaJobs = useCallback(() => {
+    const ids = Array.from(new Set(areaSelectedJobs.map((j) => j.jobId)));
+    if (ids.length === 0) return;
+    const protectedJob = ids.find((id) => {
+      const job = jobs.find((j) => j.id === id);
+      return job && ["in_progress", "in_transit", "completed"].includes(job.status);
+    });
+    if (protectedJob !== undefined) {
+      message.error(`Job #${protectedJob} is in progress or completed and cannot be deleted`);
+      return;
+    }
+    Modal.confirm({
+      title: `Delete ${ids.length} job${ids.length > 1 ? "s" : ""}`,
+      content: `Delete all ${ids.length} job(s) inside the selected area? They are staged for deletion until you click 'Reoptimize All Routes'.`,
+      okText: "Delete All",
+      maskClosable: true,
+      okButtonProps: { style: { backgroundColor: "#dc2626", borderColor: "#dc2626" } },
+      onOk: () => {
+        setPendingDeletedJobIds((prev) => {
+          const next = new Set(prev);
+          ids.forEach((id) => next.add(id));
+          return next;
+        });
+        setHasUnsavedJobEdits(true);
+        message.info(`${ids.length} job(s) staged for deletion. Click 'Reoptimize All Routes' to apply.`);
+        clearAreaSelection();
+      },
+    });
+  }, [areaSelectedJobs, jobs, clearAreaSelection]);
+
+  const handleConfirmMoveAreaJobs = useCallback(async () => {
+    if (moveAreaTargetIndex === null || isMovingAreaJobs) return;
+    const bySource = new Map<number, number[]>();
+    areaSelectedJobs.forEach(({ jobId, routeIndex }) => {
+      if (routeIndex === moveAreaTargetIndex) return;
+      bySource.set(routeIndex, [...(bySource.get(routeIndex) || []), jobId]);
+    });
+    if (bySource.size === 0) {
+      message.info("All selected jobs are already on that route");
+      return;
+    }
+    setIsMovingAreaJobs(true);
+    try {
+      for (const [sourceIndex, jobIds] of Array.from(bySource.entries())) {
+        await transferStopsRef.current(sourceIndex, moveAreaTargetIndex, jobIds);
+        // Let the re-rendered handler (fresh route state) land in the ref.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      clearAreaSelection();
+    } finally {
+      setIsMovingAreaJobs(false);
+    }
+  }, [moveAreaTargetIndex, isMovingAreaJobs, areaSelectedJobs, clearAreaSelection]);
+
+
   const handleReOptimizeAll = useCallback(async () => {
     Modal.confirm({
       title: "Reoptimize All Routes",
@@ -1964,7 +2120,7 @@ const OptimizationView = ({
                 onClick={handleUndo}
                 className="border-slate-300 text-slate-700 bg-white font-semibold flex items-center gap-2 mr-2"
                 loading={isUndoing}
-                disabled={isUndoing}
+                disabled={isUndoing || isRemovingJob}
                 icon={
                   <Icon component={() => (
                     <svg width="1em" height="1em" fill="currentColor" viewBox="0 0 1024 1024">
@@ -2042,6 +2198,23 @@ const OptimizationView = ({
                 onToggleCollapse={handleToggleCollapse}
                 mapViewState={mapViewState}
                 InfoWindowModal={RouteInfoWindow}
+                isDrawingArea={isDrawingArea}
+                onAreaDrawn={handleAreaDrawn}
+                selectionArea={selectionArea}
+                mapToolbarExtra={
+                  <Tooltip title={isDrawingArea ? "Cancel drawing" : "Draw an area to select jobs"}>
+                    <Button
+                      type="text"
+                      aria-label="Select jobs by area"
+                      onClick={handleToggleAreaDrawing}
+                      icon={<PenTool size={16} />}
+                      style={{
+                        borderRadius: 0,
+                        color: isDrawingArea || selectionArea ? "#E8834B" : undefined,
+                      }}
+                    />
+                  </Tooltip>
+                }
                 showInfoWindow={(m) => Boolean(m.isDepot || m.isAdditionalLocation)}
                 layersDropdownExtra={
                   <div className="flex flex-col gap-2.5 text-xs font-sans min-w-[240px] max-w-[280px]">
@@ -2235,6 +2408,68 @@ const OptimizationView = ({
                   </div>
                 }
               />
+
+              <DrawingStatusTip active={isDrawingArea} />
+              {selectionArea && !isDrawingArea && (
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-white border border-gray-200 shadow-md px-3 py-1.5">
+                  <span className="text-xs font-semibold text-gray-800">
+                    {areaSelectedJobCount} job{areaSelectedJobCount === 1 ? "" : "s"} selected
+                  </span>
+                  <Button
+                    size="small"
+                    disabled={areaSelectedJobCount === 0}
+                    icon={<ArrowRightLeft size={13} />}
+                    onClick={() => setIsMoveAreaModalOpen(true)}
+                    style={{ borderRadius: 0 }}
+                  >
+                    Move
+                  </Button>
+                  <Button
+                    size="small"
+                    danger
+                    disabled={areaSelectedJobCount === 0}
+                    icon={<Trash2 size={13} />}
+                    onClick={handleDeleteAreaJobs}
+                    style={{ borderRadius: 0 }}
+                  >
+                    Delete
+                  </Button>
+                  <Tooltip title="Clear selection (Esc)">
+                    <button
+                      type="button"
+                      onClick={clearAreaSelection}
+                      aria-label="Clear area selection"
+                      className="flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 cursor-pointer border-none outline-none bg-transparent"
+                    >
+                      <X size={13} />
+                    </button>
+                  </Tooltip>
+                </div>
+              )}
+
+              <Modal
+                open={isMoveAreaModalOpen}
+                title={`Move ${areaSelectedJobCount} job${areaSelectedJobCount === 1 ? "" : "s"} to another route`}
+                okText="Move"
+                confirmLoading={isMovingAreaJobs}
+                okButtonProps={{ disabled: moveAreaTargetIndex === null }}
+                onOk={handleConfirmMoveAreaJobs}
+                onCancel={() => {
+                  if (!isMovingAreaJobs) setIsMoveAreaModalOpen(false);
+                }}
+                destroyOnClose
+              >
+                <Select
+                  className="w-full"
+                  placeholder="Select target route / driver"
+                  value={moveAreaTargetIndex ?? undefined}
+                  onChange={(value) => setMoveAreaTargetIndex(value)}
+                  options={(route.result?.routes || []).map((r: any, idx: number) => ({
+                    value: idx,
+                    label: `${r.team_member_name || `Driver ${idx + 1}`} (${getGroupedStopsCount(r.stops)} stops)`,
+                  }))}
+                />
+              </Modal>
 
               {/* Top-left overlay column: focus chip + in-map search stacked */}
               <div className="absolute top-3 left-3 z-40 flex flex-col gap-1.5" style={{ maxWidth: "calc(100% - 120px)" }}>
@@ -2580,7 +2815,6 @@ const OptimizationView = ({
           <Button
             key="current-leg"
             danger
-            disabled={!removeJobTarget?.stopType}
             loading={isRemovingJob}
             onClick={() => handleRoundTripRemoval(false)}
           >
@@ -2599,10 +2833,10 @@ const OptimizationView = ({
       >
         {removeJobTarget && (
           <p className="m-0 text-gray-700">
-            Job #{removeJobTarget.jobId} has pickup and drop-off legs on{" "}
-            {removeJobTarget.driverName}&apos;s route. Delete only the selected{" "}
-            {removeJobTarget.stopType === "pickup" ? "pickup" : "drop-off"} leg,
-            or delete all legs and move the job back to Unassigned.
+            Delete both pickup and drop-off stops for the {removeJobTarget.tripLabel}{" "}
+            trip (Job #{removeJobTarget.jobId}) on {removeJobTarget.driverName}&apos;s route,
+            or delete both round-trip jobs (#{removeJobTarget.jobId} and #{removeJobTarget.partnerJobId}).
+            Removed jobs will be moved back to Unassigned.
           </p>
         )}
       </Modal>
