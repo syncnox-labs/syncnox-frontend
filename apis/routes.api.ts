@@ -67,6 +67,28 @@ export const reOptimizeRequest = async (id: number): Promise<Route> => {
   return response.data;
 };
 
+export interface OptimizationHistory {
+  can_undo: boolean;
+  next_undo_revision: number | null;
+  entries: Array<{
+    id: number;
+    operation: string;
+    route_indices: number[];
+    created_at: string;
+    undone_at: string | null;
+    is_baseline: boolean;
+  }>;
+}
+
+export const getOptimizationHistory = async (id: number): Promise<OptimizationHistory> => {
+  const response = await apiClient.get<OptimizationHistory>(`optimization/requests/${id}/history`);
+  return response.data;
+};
+
+export const undoOptimizationRevision = async (id: number, revision: number): Promise<void> => {
+  await apiClient.post(`optimization/requests/${id}/undo`, { expected_revision: revision });
+};
+
 
 // ─────────────────────────────────────────────
 // Per-Driver Route Operations

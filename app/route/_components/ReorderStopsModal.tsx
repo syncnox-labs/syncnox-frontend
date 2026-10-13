@@ -389,8 +389,6 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
               loading={isSaving}
               disabled={isReoptimizing || (!isOrderChanged && stopsList.length > 0)}
               onClick={handleSaveOrder}
-              style={{ backgroundColor: "#003220", borderColor: "#003220" }}
-              className="font-semibold text-xs shadow-sm"
             >
               Save New Order
             </Button>

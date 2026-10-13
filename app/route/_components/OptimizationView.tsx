@@ -1,7 +1,7 @@
 "use client";
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import apiClient from "@/config/apiClient.config";
+import { isAxiosError } from "axios";
 import { Panel, PanelGroup, ImperativePanelHandle } from "react-resizable-panels";
 import {
   Typography,
@@ -63,10 +63,10 @@ import ResizeHandle from "@/components/ResizeHandle";
 import Icon from "@ant-design/icons";
 import {
   addStopToRoute,
-  restoreRouteSnapshot,
+  getOptimizationHistory,
+  undoOptimizationRevision,
   removeStopFromRoute,
   reorderRouteStops,
-  editStopTime,
   swapRouteDriver,
   reverseRoute,
   reOptimizeRoute,
@@ -143,7 +143,6 @@ interface OptimizationViewProps {
 interface UndoOperation {
   id: number;
   label: string;
-  action: () => Promise<void>;
 }
 
 const OptimizationView = ({
@@ -236,63 +235,68 @@ const OptimizationView = ({
   } | null>(null);
   const [isRemovingJob, setIsRemovingJob] = useState(false);
 
-  const [undoStack, setUndoStack] = useState<UndoOperation[]>([]);
-  const undoStackRef = useRef<UndoOperation[]>([]);
-  const nextUndoIdRef = useRef(1);
+  const applyStagedRemovals = useCallback(async () => {
+    for (const jobId of pendingDeletedJobIds) {
+      for (const [routeIndex, driverRoute] of (route.result?.routes || []).entries()) {
+        if (driverRoute.stops?.some((stop) => Number(stop.job_id) === jobId)) {
+          await removeStopFromRoute(route.id, routeIndex, jobId);
+        }
+      }
+    }
+    await fetchOptimization(route.id);
+  }, [pendingDeletedJobIds, route.id, route.result?.routes, fetchOptimization]);
+
+  const [undoStep, setUndoStep] = useState<UndoOperation | null>(null);
+  const historyRequestRef = useRef(0);
   const undoInProgressRef = useRef(false);
   const [isUndoing, setIsUndoing] = useState(false);
 
-  const replaceUndoStack = useCallback((nextStack: UndoOperation[]) => {
-    undoStackRef.current = nextStack;
-    setUndoStack(nextStack);
-  }, []);
+  const refreshUndoHistory = useCallback(async () => {
+    const requestNumber = ++historyRequestRef.current;
+    try {
+      const saved = await getOptimizationHistory(route.id);
+      if (requestNumber !== historyRequestRef.current) return;
+      const entry = saved.entries.find((item) => item.id === saved.next_undo_revision);
+      setUndoStep(saved.next_undo_revision ? {
+        id: saved.next_undo_revision,
+        label: entry?.operation.replaceAll("_", " ") || "route change",
+      } : null);
+    } catch {
+      if (requestNumber === historyRequestRef.current) setUndoStep(null);
+    }
+  }, [route.id]);
 
-  const pushUndo = useCallback((label: string, action: () => Promise<void>) => {
-    const operation: UndoOperation = {
-      id: nextUndoIdRef.current++,
-      label,
-      action,
-    };
-    replaceUndoStack([...undoStackRef.current, operation]);
-  }, [replaceUndoStack]);
+  useEffect(() => {
+    setUndoStep(null);
+    return () => { historyRequestRef.current += 1; };
+  }, [route.id]);
 
-  const clearUndoHistory = useCallback(() => {
-    replaceUndoStack([]);
-  }, [replaceUndoStack]);
+  useEffect(() => {
+    void refreshUndoHistory();
+  }, [route.result, route.status, refreshUndoHistory]);
 
   const handleUndo = useCallback(async () => {
-    if (undoInProgressRef.current) return;
-    const lastOp = undoStackRef.current[undoStackRef.current.length - 1];
-    if (!lastOp) return;
-
+    if (undoInProgressRef.current || !undoStep) return;
     undoInProgressRef.current = true;
     setIsUndoing(true);
     try {
-      message.loading({
-        content: `Undoing: ${lastOp.label}...`,
-        key: "undo",
-        duration: 0,
-      });
-      await lastOp.action();
-      replaceUndoStack(
-        undoStackRef.current.filter((operation) => operation.id !== lastOp.id),
-      );
-      message.success({ content: `Undone: ${lastOp.label}`, key: "undo" });
-    } catch (err: any) {
-      message.error({
-        content:
-          err?.response?.data?.detail || err?.message || "Failed to undo",
-        key: "undo",
-      });
+      message.loading({ content: `Undoing: ${undoStep.label}...`, key: "undo", duration: 0 });
+      await undoOptimizationRevision(route.id, undoStep.id);
+      const restored = await fetchOptimization(route.id);
+      await fetchJobsByDate(route.scheduled_date);
+      setHasUnsavedJobEdits(restored.result?.routes?.some((driverRoute) =>
+        driverRoute.stops?.some((stop) => stop.is_new || stop.time_edited)
+      ) || false);
+      message.success({ content: `Undone: ${undoStep.label}`, key: "undo" });
+    } catch (err: unknown) {
+      const detail = isAxiosError<{ detail?: string }>(err) ? err.response?.data?.detail : undefined;
+      message.error({ content: detail || (err instanceof Error ? err.message : "Failed to undo"), key: "undo" });
     } finally {
+      await refreshUndoHistory();
       undoInProgressRef.current = false;
       setIsUndoing(false);
     }
-  }, [replaceUndoStack]);
-
-  useEffect(() => {
-    clearUndoHistory();
-  }, [route.id, clearUndoHistory]);
+  }, [undoStep, route.id, route.scheduled_date, fetchOptimization, fetchJobsByDate, refreshUndoHistory]);
 
   // Job Details Floating Card state
   const [selectedDrawerJob, setSelectedDrawerJob] = useState<{
@@ -1164,12 +1168,6 @@ const OptimizationView = ({
           const driverName = routeData?.team_member_name || "Driver";
           message.success(res.message || `Job #${job.id} added to ${driverName}'s route! Newly added stop is highlighted.`);
           setHasUnsavedJobEdits(true);
-          
-          pushUndo(`Add Job #${job.id}`, async () => {
-            await removeStopFromRoute(route.id, targetRouteIndex, job.id);
-            await fetchOptimization(route.id);
-            setHasUnsavedJobEdits(true);
-          });
 
           await fetchOptimization(route.id);
         }
@@ -1177,7 +1175,7 @@ const OptimizationView = ({
         message.error(error?.response?.data?.detail || "Failed to add job");
       }
     },
-    [route.id, addStopRouteIndex, fetchOptimization, pushUndo, route.result?.routes],
+    [route.id, addStopRouteIndex, fetchOptimization, route.result?.routes],
   );
 
   const handleRemoveJob = useCallback(
@@ -1185,7 +1183,7 @@ const OptimizationView = ({
       setSelectedDrawerJob(null);
       const routeData = route.result?.routes?.[routeIndex];
       const dName = driverName || routeData?.team_member_name || "Driver";
-      
+
       const selectedJob = jobs.find((job) => job.id === jobId);
       const partner = findRoundTripPartner(selectedJob, jobs);
 
@@ -1211,18 +1209,11 @@ const OptimizationView = ({
         onOk: async () => {
           try {
             if (!routeData) return;
-            const routeSnapshot = structuredClone(routeData);
 
             const res = await removeStopFromRoute(route.id, routeIndex, jobId);
             if (res.success) {
               message.success(res.message || "Job removed from route");
               setHasUnsavedJobEdits(true);
-              
-              pushUndo(`Remove Job #${jobId}`, async () => {
-                await restoreRouteSnapshot(route.id, routeIndex, jobId, routeSnapshot);
-                await fetchOptimization(route.id);
-                setHasUnsavedJobEdits(true);
-              });
 
               await fetchOptimization(route.id);
             }
@@ -1234,7 +1225,7 @@ const OptimizationView = ({
         },
       });
     },
-    [route.id, route.result?.routes, jobs, fetchOptimization, pushUndo],
+    [route.id, route.result?.routes, jobs, fetchOptimization],
   );
 
   const handleRoundTripRemoval = useCallback(
@@ -1245,11 +1236,6 @@ const OptimizationView = ({
         route.result?.routes || [], target.routeIndex, target.jobId,
         removeAllLegs ? target.partnerJobId : undefined,
       );
-      const undoSteps: Array<() => Promise<void>> = [];
-      const undoLabel = removeAllLegs
-        ? `Remove Round Trip #${target.jobId} / #${target.partnerJobId}`
-        : `Remove ${target.tripLabel} Trip #${target.jobId}`;
-
       setIsRemovingJob(true);
       try {
         const protectedTarget = targets.find((item) => {
@@ -1263,19 +1249,10 @@ const OptimizationView = ({
         for (const item of targets) {
           const routeData = currentOptimization.result?.routes?.[item.routeIndex];
           if (!routeData) throw new Error("Route details are unavailable");
-          const routeSnapshot = structuredClone(routeData);
           // Omitting stop_type removes both pickup and drop-off for this trip.
           const response = await removeStopFromRoute(route.id, item.routeIndex, item.jobId);
           if (!response.success) throw new Error(response.message || "Failed to remove trip");
-          undoSteps.push(async () => {
-            await restoreRouteSnapshot(
-              route.id,
-              item.routeIndex,
-              item.jobId,
-              routeSnapshot,
-            );
-            await fetchOptimization(route.id);
-          });
+
           currentOptimization = await fetchOptimization(route.id);
         }
         message.success(removeAllLegs ? "Both round-trip jobs removed from routes" : "Pickup and drop-off removed for the current trip");
@@ -1283,24 +1260,11 @@ const OptimizationView = ({
       } catch (error: any) {
         message.error(error?.response?.data?.detail || error?.message || "Failed to remove job");
       } finally {
-        if (undoSteps.length > 0) {
-          setHasUnsavedJobEdits(true);
-          let undoIndex = undoSteps.length - 1;
-          pushUndo(undoLabel, async () => {
-            // Reverse intermediate snapshots, including two removals from the
-            // same driver, so each restore only re-adds its own deleted job.
-            while (undoIndex >= 0) {
-              await undoSteps[undoIndex]();
-              undoIndex -= 1;
-            }
-            setHasUnsavedJobEdits(true);
-          });
-          setRemoveJobTarget(null);
-        }
+
         setIsRemovingJob(false);
       }
     },
-    [removeJobTarget, isRemovingJob, route, jobs, fetchOptimization, pushUndo],
+    [removeJobTarget, isRemovingJob, route, jobs, fetchOptimization],
   );
 
   const handleReorderStops = useCallback(
@@ -1310,10 +1274,6 @@ const OptimizationView = ({
       orderedStopIndices?: number[],
       orderedStops?: any[],
     ) => {
-      const originalStops = route.result?.routes?.[routeIndex]?.stops || [];
-      const originalStopOrder = originalStops
-        .filter((stop) => stop.job_id && stop.stop_type !== "depot_start" && stop.stop_type !== "depot_end")
-        .map((stop) => ({ job_id: stop.job_id, stop_type: stop.stop_type }));
 
       const originalSnapshot = route;
 
@@ -1373,19 +1333,7 @@ const OptimizationView = ({
         if (res.success) {
           message.success(res.message || "Stops reordered successfully!");
           setHasUnsavedJobEdits(true);
-          
-          pushUndo("Reorder Stops", async () => {
-            await reorderRouteStops(
-              route.id,
-              routeIndex,
-              undefined,
-              undefined,
-              originalStopOrder,
-            );
-            await fetchOptimization(route.id);
-            setHasUnsavedJobEdits(true);
-          });
-          
+
           await fetchOptimization(route.id);
         }
       } catch (error: any) {
@@ -1400,7 +1348,7 @@ const OptimizationView = ({
         setReorderingRouteIndex(null);
       }
     },
-    [route, fetchOptimization, pushUndo],
+    [route, fetchOptimization],
   );
 
   const handleSaveAndReOptimize = useCallback(
@@ -1412,11 +1360,7 @@ const OptimizationView = ({
     ) => {
       const driverName =
         route.result?.routes?.[routeIndex]?.team_member_name || "Driver";
-      const originalStops = route.result?.routes?.[routeIndex]?.stops || [];
-      const originalStopOrder = originalStops
-        .filter((stop) => stop.job_id && stop.stop_type !== "depot_start" && stop.stop_type !== "depot_end")
-        .map((stop) => ({ job_id: stop.job_id, stop_type: stop.stop_type }));
-        
+
       try {
         message.loading({ content: "Saving stop order…", key: "save_reopt", duration: 0 });
         // Save the new stop order and recalculate ETAs & polylines
@@ -1428,24 +1372,10 @@ const OptimizationView = ({
           orderedStops,
         );
         if (res.success) {
-          pushUndo("Save and Re-optimize Route", async () => {
-             await reorderRouteStops(
-               route.id,
-               routeIndex,
-               undefined,
-               undefined,
-               originalStopOrder,
-             );
-             await fetchOptimization(route.id);
-          });
-
-          // Perform bulk delete for staged deletions if any
+          // Save removals through route history before reoptimization.
           if (pendingDeletedJobIds.size > 0) {
-            const deletePromises = Array.from(pendingDeletedJobIds).map((jobId) =>
-              apiClient.delete(`/jobs/${jobId}`)
-            );
-            await Promise.all(deletePromises);
-            clearUndoHistory();
+            await applyStagedRemovals();
+
           }
 
           setOptimizationResult("processing");
@@ -1454,7 +1384,7 @@ const OptimizationView = ({
             message.loading({ content: `Re-optimizing ${driverName}'s route…`, key: "save_reopt", duration: 0 });
             setPendingDeletedJobIds(new Set());
             setHasUnsavedJobEdits(false);
-            clearUndoHistory();
+
             await pollUntilComplete(route.id);
             message.success({ content: `${driverName}'s route re-optimized successfully!`, key: "save_reopt" });
           } else {
@@ -1470,7 +1400,7 @@ const OptimizationView = ({
         setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to reoptimize route");
       }
     },
-    [route.id, route.result, fetchOptimization, pushUndo, setOptimizationResult, pendingDeletedJobIds, pollUntilComplete, clearUndoHistory],
+    [route.id, route.result, fetchOptimization, setOptimizationResult, pendingDeletedJobIds, applyStagedRemovals, pollUntilComplete],
   );
 
   const handleReverseRoute = useCallback(
@@ -1487,12 +1417,7 @@ const OptimizationView = ({
             const res = await reverseRoute(route.id, routeIndex);
             if (res.success) {
               message.success(res.message);
-              
-              pushUndo(`Reverse Route`, async () => {
-                await reverseRoute(route.id, routeIndex);
-                await fetchOptimization(route.id);
-              });
-              
+
               await fetchOptimization(route.id);
             }
           } catch (error: any) {
@@ -1503,7 +1428,7 @@ const OptimizationView = ({
         },
       });
     },
-    [route.id, route.result?.routes, fetchOptimization, pushUndo],
+    [route.id, route.result?.routes, fetchOptimization],
   );
 
   const handleReOptimize = useCallback(
@@ -1517,13 +1442,10 @@ const OptimizationView = ({
         okButtonProps: { style: { backgroundColor: "#003220" } },
         onOk: async () => {
           try {
-            // Perform bulk delete for staged deletions so the backend doesn't re-include them
+          // Save removals through route history before reoptimization.
             if (pendingDeletedJobIds.size > 0) {
-              const deletePromises = Array.from(pendingDeletedJobIds).map((jobId) =>
-                apiClient.delete(`/jobs/${jobId}`)
-              );
-              await Promise.all(deletePromises);
-              clearUndoHistory();
+              await applyStagedRemovals();
+
             }
 
             setOptimizationResult("processing");
@@ -1533,7 +1455,7 @@ const OptimizationView = ({
               setPendingDeletedJobIds(new Set());
               setHasUnsavedJobEdits(false);
               // Poll until the async worker finishes
-              clearUndoHistory();
+
               await pollUntilComplete(route.id);
               message.success({ content: `${driverName}'s route re-optimized!`, key: "reopt" });
             }
@@ -1544,18 +1466,18 @@ const OptimizationView = ({
         },
       });
     },
-    [route.id, route.result?.routes, setOptimizationResult, pendingDeletedJobIds, pollUntilComplete, clearUndoHistory],
+    [route.id, route.result?.routes, setOptimizationResult, pendingDeletedJobIds, applyStagedRemovals, pollUntilComplete],
   );
 
   const handleSwapSuccess = useCallback(() => {
     setOptimizationResult("processing");
     // Poll until the async swap-driver worker finishes
-    clearUndoHistory();
+
     pollUntilComplete(route.id)
       .catch(() => {
         // Error already set in store
       });
-  }, [setOptimizationResult, pollUntilComplete, route.id, clearUndoHistory]);
+  }, [setOptimizationResult, pollUntilComplete, route.id]);
 
   const handleAddUnassignedJob = useCallback(
     async (targetRouteIndex: number, jobId: number, position?: number) => {
@@ -1563,11 +1485,7 @@ const OptimizationView = ({
         message.loading({ content: "Adding job to route...", key: "add-unassigned" });
         await addStopToRoute(route.id, targetRouteIndex, jobId, position);
         message.success({ content: "Job assigned successfully!", key: "add-unassigned" });
-        pushUndo(`Assign Job #${jobId}`, async () => {
-          await removeStopFromRoute(route.id, targetRouteIndex, jobId);
-          await fetchOptimization(route.id);
-          setHasUnsavedJobEdits(true);
-        });
+
         setHasUnsavedJobEdits(true);
         await fetchOptimization(route.id);
       } catch (err: any) {
@@ -1577,7 +1495,7 @@ const OptimizationView = ({
         });
       }
     },
-    [route.id, fetchOptimization, pushUndo]
+    [route.id, fetchOptimization]
   );
 
   const handleTransferStops = useCallback(
@@ -1592,16 +1510,7 @@ const OptimizationView = ({
 
       const sourceRoute = route.result?.routes?.[sourceRouteIndex];
       const targetRoute = route.result?.routes?.[targetRouteIndex];
-      const sourceDriverName = sourceRoute?.team_member_name || `Driver #${sourceRouteIndex + 1}`;
       const targetDriverName = targetRoute?.team_member_name || `Driver #${targetRouteIndex + 1}`;
-      const originalSourceStopOrder = (sourceRoute?.stops || [])
-        .filter((stop) => stop.job_id && stop.stop_type !== "depot_start" && stop.stop_type !== "depot_end")
-        .map((stop) => ({ job_id: stop.job_id, stop_type: stop.stop_type }));
-      const originalTargetStopOrder = (targetRoute?.stops || [])
-        .filter((stop) => stop.job_id && stop.stop_type !== "depot_start" && stop.stop_type !== "depot_end")
-        .map((stop) => ({ job_id: stop.job_id, stop_type: stop.stop_type }));
-      const movedJobIds = new Set(jobIds);
-      const originalSourcePosition = (sourceRoute?.stops || []).findIndex((stop) => stop.job_id && movedJobIds.has(stop.job_id));
 
       const originalSnapshot = route;
 
@@ -1677,31 +1586,9 @@ const OptimizationView = ({
           });
           setHasUnsavedJobEdits(true);
 
-          pushUndo(`Transfer Stops to ${targetDriverName}`, async () => {
-            await transferRouteStops(
-              route.id,
-              targetRouteIndex,
-              sourceRouteIndex,
-              jobIds,
-              originalSourcePosition >= 0 ? originalSourcePosition : undefined,
-            );
-            if (originalSourceStopOrder.length > 0) {
-              await reorderRouteStops(
-                route.id, sourceRouteIndex, undefined, undefined, originalSourceStopOrder,
-              );
-            }
-            if (originalTargetStopOrder.length > 0) {
-              await reorderRouteStops(
-                route.id, targetRouteIndex, undefined, undefined, originalTargetStopOrder,
-              );
-            }
-            await fetchOptimization(route.id);
-            setHasUnsavedJobEdits(true);
-          });
-
           if (reoptimize && res.is_async) {
             setOptimizationResult("processing");
-            clearUndoHistory();
+
             await pollUntilComplete(route.id);
           } else {
             await fetchOptimization(route.id);
@@ -1718,13 +1605,13 @@ const OptimizationView = ({
         });
       }
     },
-    [route, fetchOptimization, pushUndo, pollUntilComplete, setOptimizationResult, clearUndoHistory],
+    [route, fetchOptimization, pollUntilComplete, setOptimizationResult],
   );
 
   const handleStageDeleteJob = useCallback((jobId: number) => {
     const job = jobs.find((j) => j.id === jobId);
     const isShuttle = job?.template_type === 'worker_shuttle' || !!job?.worker_shuttle_detail;
-    
+
     const doDelete = (ids: number[]) => {
       setPendingDeletedJobIds((prev) => {
         const next = new Set(prev);
@@ -1747,21 +1634,21 @@ const OptimizationView = ({
         }
         return undefined;
       };
-      
+
       const tripType = job?.job_type || shuttleValue(["pickup_type", "job_type"]);
-      
+
       // If it's part of a round trip, try to find the sister job
       if (tripType === 'round_trip' || tripType === 'one_way' || tripType === 'return_only') {
         const candidateName = shuttleValue(["candidate_name"]);
         const quantId = shuttleValue(["quant_id", "quart_id"]);
         const schedDate = job?.scheduled_date || shuttleValue(["scheduled_date"]);
-        
+
         if (candidateName) {
           const sisterJob = jobs.find((j) => {
              if (j.id === jobId) return false;
              const isAlsoShuttle = j.template_type === 'worker_shuttle' || !!j.worker_shuttle_detail;
              if (!isAlsoShuttle) return false;
-             
+
              const jShuttleValue = (keys: string[]) => {
                 for (const key of keys) {
                   const val = (j as any)?.[key] || (j?.worker_shuttle_detail as any)?.[key] || (j?.custom_fields as any)?.[key];
@@ -1769,14 +1656,14 @@ const OptimizationView = ({
                 }
                 return undefined;
              };
-             
+
              const jName = jShuttleValue(["candidate_name"]);
              const jQuant = jShuttleValue(["quant_id", "quart_id"]);
              const jDate = j.scheduled_date || jShuttleValue(["scheduled_date"]);
-             
+
              return (jName === candidateName && jDate === schedDate && (jQuant === quantId || (!jQuant && !quantId)));
           });
-          
+
           if (sisterJob && !pendingDeletedJobIds.has(sisterJob.id)) {
             Modal.confirm({
               title: "Round Trip Detected",
@@ -1792,7 +1679,7 @@ const OptimizationView = ({
         }
       }
     }
-    
+
     doDelete([jobId]);
   }, [jobs, pendingDeletedJobIds]);
 
@@ -1924,25 +1811,21 @@ const OptimizationView = ({
     }
   }, [moveAreaTargetIndex, isMovingAreaJobs, areaSelectedJobs, clearAreaSelection]);
 
-
   const handleReOptimizeAll = useCallback(async () => {
     Modal.confirm({
       title: "Reoptimize All Routes",
       content:
         pendingDeletedJobIds.size > 0
-          ? `${pendingDeletedJobIds.size} job(s) will be deleted and all routes re-optimized. Continue?`
+          ? `${pendingDeletedJobIds.size} job(s) will be removed from routes and all routes re-optimized. Continue?`
           : "This will re-run the full optimization with updated job data. Old routes will be replaced. Continue?",
       okText: "Reoptimize All Routes",
       okButtonProps: { style: { backgroundColor: "#003220", borderColor: "#003220" } },
       onOk: async () => {
         try {
-          // Perform bulk delete for staged deletions
+          // Save removals through route history before reoptimization.
           if (pendingDeletedJobIds.size > 0) {
-            const deletePromises = Array.from(pendingDeletedJobIds).map((jobId) =>
-              apiClient.delete(`/jobs/${jobId}`)
-            );
-            await Promise.all(deletePromises);
-            clearUndoHistory();
+            await applyStagedRemovals();
+
           }
 
           // Pre-optimization ETA & Driver snapshot for WhatsApp notification foundation
@@ -1962,7 +1845,7 @@ const OptimizationView = ({
           setPendingDeletedJobIds(new Set());
           setHasUnsavedJobEdits(false);
           // Poll until the global re-optimize worker finishes
-          clearUndoHistory();
+
           await pollUntilComplete(route.id);
           message.success({ content: "All routes re-optimized!", key: "reopt_all" });
 
@@ -1975,7 +1858,7 @@ const OptimizationView = ({
         }
       },
     });
-  }, [reOptimize, route.id, route.result?.routes, pendingDeletedJobIds, pollUntilComplete, clearUndoHistory]);
+  }, [reOptimize, route.id, route.result?.routes, pendingDeletedJobIds, applyStagedRemovals, pollUntilComplete]);
 
   const getRouteData = (index: number | null) =>
     index !== null ? route.result?.routes?.[index] : null;
@@ -1998,12 +1881,11 @@ const OptimizationView = ({
 
   const hasPendingOptimization = useMemo(() => {
     if (hasUnsavedJobEdits) return true;
-    if (undoStack.length > 0) return true;
     if (!route.result?.routes) return false;
     return route.result.routes.some((r) =>
       r.stops?.some((s: any) => s.is_new || s.time_edited || s.is_edited)
     );
-  }, [hasUnsavedJobEdits, undoStack.length, route.result?.routes]);
+  }, [hasUnsavedJobEdits, route.result?.routes]);
 
   const handleBackToPlanRoutes = () => {
     setCurrentTab("routes");
@@ -2035,7 +1917,6 @@ const OptimizationView = ({
           </div>
         </div>
       )}
-
 
       {/* Header - matching NavBar height */}
       <nav className="bg-white border-b border-gray-200 px-3 shrink-0">
@@ -2115,12 +1996,12 @@ const OptimizationView = ({
           {/* Right: Action Buttons */}
           <div className="flex gap-2">
             {/* Undo Button */}
-            {undoStack.length > 0 && (
+            {undoStep && (
               <Button
                 onClick={handleUndo}
                 className="border-slate-300 text-slate-700 bg-white font-semibold flex items-center gap-2 mr-2"
                 loading={isUndoing}
-                disabled={isUndoing || isRemovingJob}
+                disabled={isUndoing || isRemovingJob || (route.status !== "completed" && route.status !== "failed")}
                 icon={
                   <Icon component={() => (
                     <svg width="1em" height="1em" fill="currentColor" viewBox="0 0 1024 1024">
@@ -2129,7 +2010,7 @@ const OptimizationView = ({
                   )} />
                 }
               >
-                Undo {undoStack[undoStack.length - 1].label}
+                Undo {undoStep.label}
               </Button>
             )}
 
@@ -2589,31 +2470,13 @@ const OptimizationView = ({
               setSelectedDrawerJob(null);
               setSelectedMarkerId(null);
             }}
-            onJobSaved={async ({ requiresReOptimization, timeChanged, startTime, endTime, oldStartTime, oldEndTime }) => {
+            onJobSaved={async ({ requiresReOptimization, timeChanged }) => {
               const editedRouteIndex = selectedDrawerJob.routeIndex;
               const editedJobId = selectedDrawerJob.job?.id;
               if (route?.id && editedRouteIndex !== undefined && editedJobId !== undefined) {
                 if (timeChanged) {
                   try {
-                    await editStopTime(
-                      route.id,
-                      editedRouteIndex,
-                      editedJobId,
-                      startTime,
-                      endTime
-                    );
-                    
-                    pushUndo(`Edit Job #${editedJobId} Time`, async () => {
-                      await editStopTime(
-                        route.id,
-                        editedRouteIndex,
-                        editedJobId,
-                        oldStartTime,
-                        oldEndTime
-                      );
-                      await fetchOptimization(route.id);
-                    });
-                    
+
                     await fetchOptimization(route.id);
                     message.success("Stop time updated in route successfully");
                     setHasUnsavedJobEdits(true);
@@ -2750,37 +2613,19 @@ const OptimizationView = ({
             if (updatedJob && editJobData) {
               const getWsTime = (j: any, key: string) => j?.worker_shuttle_detail?.[key] || j?.[key];
               const getPdTime = (j: any, key: string) => j?.pickup_delivery_detail?.[key] || j?.[key];
-              
+
               const oldStart = getWsTime(editJobData, "start_hour") || getPdTime(editJobData, "time_window_start");
               const oldEnd = getWsTime(editJobData, "end_hour") || getPdTime(editJobData, "time_window_end");
               const newStart = getWsTime(updatedJob, "start_hour") || getPdTime(updatedJob, "time_window_start");
               const newEnd = getWsTime(updatedJob, "end_hour") || getPdTime(updatedJob, "time_window_end");
-              
+
               const timeChanged = oldStart !== newStart || oldEnd !== newEnd;
               const editedRouteIndex = selectedDrawerJob?.routeIndex;
               const editedJobId = updatedJob.id;
 
               if (timeChanged && route?.id && editedRouteIndex !== undefined && selectedDrawerJob?.job?.id === editedJobId) {
                 try {
-                  await editStopTime(
-                    route.id,
-                    editedRouteIndex,
-                    editedJobId,
-                    newStart,
-                    newEnd
-                  );
-                  
-                  pushUndo(`Edit Job #${editedJobId} Time`, async () => {
-                    await editStopTime(
-                      route.id,
-                      editedRouteIndex,
-                      editedJobId,
-                      oldStart,
-                      oldEnd
-                    );
-                    await fetchOptimization(route.id);
-                  });
-                  
+
                   await fetchOptimization(route.id);
                   message.success("Stop time updated in route successfully");
                 } catch (err: any) {
