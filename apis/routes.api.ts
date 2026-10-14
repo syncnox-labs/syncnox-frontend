@@ -35,7 +35,7 @@ export const getOptimizationRequest = async (id: number): Promise<Route> => {
 export interface UpdateOptimizationRequestPayload {
   route_name?: string;
   job_ids?: number[];
-  result?: any;
+  result?: Route["result"];
 }
 
 export const updateOptimizationRequest = async (
@@ -94,7 +94,24 @@ export const undoOptimizationRevision = async (id: number, revision: number): Pr
 // Per-Driver Route Operations
 // ─────────────────────────────────────────────
 
-import type { RouteOperationResponse } from "@/types/routes.type";
+import type { RouteOperationResponse, BulkAssignJobsResponse } from "@/types/routes.type";
+
+export const BULK_ASSIGNMENT_LIMIT = 500;
+
+/** Assign the entire selection atomically with one request. */
+export const bulkAssignJobsToRoute = async (
+  optimizationId: number,
+  routeIndex: number,
+  jobIds: number[],
+  expectedDriverId: number,
+  expectedLeg?: string,
+): Promise<BulkAssignJobsResponse> => {
+  const response = await apiClient.post<BulkAssignJobsResponse>(
+    `optimization/requests/${optimizationId}/routes/${routeIndex}/bulk-assign-jobs`,
+    { job_ids: jobIds, expected_driver_id: expectedDriverId, expected_leg: expectedLeg ?? null },
+  );
+  return response.data;
+};
 
 /** Add a draft job to a specific driver's route (synchronous, marks is_new=true) */
 export const addStopToRoute = async (
@@ -146,9 +163,13 @@ export const reorderRouteStops = async (
   routeIndex: number,
   orderedJobIds?: number[],
   orderedStopIndices?: number[],
-  orderedStops?: any[],
+  orderedStops?: Record<string, unknown>[],
 ): Promise<RouteOperationResponse> => {
-  const payload: any = {};
+  const payload: {
+    ordered_job_ids?: number[];
+    ordered_stop_indices?: number[];
+    ordered_stops?: Record<string, unknown>[];
+  } = {};
   if (orderedJobIds && orderedJobIds.length > 0) payload.ordered_job_ids = orderedJobIds;
   if (orderedStopIndices && orderedStopIndices.length > 0) payload.ordered_stop_indices = orderedStopIndices;
   if (orderedStops && orderedStops.length > 0) payload.ordered_stops = orderedStops;

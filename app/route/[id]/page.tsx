@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Spin, Alert, Select, message, Input } from "antd";
+import { isAxiosError } from "axios";
+import { Spin, Alert, Select, message, Input, Checkbox, Button } from "antd";
 import {
   AlertTriangle,
   AlertCircle,
@@ -24,7 +25,7 @@ import {
   Search,
 } from "lucide-react";
 import OptimizationView from "../_components/OptimizationView";
-import { addStopToRoute } from "@/apis/routes.api";
+import { addStopToRoute, bulkAssignJobsToRoute, BULK_ASSIGNMENT_LIMIT } from "@/apis/routes.api";
 import { useOptimizationStore } from "@/store/optimization.store";
 import { useJobsStore } from "@/store/jobs.store";
 import type { UnassignedJob } from "@/types/routes.type";
@@ -166,6 +167,19 @@ const RoutePage = () => {
     number | null
   >(null);
   const [unassignedJobSearch, setUnassignedJobSearch] = useState("");
+  const [selectedJobIds, setSelectedJobIds] = useState<number[]>([]);
+  const [bulkRouteIndex, setBulkRouteIndex] = useState<number>();
+  const [isBulkAssigning, setIsBulkAssigning] = useState(false);
+  const assignmentInProgressRef = useRef(false);
+  const [assigningJobId, setAssigningJobId] = useState<number | null>(null);
+  const [assignmentTotal, setAssignmentTotal] = useState(0);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedJobIds([]);
+    setBulkRouteIndex(undefined);
+    setAssignmentError(null);
+  }, [id]);
 
   useEffect(() => {
     if (!id) {
@@ -173,7 +187,7 @@ const RoutePage = () => {
       return;
     }
 
-    const currentId = currentOptimization?.id;
+    const currentId = useOptimizationStore.getState().currentOptimization?.id;
     if (currentId === id) {
       setIsLoading(false);
       return;
@@ -196,13 +210,26 @@ const RoutePage = () => {
   }, [id, fetchOptimization, clearOptimization]);
 
   const handleAssignJob = async (jobId: number, routeIndex: number) => {
+    if (!id || assignmentInProgressRef.current || currentOptimization?.status === "processing" || currentOptimization?.status === "queued") return;
+    assignmentInProgressRef.current = true;
+    setAssigningJobId(jobId);
     try {
       message.loading({ content: "Assigning job...", key: "assign" });
-      await addStopToRoute(Number(id), routeIndex, jobId);
+      const result = await addStopToRoute(id, routeIndex, jobId);
+      if (!result.success) throw new Error(result.message || "Failed to assign job");
+      setSelectedJobIds((previous) => previous.filter((selectedId) => selectedId !== jobId));
       message.success({ content: "Job assigned successfully", key: "assign" });
-      fetchOptimization(Number(id));
-    } catch (err: any) {
-      message.error({ content: err?.response?.data?.detail || "Failed to assign job", key: "assign" });
+      try {
+        await fetchOptimization(id);
+      } catch {
+        message.error("Job assigned, but the route could not be refreshed. Reload to see the latest assignments.");
+      }
+    } catch (err: unknown) {
+      const detail = isAxiosError<{ detail?: string }>(err) ? err.response?.data?.detail : undefined;
+      message.error({ content: detail || (err instanceof Error ? err.message : "Failed to assign job"), key: "assign" });
+    } finally {
+      assignmentInProgressRef.current = false;
+      setAssigningJobId(null);
     }
   };
 
@@ -302,6 +329,46 @@ const RoutePage = () => {
         .includes(query),
     );
   }, [unassignedJobCards, unassignedJobSearch]);
+
+  useEffect(() => {
+    const available = new Set(unassignedJobs.map((job) => job.job_id));
+    setSelectedJobIds((previous) => previous.filter((jobId) => available.has(jobId)));
+  }, [unassignedJobs]);
+
+  const visibleJobIds = [...new Set(filteredUnassignedJobCards.map((job) => job.job_id))];
+  const selectedVisibleCount = visibleJobIds.filter((jobId) => selectedJobIds.includes(jobId)).length;
+  const assignmentDisabled = isBulkAssigning || assigningJobId !== null || currentOptimization?.status === "processing" || currentOptimization?.status === "queued";
+
+  const handleBulkAssign = async () => {
+    if (!id || assignmentDisabled || assignmentInProgressRef.current || bulkRouteIndex === undefined || !currentOptimization?.result?.routes?.[bulkRouteIndex] || !selectedJobIds.length || selectedJobIds.length > BULK_ASSIGNMENT_LIMIT) return;
+    assignmentInProgressRef.current = true;
+    setIsBulkAssigning(true);
+    setAssignmentTotal(selectedJobIds.length);
+    setAssignmentError(null);
+    const jobIds = [...selectedJobIds];
+    try {
+      const targetRoute = currentOptimization.result.routes[bulkRouteIndex];
+      const response = await bulkAssignJobsToRoute(id, bulkRouteIndex, jobIds, targetRoute.team_member_id, targetRoute.leg);
+      if (!response.success) throw new Error(response.message || "Failed to assign selected jobs");
+      // The response includes the saved plan, so no additional fetch is needed.
+      useOptimizationStore.setState((state) => state.currentOptimization?.id === id
+        ? { currentOptimization: { ...state.currentOptimization, result: response.result } }
+        : {});
+      const assigned = new Set([...response.assigned_job_ids, ...response.already_assigned_job_ids]);
+      setSelectedJobIds((previous) => previous.filter((jobId) => !assigned.has(jobId)));
+      message.success(response.message);
+    } catch (error: unknown) {
+      // apiClient may reject with the decoded response body rather than AxiosError.
+      const data = isAxiosError<{ detail?: unknown }>(error) ? error.response?.data : error;
+      const detail = typeof data === "object" && data !== null && "detail" in data ? data.detail : undefined;
+      const reason = typeof detail === "string" ? detail : error instanceof Error ? error.message : "Failed to assign selected jobs";
+      setAssignmentError(reason);
+      message.error("Bulk assignment did not complete. Your selection is kept; refresh if the request timed out, or retry safely.");
+    } finally {
+      assignmentInProgressRef.current = false;
+      setIsBulkAssigning(false);
+    }
+  };
 
   /** Group jobs by reason_code */
   const reasonGroups = useMemo(() => {
@@ -486,12 +553,44 @@ const RoutePage = () => {
                       aria-label="Search unassigned jobs by candidate name or job ID"
                       prefix={<Search size={12} className="text-slate-400" />}
                     />
+                    <div className="flex items-center justify-between gap-2 mt-2">
+                      <Checkbox
+                        checked={visibleJobIds.length > 0 && selectedVisibleCount === visibleJobIds.length}
+                        indeterminate={selectedVisibleCount > 0 && selectedVisibleCount < visibleJobIds.length}
+                        disabled={assignmentDisabled || !visibleJobIds.length}
+                        onChange={(event) => setSelectedJobIds((previous) => event.target.checked
+                          ? [...new Set([...previous, ...visibleJobIds])]
+                          : previous.filter((jobId) => !visibleJobIds.includes(jobId)))}
+                      >Select visible</Checkbox>
+                      <Button size="small" type="text" disabled={assignmentDisabled || !selectedJobIds.length} onClick={() => setSelectedJobIds([])}>Clear ({selectedJobIds.length})</Button>
+                    </div>
+                    {selectedJobIds.length > 0 && (
+                      <div className="flex gap-2 mt-2">
+                        <Select
+                          size="small"
+                          className="flex-1 min-w-0"
+                          placeholder="Select route"
+                          aria-label="Route for selected jobs"
+                          value={bulkRouteIndex}
+                          disabled={assignmentDisabled}
+                          onChange={setBulkRouteIndex}
+                          options={(currentOptimization.result?.routes || []).map((driverRoute, index) => ({
+                            value: index,
+                            label: `Route ${index + 1} · ${driverRoute.team_member_name || "No driver"}`,
+                          }))}
+                        />
+                        <Button size="small" type="primary" loading={isBulkAssigning} disabled={assignmentDisabled || selectedJobIds.length > BULK_ASSIGNMENT_LIMIT || bulkRouteIndex === undefined || !currentOptimization.result?.routes?.[bulkRouteIndex]} onClick={handleBulkAssign}>Assign {selectedJobIds.length}</Button>
+                      </div>
+                    )}
+                    {selectedJobIds.length > BULK_ASSIGNMENT_LIMIT && <p role="alert" className="mt-2 mb-0 text-xs text-rose-600">Select up to {BULK_ASSIGNMENT_LIMIT} jobs per assignment.</p>}
+                    {isBulkAssigning && <p role="status" className="mt-2 mb-0 text-xs text-slate-600">Assigning {assignmentTotal} jobs…</p>}
+                    {assignmentError && <Alert className="mt-2 max-h-24 overflow-y-auto" type="warning" showIcon description={assignmentError} closable onClose={() => setAssignmentError(null)} />}
                   </div>
 
                   {filteredUnassignedJobCards.map((job, idx) => (
                     <div
                       key={`${job.job_id}-${idx}`}
-                      draggable
+                      draggable={!assignmentDisabled}
                       role="button"
                       tabIndex={0}
                       onClick={() => {
@@ -525,6 +624,16 @@ const RoutePage = () => {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2.5 min-w-0">
+                          <span onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}>
+                            <Checkbox
+                              aria-label={`Select ${job.candidateName}, job #${job.job_id}`}
+                              checked={selectedJobIds.includes(job.job_id)}
+                              disabled={assignmentDisabled}
+                              onChange={(event) => setSelectedJobIds((previous) => event.target.checked
+                                ? [...new Set([...previous, job.job_id])]
+                                : previous.filter((jobId) => jobId !== job.job_id))}
+                            />
+                          </span>
                           <div className="w-8 h-8 rounded-full bg-[#003220] text-white flex items-center justify-center shrink-0 shadow-sm">
                             <UserRound size={15} />
                           </div>
@@ -550,6 +659,8 @@ const RoutePage = () => {
                               <Select
                                 size="small"
                                 placeholder="Assign to..."
+                                disabled={assignmentDisabled}
+                                loading={assigningJobId === job.job_id}
                                 style={{ width: 108, fontSize: "10px" }}
                                 dropdownStyle={{ fontSize: "10px" }}
                                 onChange={(val) => {
