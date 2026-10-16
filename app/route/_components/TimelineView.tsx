@@ -39,6 +39,7 @@ import ReorderStopsModal from "./ReorderStopsModal";
 import TransferStopsModal from "./TransferStopsModal";
 import TimelineStopArrow from "./TimelineStopArrow";
 import { getTimelineSegment } from "./timelineSegment.utils";
+import { isRedundantLeaderClientStart } from "./leaderRoute.utils";
 import {
   calculateTimeRange,
   generateTimeMarkers,
@@ -73,6 +74,7 @@ interface GroupedStop {
  *   • stop_type
  *   • latitude  (rounded to 4 dp ≈ 11 m)
  *   • longitude (rounded to 4 dp ≈ 11 m)
+ *   • arrival_time and leg (the same physical visit)
  */
 function groupStopsByLocation(stops: any[]): GroupedStop[] {
   if (!stops || stops.length === 0) return [];
@@ -94,6 +96,9 @@ function groupStopsByLocation(stops: any[]): GroupedStop[] {
       lat === (typeof prev.representative.latitude  === "number" ? prev.representative.latitude.toFixed(4)  : null) &&
       lon === (typeof prev.representative.longitude === "number" ? prev.representative.longitude.toFixed(4) : null) &&
       type === prev.representative.stop_type
+      && stop.leg === prev.representative.leg
+      && Boolean(stop.arrival_time)
+      && stop.arrival_time === prev.representative.arrival_time
     ) {
       // Merge into the existing group
       prev.rawStops.push(stop);
@@ -1039,7 +1044,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     >();
 
     routes.forEach((route, routeIndex) => {
-      const grouped = groupStopsByLocation(route.stops || []);
+      const grouped = groupStopsByLocation(route.stops || []).filter(
+        group => !isRedundantLeaderClientStart(route, group.firstRawIndex),
+      );
       const occMap = new Map<number, number>();
       let runningLoad = 0;
       (route.stops || []).forEach((s: any, idx: number) => {
@@ -2330,6 +2337,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                             {/* Connection Lines (Segments) */}
                             {route.stops?.map((stop: any, index: number) => {
                               if (index === route.stops.length - 1) return null;
+                              if (isRedundantLeaderClientStart(route, index)) return null;
 
                               const nextStop = route.stops[index + 1];
                               let startPos = getPosition(
@@ -2416,12 +2424,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         ) : (
                                           <span className="flex items-center gap-1">
                                             <ClockCircleOutlined className="text-slate-400 text-xs" />
-                                            <strong className="text-slate-800">{timeMin} min elapsed</strong>
+                                            <strong className="text-slate-800">{segment.isBetweenTrips ? "Between trips: " : ""}{timeMin} min elapsed</strong>
                                           </span>
                                         )}
                                         <span className="flex items-center gap-1">
                                           <EnvironmentOutlined className="text-slate-400 text-xs" />
-                                          <strong className="text-slate-800">{distanceKm === null ? "Distance unavailable" : `${distanceKm.toFixed(2)} km`}</strong>
+                                          <strong className="text-slate-800">{distanceKm === null ? (segment.isBetweenTrips ? "Transfer distance unavailable" : "Distance unavailable") : distanceKm === 0 ? "Same location" : `${distanceKm.toFixed(2)} km`}</strong>
                                         </span>
                                       </div>
                                       {segment.travelSeconds !== null && (
@@ -2444,8 +2452,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     className="absolute top-1/2 left-0 transition-opacity cursor-pointer border-t border-b border-slate-300 rounded-xs"
                                     style={{
                                       height: isWaiting ? "6px" : "5px",
-                                      backgroundColor: isWaiting ? "#e2e8f0" : routeColor,
-                                      backgroundImage: isWaiting
+                                      backgroundColor: isWaiting || segment.isBetweenTrips ? "#e2e8f0" : routeColor,
+                                      backgroundImage: isWaiting || segment.isBetweenTrips
                                         ? `repeating-linear-gradient(
                                             45deg,
                                             transparent,
