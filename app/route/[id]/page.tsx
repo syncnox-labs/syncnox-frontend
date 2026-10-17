@@ -23,6 +23,8 @@ import {
   Eye,
   GripVertical,
   Search,
+  Sparkles,
+  X,
 } from "lucide-react";
 import OptimizationView from "../_components/OptimizationView";
 import { addStopToRoute, bulkAssignJobsToRoute, BULK_ASSIGNMENT_LIMIT } from "@/apis/routes.api";
@@ -33,113 +35,228 @@ import type { UnassignedJob } from "@/types/routes.type";
 // ── Reason-code metadata ────────────────────────────────────────────────────
 type ReasonMeta = {
   label: string;
+  shortSummary: string;
   Icon: React.ElementType;
   color: string;      // text colour class
   bgColor: string;    // bg colour class
   borderColor: string;
+  badgeBg: string;
   fixSteps: string[];
 };
 
 const REASON_META: Record<string, ReasonMeta> = {
   NO_FEASIBLE_ROUTE_FOUND: {
     label: "No Route Found",
+    shortSummary: "Could not fit within driver, vehicle, or time constraints.",
     Icon: Clock,
-    color: "text-orange-600",
-    bgColor: "bg-orange-50",
-    borderColor: "border-orange-200",
+    color: "text-amber-700",
+    bgColor: "bg-amber-50/80",
+    borderColor: "border-amber-200",
+    badgeBg: "bg-amber-100/80",
     fixSteps: [
-      "Review the job's fixed driver, compatible vehicles and confirmed bookings.",
-      "Review driver hours and configured earlier/later allowances.",
-      "Retry optimization after reviewing constraints; this is not proof of a travel-time violation.",
+      "Check the job's scheduled time, fixed driver, and compatible vehicles.",
+      "Review driver shift hours and configured early/late pickup allowances.",
+      "Assign manually to a route below or adjust constraints and re-optimize.",
+    ],
+  },
+  NO_FEASIBLE_ROUTE: {
+    label: "No Route Found",
+    shortSummary: "Could not fit within driver, vehicle, or time constraints.",
+    Icon: Clock,
+    color: "text-amber-700",
+    bgColor: "bg-amber-50/80",
+    borderColor: "border-amber-200",
+    badgeBg: "bg-amber-100/80",
+    fixSteps: [
+      "Check the job's scheduled time, fixed driver, and compatible vehicles.",
+      "Review driver shift hours and configured early/late pickup allowances.",
+      "Assign manually to a route below or adjust constraints and re-optimize.",
+    ],
+  },
+  ROUTE_CONSTRAINTS: {
+    label: "Route Constraint Conflict",
+    shortSummary: "Conflicts with existing route timing or capacity constraints.",
+    Icon: Clock,
+    color: "text-amber-700",
+    bgColor: "bg-amber-50/80",
+    borderColor: "border-amber-200",
+    badgeBg: "bg-amber-100/80",
+    fixSteps: [
+      "Review time windows and stop sequence on target routes.",
+      "Assign manually to an alternative driver or re-run optimization.",
     ],
   },
   TIME_DISTANCE_REACH: {
     label: "Timing / Distance Constraint",
+    shortSummary: "Pickup or dropoff window cannot be reached in time.",
     Icon: Clock,
-    color: "text-orange-600",
-    bgColor: "bg-orange-50",
+    color: "text-orange-700",
+    bgColor: "bg-orange-50/80",
     borderColor: "border-orange-200",
+    badgeBg: "bg-orange-100/80",
     fixSteps: [
-      "Add more team members who are stationed closer to the affected pickup locations.",
-      "Extend the working hours of existing drivers to cover earlier / later time windows.",
-      "Increase the reach-before buffer on affected jobs (e.g. from 10 min to 20 min) in job settings.",
-      "Re-run the optimisation after making driver or job changes.",
+      "Add drivers stationed closer to the pickup location.",
+      "Extend driver working hours to cover earlier or later time windows.",
+      "Increase the reach-before buffer in job settings and re-optimize.",
+    ],
+  },
+  SHIFT_TIME_MISMATCH: {
+    label: "Outside Driver Shift Hours",
+    shortSummary: "Job time window falls outside all selected drivers' shifts.",
+    Icon: CalendarX,
+    color: "text-orange-700",
+    bgColor: "bg-orange-50/80",
+    borderColor: "border-orange-200",
+    badgeBg: "bg-orange-100/80",
+    fixSteps: [
+      "Extend a driver's shift start/end time to cover this job's pickup window.",
+      "Add an early or late shift driver available during this time.",
     ],
   },
   NO_ELIGIBLE_DRIVER: {
     label: "No Eligible Driver",
+    shortSummary: "No available driver meets the qualification requirements.",
     Icon: ShieldOff,
-    color: "text-purple-600",
-    bgColor: "bg-purple-50",
+    color: "text-purple-700",
+    bgColor: "bg-purple-50/80",
     borderColor: "border-purple-200",
+    badgeBg: "bg-purple-100/80",
     fixSteps: [
-      "Assign the required vehicle class or licence to one or more existing drivers.",
-      "Add a new team member who already holds the required qualifications.",
-      "Review vehicle skill requirements in the vehicle settings and relax if appropriate.",
+      "Assign the required vehicle class or licence to existing drivers.",
+      "Add a team member who holds the required qualifications.",
+      "Review vehicle skill requirements in settings and relax if appropriate.",
+    ],
+  },
+  NO_DRIVER_AVAILABLE: {
+    label: "No Driver Available",
+    shortSummary: "No active or matching fixed driver was available.",
+    Icon: ShieldOff,
+    color: "text-purple-700",
+    bgColor: "bg-purple-50/80",
+    borderColor: "border-purple-200",
+    badgeBg: "bg-purple-100/80",
+    fixSteps: [
+      "Ensure the job's fixed driver is selected and active for this optimization.",
+      "Or clear the fixed driver restriction on the job to allow other drivers.",
     ],
   },
   DRIVER_UNAVAILABLE: {
     label: "Driver Fully Booked",
+    shortSummary: "Drivers are already at capacity during this time window.",
     Icon: CalendarX,
-    color: "text-blue-600",
-    bgColor: "bg-blue-50",
+    color: "text-blue-700",
+    bgColor: "bg-blue-50/80",
     borderColor: "border-blue-200",
+    badgeBg: "bg-blue-100/80",
     fixSteps: [
-      "Add more team members so there is spare capacity for this time window.",
-      "Adjust working-hour schedules for currently booked drivers to open up a slot.",
-      "Consider splitting existing routes to free up a driver for this job.",
+      "Add more drivers so there is spare capacity for this time window.",
+      "Adjust working-hour schedules for booked drivers to open a slot.",
+      "Consider splitting existing routes to free up a driver.",
     ],
   },
   CAPACITY_EXCEEDED: {
     label: "Vehicle Capacity Exceeded",
+    shortSummary: "More passengers at this time than available vehicle seats.",
     Icon: Gauge,
-    color: "text-rose-600",
-    bgColor: "bg-rose-50",
+    color: "text-rose-700",
+    bgColor: "bg-rose-50/80",
     borderColor: "border-rose-200",
+    badgeBg: "bg-rose-100/80",
     fixSteps: [
-      "Assign a larger vehicle (e.g. a van or bus) to the route.",
-      "Add another driver / vehicle to handle the overflow passengers.",
-      "Split the passenger group into smaller batches across multiple routes.",
+      "Assign a higher-capacity vehicle (e.g. a 14-seat van or bus) to the route.",
+      "Add another driver/vehicle operating around this peak time window.",
+      "Or manually assign this job to a route that still has open seats.",
     ],
   },
   MAX_RIDE_TIME: {
     label: "Max Ride Time Exceeded",
+    shortSummary: "Adding this stop would exceed the maximum passenger ride time.",
     Icon: Gauge,
-    color: "text-amber-600",
-    bgColor: "bg-amber-50",
+    color: "text-amber-700",
+    bgColor: "bg-amber-50/80",
     borderColor: "border-amber-200",
+    badgeBg: "bg-amber-100/80",
     fixSteps: [
-      "Increase the maximum ride-time limit on affected jobs in job settings.",
-      "Look for a pickup point closer to the dropoff location.",
-      "Add a driver closer to the job area to shorten the total ride time.",
+      "Increase the maximum ride-time limit on affected jobs in settings.",
+      "Assign a driver closer to the job area to shorten total ride time.",
     ],
   },
   SKILL_MISMATCH: {
     label: "Driver Skill Mismatch",
+    shortSummary: "Drivers on shift lack required vehicle skills or permits.",
     Icon: Users,
-    color: "text-indigo-600",
-    bgColor: "bg-indigo-50",
+    color: "text-indigo-700",
+    bgColor: "bg-indigo-50/80",
     borderColor: "border-indigo-200",
+    badgeBg: "bg-indigo-100/80",
     fixSteps: [
-      "Update driver profiles with the missing vehicle class / certification.",
+      "Update driver profiles with the required vehicle certification.",
       "Add a team member who already has the required skill set.",
-      "Reassign the vehicle to a driver who meets its requirements.",
+    ],
+  },
+  MANUALLY_REMOVED: {
+    label: "Removed from Route",
+    shortSummary: "This job was manually removed from a route.",
+    Icon: AlertCircle,
+    color: "text-slate-700",
+    bgColor: "bg-slate-50",
+    borderColor: "border-slate-200",
+    badgeBg: "bg-slate-100",
+    fixSteps: [
+      "Use 'Assign to...' on the card or drag it onto a route timeline.",
+      "Or re-optimize the route to include it again.",
+    ],
+  },
+  MANUALLY_ADDED: {
+    label: "Added Manually",
+    shortSummary: "Added to the unassigned pool and waiting to be routed.",
+    Icon: Sparkles,
+    color: "text-emerald-700",
+    bgColor: "bg-emerald-50/80",
+    borderColor: "border-emerald-200",
+    badgeBg: "bg-emerald-100/80",
+    fixSteps: [
+      "Pick a route from 'Assign to...' on the job card or drag it onto a route.",
+      "Or click 'Reoptimize All Routes' to automatically place it.",
     ],
   },
 };
 
 const FALLBACK_META: ReasonMeta = {
   label: "Other Constraint",
+  shortSummary: "Could not be automatically assigned under current constraints.",
   Icon: HelpCircle,
-  color: "text-gray-500",
-  bgColor: "bg-gray-50",
-  borderColor: "border-gray-200",
+  color: "text-slate-600",
+  bgColor: "bg-slate-50",
+  borderColor: "border-slate-200",
+  badgeBg: "bg-slate-100",
   fixSteps: [
-    "Review the individual job constraints (time windows, max ride time, etc.).",
-    "Re-run the optimisation after adjusting driver availability or job parameters.",
-    "Contact support if the issue persists.",
+    "Review the individual job constraints (time windows, fixed driver, capacity).",
+    "Assign manually to a route below or re-run optimization after adjustments.",
   ],
 };
+
+function formatShortTime(raw?: string | null): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  const match = trimmed.match(/^(\d{1,2}:\d{2})(?::\d{2})?$/);
+  if (match) return match[1];
+  return trimmed;
+}
+
+function summarizeReasonText(reason?: string): { primary: string; secondary?: string } {
+  if (!reason) return { primary: "" };
+  const cleaned = reason.trim();
+  // Split out boilerplate disclaimers so the key constraint (like deadline 20:50 or seat counts) stands out
+  const disclaimerSplit = cleaned.split(/\.\s+(?=This does not|Review actual passenger overlap)/i);
+  if (disclaimerSplit.length > 1) {
+    return {
+      primary: `${disclaimerSplit[0].replace(/\.$/, "")}.`,
+      secondary: disclaimerSplit.slice(1).join(". "),
+    };
+  }
+  return { primary: cleaned };
+}
 
 // ── Component ────────────────────────────────────────────────────────────────
 const RoutePage = () => {
@@ -159,10 +276,12 @@ const RoutePage = () => {
   const { jobs } = useJobsStore();
   const [isLoading, setIsLoading] = useState(true);
   const [isUnassignedExpanded, setIsUnassignedExpanded] = useState(true);
-  /** Which reason-group's fix steps are currently open */
-  const [openReasonCode, setOpenReasonCode] = useState<string | null>(null);
-  /** Show the full per-job list */
-  const [showJobList, setShowJobList] = useState(true);
+  /** Active reason filter ("ALL" or specific reason_code) */
+  const [activeReasonFilter, setActiveReasonFilter] = useState<string>("ALL");
+  /** Whether the "How to fix" steps drawer is expanded */
+  const [showFixGuide, setShowFixGuide] = useState(false);
+  /** Jobs whose full reason / tips are expanded inline */
+  const [expandedReasonJobIds, setExpandedReasonJobIds] = useState<number[]>([]);
   const [requestedJobDetailsId, setRequestedJobDetailsId] = useState<
     number | null
   >(null);
@@ -179,6 +298,7 @@ const RoutePage = () => {
     setSelectedJobIds([]);
     setBulkRouteIndex(undefined);
     setAssignmentError(null);
+    setActiveReasonFilter("ALL");
   }, [id]);
 
   useEffect(() => {
@@ -284,51 +404,107 @@ const RoutePage = () => {
         workerName && /^worker\s*\(\s*job\s*#?\d+\s*\)$/i.test(workerName),
       );
 
-      const candidateName =
+      const resolvedCandidate =
         unassignedJob.candidate_name ||
         shuttleDetails?.candidate_name ||
         fullJob?.candidate_name ||
         customFields.candidate_name ||
         fullName ||
-        (!isGeneratedWorkerName ? workerName : undefined) ||
-        unassignedJob.job_name ||
-        `Job #${unassignedJob.job_id}`;
+        (!isGeneratedWorkerName ? workerName : undefined);
 
-      const clientName =
+      const hasCandidateName = Boolean(resolvedCandidate && String(resolvedCandidate).trim());
+      const candidateName = hasCandidateName
+        ? String(resolvedCandidate).trim()
+        : unassignedJob.job_name || `Job #${unassignedJob.job_id}`;
+
+      const rawClientName =
         unassignedJob.client_name ||
         shuttleDetails?.client_name ||
         fullJob?.client_name ||
         pickupDetails?.client_name ||
         customFields.client_name ||
-        fullJob?.business_name ||
-        "Client not specified";
+        fullJob?.business_name;
+
+      const hasClientName = Boolean(rawClientName && String(rawClientName).trim());
+      const clientName = hasClientName ? String(rawClientName).trim() : "Client not specified";
 
       const address =
         unassignedJob.address_formatted ||
         fullJob?.pick_up_address ||
         shuttleDetails?.pick_up_address ||
+        customFields.candidate_address ||
+        customFields.go_pickup_point ||
         fullJob?.address_formatted ||
         pickupDetails?.address_formatted;
 
+      const scheduledTime = formatShortTime(
+        unassignedJob.scheduled_time ||
+          fullJob?.start_hour ||
+          shuttleDetails?.start_hour ||
+          customFields.start_hour ||
+          fullJob?.time_window_start ||
+          pickupDetails?.time_window_start,
+      );
+
+      const fixedDriver =
+        customFields.fixed_driver_name ||
+        customFields.fixed_return_driver_name ||
+        undefined;
+
+      const reasonCode = unassignedJob.reason_code || "OTHER";
+      const reasonMeta = REASON_META[reasonCode] ?? FALLBACK_META;
+      const reasonParts = summarizeReasonText(unassignedJob.reason);
+
       return {
         ...unassignedJob,
+        reasonCode,
+        reasonMeta,
+        reasonParts,
+        hasCandidateName,
         candidateName: String(candidateName),
+        hasClientName,
         clientName: String(clientName),
         address,
+        scheduledTime,
+        fixedDriver: fixedDriver ? String(fixedDriver) : undefined,
       };
     });
   }, [jobs, unassignedJobs]);
 
+  /** Group jobs by reason_code */
+  const reasonGroups = useMemo(() => {
+    const map = new Map<string, typeof unassignedJobCards>();
+    unassignedJobCards.forEach((job) => {
+      const code = job.reasonCode;
+      if (!map.has(code)) map.set(code, []);
+      map.get(code)!.push(job);
+    });
+    // Sort descending by count
+    return Array.from(map.entries()).sort((a, b) => b[1].length - a[1].length);
+  }, [unassignedJobCards]);
+
+  // Reset activeReasonFilter if that group no longer exists
+  useEffect(() => {
+    if (
+      activeReasonFilter !== "ALL" &&
+      !reasonGroups.some(([code]) => code === activeReasonFilter)
+    ) {
+      setActiveReasonFilter("ALL");
+    }
+  }, [activeReasonFilter, reasonGroups]);
+
   const filteredUnassignedJobCards = useMemo(() => {
     const query = unassignedJobSearch.trim().toLowerCase();
-    if (!query) return unassignedJobCards;
-
-    return unassignedJobCards.filter((job) =>
-      `${job.candidateName} ${job.job_id} job ${job.job_id} job #${job.job_id}`
+    return unassignedJobCards.filter((job) => {
+      if (activeReasonFilter !== "ALL" && job.reasonCode !== activeReasonFilter) {
+        return false;
+      }
+      if (!query) return true;
+      return `${job.candidateName} ${job.clientName} ${job.address || ""} ${job.job_id} job ${job.job_id} job #${job.job_id}`
         .toLowerCase()
-        .includes(query),
-    );
-  }, [unassignedJobCards, unassignedJobSearch]);
+        .includes(query);
+    });
+  }, [unassignedJobCards, unassignedJobSearch, activeReasonFilter]);
 
   useEffect(() => {
     const available = new Set(unassignedJobs.map((job) => job.job_id));
@@ -338,6 +514,44 @@ const RoutePage = () => {
   const visibleJobIds = [...new Set(filteredUnassignedJobCards.map((job) => job.job_id))];
   const selectedVisibleCount = visibleJobIds.filter((jobId) => selectedJobIds.includes(jobId)).length;
   const assignmentDisabled = isBulkAssigning || assigningJobId !== null || currentOptimization?.status === "processing" || currentOptimization?.status === "queued";
+
+  const routeSelectOptions = useMemo(() => {
+    return (currentOptimization?.result?.routes || []).map((driverRoute, index) => {
+      const driverLabel = driverRoute.team_member_name || "No driver";
+      const legBadge = driverRoute.leg ? ` (${driverRoute.leg})` : "";
+      const jobStopsCount = (driverRoute.stops || []).filter((s) => s.job_id !== null).length;
+      const capText = driverRoute.vehicle_capacity
+        ? `${jobStopsCount}/${driverRoute.vehicle_capacity} seats`
+        : `${jobStopsCount} stops`;
+      return {
+        value: index,
+        label: `R${index + 1} · ${driverLabel}${legBadge} · ${capText}`,
+        shortLabel: `R${index + 1} · ${driverLabel}${legBadge}`,
+      };
+    });
+  }, [currentOptimization?.result?.routes]);
+
+  const activeFixMeta = useMemo(() => {
+    const targetCode =
+      activeReasonFilter !== "ALL"
+        ? activeReasonFilter
+        : reasonGroups[0]?.[0] || "OTHER";
+    const groupJobs =
+      reasonGroups.find(([c]) => c === targetCode)?.[1] || [];
+    const meta = REASON_META[targetCode] ?? FALLBACK_META;
+    // Combine job-specific suggested_actions if available with fallback fixSteps
+    const dynamicActions = Array.from(
+      new Set(
+        groupJobs.flatMap((j) => j.suggested_actions || []).filter(Boolean),
+      ),
+    );
+    return {
+      code: targetCode,
+      meta,
+      count: groupJobs.length,
+      steps: dynamicActions.length > 0 ? dynamicActions : meta.fixSteps,
+    };
+  }, [activeReasonFilter, reasonGroups]);
 
   const handleBulkAssign = async () => {
     if (!id || assignmentDisabled || assignmentInProgressRef.current || bulkRouteIndex === undefined || !currentOptimization?.result?.routes?.[bulkRouteIndex] || !selectedJobIds.length || selectedJobIds.length > BULK_ASSIGNMENT_LIMIT) return;
@@ -369,18 +583,6 @@ const RoutePage = () => {
       setIsBulkAssigning(false);
     }
   };
-
-  /** Group jobs by reason_code */
-  const reasonGroups = useMemo(() => {
-    const map = new Map<string, UnassignedJob[]>();
-    unassignedJobs.forEach((job) => {
-      const code = job.reason_code || "OTHER";
-      if (!map.has(code)) map.set(code, []);
-      map.get(code)!.push(job);
-    });
-    // Sort descending by count
-    return Array.from(map.entries()).sort((a, b) => b[1].length - a[1].length);
-  }, [unassignedJobs]);
 
   if (isLoading) {
     return (
@@ -429,165 +631,284 @@ const RoutePage = () => {
 
       {/* Unassigned Jobs Panel - Floating Bottom Right */}
       {unassignedJobs.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-40 w-[390px] max-w-[calc(100vw-32px)] transition-all duration-300">
+        <div className="fixed bottom-4 right-4 z-40 w-[410px] max-w-[calc(100vw-32px)] transition-all duration-300">
           {isUnassignedExpanded ? (
             /* ── Expanded Panel ──────────────────────────────────────── */
-            <div className="bg-white rounded-xl shadow-2xl shadow-slate-900/10 border border-rose-200/70 overflow-hidden flex flex-col max-h-[calc(100vh-80px)]">
+            <div className="bg-white rounded-2xl shadow-2xl shadow-slate-900/15 border border-slate-200/90 overflow-hidden flex flex-col max-h-[calc(100vh-88px)]">
 
-              {/* Header */}
+              {/* ── 1. Header ─────────────────────────────────────────── */}
               <div
                 onClick={() => setIsUnassignedExpanded(false)}
-                className="px-3.5 py-3 bg-gradient-to-r from-rose-50 via-white to-amber-50 border-b border-rose-100 flex items-center justify-between cursor-pointer select-none hover:from-rose-100/80 transition-colors"
+                className="px-4 py-3 bg-gradient-to-r from-rose-50/90 via-white to-amber-50/60 border-b border-slate-200/80 flex items-center justify-between cursor-pointer select-none hover:from-rose-100/60 transition-colors shrink-0"
               >
-                <div className="flex items-center gap-2">
-                  <AlertTriangle size={14} className="text-rose-600 shrink-0" />
-                  <span className="font-bold text-gray-900 text-xs">
-                    Unassigned Jobs
-                  </span>
-                  <span className="bg-rose-600 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full leading-none">
-                    {unassignedJobs.length}
-                  </span>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                    <AlertTriangle size={15} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 text-sm leading-tight">
+                        Unassigned Jobs
+                      </span>
+                      <span className="bg-rose-600 text-white font-bold text-[11px] px-2 py-0.5 rounded-full leading-none shadow-xs">
+                        {unassignedJobs.length}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 m-0 leading-tight mt-0.5">
+                      Drag onto a route or select a route to assign
+                    </p>
+                  </div>
                 </div>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsUnassignedExpanded(false);
                   }}
-                  title="Minimize"
-                  className="text-gray-400 hover:text-gray-700 transition-colors p-1 rounded-md hover:bg-rose-200/60 cursor-pointer"
+                  title="Minimize panel"
+                  className="text-slate-400 hover:text-slate-700 transition-colors p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
                 >
-                  <ChevronDown size={15} />
+                  <ChevronDown size={16} />
                 </button>
               </div>
 
-              {/* ── Reason Breakdown ───────────────────────────────────── */}
-              <div className="border-b border-gray-100 px-3 py-2">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Lightbulb size={11} className="text-amber-500 shrink-0" />
-                  <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
-                    Why &amp; How to Fix
+              {/* ── 2. Interactive Reason Filter & Fix Guide ──────────── */}
+              <div className="px-3.5 py-2.5 border-b border-slate-200/80 bg-slate-50/70 shrink-0 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-wider">
+                    Filter by issue
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowFixGuide((v) => !v)}
+                    className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md transition-colors cursor-pointer ${
+                      showFixGuide
+                        ? "bg-amber-100 text-amber-800"
+                        : "text-amber-700 hover:bg-amber-50"
+                    }`}
+                  >
+                    <Lightbulb size={12} className="text-amber-500 shrink-0" />
+                    <span>{showFixGuide ? "Hide fix tips" : "How to fix"}</span>
+                  </button>
                 </div>
 
-                <div className="space-y-1">
-                  {reasonGroups.map(([code, jobs]) => {
+                {/* Filter chips */}
+                <div className="flex flex-wrap gap-1.5">
+                  {reasonGroups.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveReasonFilter("ALL")}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer border ${
+                        activeReasonFilter === "ALL"
+                          ? "bg-slate-800 text-white border-slate-800 shadow-xs"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      <span>All</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                          activeReasonFilter === "ALL"
+                            ? "bg-white/20 text-white"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {unassignedJobs.length}
+                      </span>
+                    </button>
+                  )}
+
+                  {reasonGroups.map(([code, groupJobs]) => {
                     const meta = REASON_META[code] ?? FALLBACK_META;
-                    const { Icon, label, color, bgColor, borderColor, fixSteps } = meta;
-                    const isOpen = openReasonCode === code;
+                    const { Icon, label, color, bgColor, borderColor } = meta;
+                    const isSelected = activeReasonFilter === code;
 
                     return (
-                      <div key={code} className={`rounded-lg border ${borderColor} overflow-hidden`}>
-                        {/* Reason row */}
-                        <button
-                          type="button"
-                          onClick={() => setOpenReasonCode(isOpen ? null : code)}
-                          className={`w-full flex items-center gap-2 px-2.5 py-1.5 ${bgColor} hover:brightness-95 transition-all cursor-pointer text-left`}
+                      <button
+                        key={code}
+                        type="button"
+                        onClick={() => {
+                          setActiveReasonFilter(
+                            isSelected && reasonGroups.length > 1 ? "ALL" : code,
+                          );
+                        }}
+                        title={`Filter by ${label}: ${meta.shortSummary}`}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer border ${
+                          isSelected
+                            ? `${bgColor} ${color} ${borderColor} ring-2 ring-offset-1 ring-slate-300 shadow-xs`
+                            : `bg-white text-slate-700 border-slate-200 hover:${bgColor}`
+                        }`}
+                      >
+                        <Icon size={12} className={`${color} shrink-0`} />
+                        <span className="truncate max-w-[175px]">{label}</span>
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${meta.badgeBg} ${color}`}
                         >
-                          <Icon size={11} className={`${color} shrink-0`} />
-                          <span className={`text-[10.5px] font-semibold ${color} flex-1 truncate`}>
-                            {label}
-                          </span>
-                          <span className={`text-[9px] font-bold ${color} bg-white/70 px-1.5 py-0.5 rounded-full border ${borderColor} shrink-0`}>
-                            {jobs.length}
-                          </span>
-                          <ChevronRight
-                            size={11}
-                            className={`${color} shrink-0 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
-                          />
-                        </button>
-
-                        {/* Fix steps */}
-                        {isOpen && (
-                          <div className="px-2.5 py-2 bg-white space-y-1.5">
-                            <div className="flex items-center gap-1 mb-1">
-                              <ListChecks size={10} className="text-emerald-600 shrink-0" />
-                              <span className="text-[9.5px] font-semibold text-emerald-700 uppercase tracking-wide">
-                                Suggested fix steps
-                              </span>
-                            </div>
-                            {fixSteps.map((step, i) => (
-                              <div key={i} className="flex items-start gap-1.5">
-                                <span className="shrink-0 w-3.5 h-3.5 rounded-full bg-emerald-100 text-emerald-700 text-[8px] font-bold flex items-center justify-center mt-0.5">
-                                  {i + 1}
-                                </span>
-                                <span className="text-[10.5px] text-gray-700 leading-tight">
-                                  {step}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                          {groupJobs.length}
+                        </span>
+                      </button>
                     );
                   })}
                 </div>
-              </div>
 
-              {/* ── Per-Job List Toggle ────────────────────────────────── */}
-              <div className="px-3 py-2 border-b border-gray-100 bg-slate-50/60">
-                <button
-                  type="button"
-                  onClick={() => setShowJobList((v) => !v)}
-                  className="w-full flex items-center justify-between text-[10.5px] text-gray-500 hover:text-gray-800 transition-colors cursor-pointer"
-                >
-                  <span className="flex items-center gap-1.5 font-semibold">
-                    <ListChecks size={12} />
-                    {showJobList ? "Hide" : "Show"} job list ({unassignedJobs.length})
-                  </span>
-                  {showJobList ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                </button>
-              </div>
-
-              {/* ── Per-Job Cards ─────────────────────────────────────── */}
-              {showJobList && (
-                <div className="px-3 pb-2.5 max-h-72 overflow-y-auto space-y-2 bg-slate-50/40">
-                  <div className="sticky top-0 z-50 pt-2.5 pb-1.5 -mx-3 px-3 bg-slate-50">
-                    <Input
-                      size="small"
-                      allowClear
-                      value={unassignedJobSearch}
-                      onChange={(event) =>
-                        setUnassignedJobSearch(event.target.value)
-                      }
-                      placeholder="Search candidate or job ID"
-                      aria-label="Search unassigned jobs by candidate name or job ID"
-                      prefix={<Search size={12} className="text-slate-400" />}
-                    />
-                    <div className="flex items-center justify-between gap-2 mt-2">
-                      <Checkbox
-                        checked={visibleJobIds.length > 0 && selectedVisibleCount === visibleJobIds.length}
-                        indeterminate={selectedVisibleCount > 0 && selectedVisibleCount < visibleJobIds.length}
-                        disabled={assignmentDisabled || !visibleJobIds.length}
-                        onChange={(event) => setSelectedJobIds((previous) => event.target.checked
-                          ? [...new Set([...previous, ...visibleJobIds])]
-                          : previous.filter((jobId) => !visibleJobIds.includes(jobId)))}
-                      >Select visible</Checkbox>
-                      <Button size="small" type="text" disabled={assignmentDisabled || !selectedJobIds.length} onClick={() => setSelectedJobIds([])}>Clear ({selectedJobIds.length})</Button>
-                    </div>
-                    {selectedJobIds.length > 0 && (
-                      <div className="flex gap-2 mt-2">
-                        <Select
-                          size="small"
-                          className="flex-1 min-w-0"
-                          placeholder="Select route"
-                          aria-label="Route for selected jobs"
-                          value={bulkRouteIndex}
-                          disabled={assignmentDisabled}
-                          onChange={setBulkRouteIndex}
-                          options={(currentOptimization.result?.routes || []).map((driverRoute, index) => ({
-                            value: index,
-                            label: `Route ${index + 1} · ${driverRoute.team_member_name || "No driver"}`,
-                          }))}
-                        />
-                        <Button size="small" type="primary" loading={isBulkAssigning} disabled={assignmentDisabled || selectedJobIds.length > BULK_ASSIGNMENT_LIMIT || bulkRouteIndex === undefined || !currentOptimization.result?.routes?.[bulkRouteIndex]} onClick={handleBulkAssign}>Assign {selectedJobIds.length}</Button>
+                {/* Collapsible How-to-Fix Guide */}
+                {showFixGuide && (
+                  <div className="rounded-xl bg-white border border-amber-200/90 p-2.5 shadow-xs space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <ListChecks size={13} className="text-emerald-600 shrink-0" />
+                        <span className="text-[11px] font-bold text-slate-800 truncate">
+                          How to resolve: {activeFixMeta.meta.label} ({activeFixMeta.count})
+                        </span>
                       </div>
-                    )}
-                    {selectedJobIds.length > BULK_ASSIGNMENT_LIMIT && <p role="alert" className="mt-2 mb-0 text-xs text-rose-600">Select up to {BULK_ASSIGNMENT_LIMIT} jobs per assignment.</p>}
-                    {isBulkAssigning && <p role="status" className="mt-2 mb-0 text-xs text-slate-600">Assigning {assignmentTotal} jobs…</p>}
-                    {assignmentError && <Alert className="mt-2 max-h-24 overflow-y-auto" type="warning" showIcon description={assignmentError} closable onClose={() => setAssignmentError(null)} />}
+                      <button
+                        type="button"
+                        onClick={() => setShowFixGuide(false)}
+                        className="text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+                        aria-label="Close fix guide"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500 m-0 leading-snug">
+                      {activeFixMeta.meta.shortSummary}
+                    </p>
+                    <div className="space-y-1 pt-0.5">
+                      {activeFixMeta.steps.map((step, i) => (
+                        <div key={i} className="flex items-start gap-2">
+                          <span className="shrink-0 w-4 h-4 rounded-full bg-emerald-100 text-emerald-800 text-[9.5px] font-bold flex items-center justify-center mt-0.5">
+                            {i + 1}
+                          </span>
+                          <span className="text-[11px] text-slate-700 leading-snug">
+                            {step}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
+                )}
+              </div>
 
-                  {filteredUnassignedJobCards.map((job, idx) => (
+              {/* ── 3. Fixed Search & Bulk Selection Toolbar ──────────── */}
+              <div className="px-3.5 py-2.5 bg-white border-b border-slate-200/80 shrink-0 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Input
+                    size="small"
+                    allowClear
+                    value={unassignedJobSearch}
+                    onChange={(event) =>
+                      setUnassignedJobSearch(event.target.value)
+                    }
+                    placeholder="Search name, client, location, or #ID..."
+                    aria-label="Search unassigned jobs by candidate name or job ID"
+                    prefix={<Search size={13} className="text-slate-400" />}
+                    className="flex-1"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <Checkbox
+                    checked={visibleJobIds.length > 0 && selectedVisibleCount === visibleJobIds.length}
+                    indeterminate={selectedVisibleCount > 0 && selectedVisibleCount < visibleJobIds.length}
+                    disabled={assignmentDisabled || !visibleJobIds.length}
+                    onChange={(event) =>
+                      setSelectedJobIds((previous) =>
+                        event.target.checked
+                          ? [...new Set([...previous, ...visibleJobIds])]
+                          : previous.filter((jobId) => !visibleJobIds.includes(jobId)),
+                      )
+                    }
+                  >
+                    <span className="text-[11.5px] font-medium text-slate-700">
+                      Select all visible ({visibleJobIds.length})
+                    </span>
+                  </Checkbox>
+
+                  {selectedJobIds.length > 0 ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                        {selectedJobIds.length} selected
+                      </span>
+                      <button
+                        type="button"
+                        disabled={assignmentDisabled}
+                        onClick={() => setSelectedJobIds([])}
+                        className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-slate-400">
+                      Showing {filteredUnassignedJobCards.length} of {unassignedJobs.length}
+                    </span>
+                  )}
+                </div>
+
+                {/* Bulk assign action bar (only shown when jobs are selected) */}
+                {selectedJobIds.length > 0 && (
+                  <div className="p-2 rounded-xl bg-emerald-50/70 border border-emerald-200/80 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <Select
+                        size="small"
+                        className="flex-1 min-w-0"
+                        placeholder="Choose route to assign..."
+                        aria-label="Route for selected jobs"
+                        value={bulkRouteIndex}
+                        disabled={assignmentDisabled}
+                        onChange={setBulkRouteIndex}
+                        popupMatchSelectWidth={false}
+                        options={routeSelectOptions.map((opt) => ({
+                          value: opt.value,
+                          label: opt.label,
+                        }))}
+                      />
+                      <Button
+                        size="small"
+                        type="primary"
+                        loading={isBulkAssigning}
+                        disabled={
+                          assignmentDisabled ||
+                          selectedJobIds.length > BULK_ASSIGNMENT_LIMIT ||
+                          bulkRouteIndex === undefined ||
+                          !currentOptimization.result?.routes?.[bulkRouteIndex]
+                        }
+                        onClick={handleBulkAssign}
+                      >
+                        Assign {selectedJobIds.length}
+                      </Button>
+                    </div>
+                    {selectedJobIds.length > BULK_ASSIGNMENT_LIMIT && (
+                      <p role="alert" className="m-0 text-[11px] text-rose-600 font-medium">
+                        Select up to {BULK_ASSIGNMENT_LIMIT} jobs per batch.
+                      </p>
+                    )}
+                    {isBulkAssigning && (
+                      <p role="status" className="m-0 text-[11px] text-emerald-800">
+                        Assigning {assignmentTotal} jobs to route…
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {assignmentError && (
+                  <Alert
+                    className="max-h-24 overflow-y-auto text-xs"
+                    type="warning"
+                    showIcon
+                    description={assignmentError}
+                    closable
+                    onClose={() => setAssignmentError(null)}
+                  />
+                )}
+              </div>
+
+              {/* ── 4. Scrollable Per-Job Cards List ──────────────────── */}
+              <div className="px-3.5 py-2.5 overflow-y-auto flex-1 min-h-0 max-h-[360px] space-y-2.5 bg-slate-50/60">
+                {filteredUnassignedJobCards.map((job, idx) => {
+                  const isSelected = selectedJobIds.includes(job.job_id);
+                  const isReasonExpanded = expandedReasonJobIds.includes(job.job_id);
+                  const { Icon: ReasonIcon, label: reasonLabel, color: reasonColor, bgColor: reasonBg, borderColor: reasonBorder } = job.reasonMeta;
+
+                  return (
                     <div
                       key={`${job.job_id}-${idx}`}
                       draggable={!assignmentDisabled}
@@ -605,149 +926,247 @@ const RoutePage = () => {
                       onDragStart={(e) => {
                         e.dataTransfer.setData(
                           "application/json",
-                          JSON.stringify({ type: "unassigned_job", jobId: job.job_id })
+                          JSON.stringify({ type: "unassigned_job", jobId: job.job_id }),
                         );
                         e.dataTransfer.effectAllowed = "move";
 
                         const dragEl = document.getElementById("custom-drag-image");
                         const nameEl = document.getElementById("drag-candidate-name");
                         const idEl = document.getElementById("drag-job-id");
-                        
+
                         if (dragEl && nameEl && idEl) {
                           nameEl.textContent = job.candidateName;
-                          idEl.textContent = `Candidate · Job #${job.job_id}`;
+                          idEl.textContent = `Job #${job.job_id}`;
                           e.dataTransfer.setDragImage(dragEl, 20, 20);
                         }
                       }}
-                      className="group bg-white border border-slate-200 rounded-xl p-2.5 text-xs space-y-2 shadow-sm hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-900/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 transition-all cursor-pointer active:cursor-grabbing"
+                      className={`group bg-white border rounded-xl p-3 text-xs space-y-2 transition-all cursor-pointer active:cursor-grabbing ${
+                        isSelected
+                          ? "border-emerald-500 ring-1 ring-emerald-500/30 bg-emerald-50/10 shadow-sm"
+                          : "border-slate-200/90 shadow-xs hover:border-emerald-300 hover:shadow-md hover:shadow-slate-900/5"
+                      }`}
                       aria-label={`Open details for ${job.candidateName}`}
                     >
+                      {/* Top row: Checkbox + Candidate Info + Quick Route Assign */}
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}>
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          <span
+                            className="pt-0.5"
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => event.stopPropagation()}
+                            onMouseDown={(event) => event.stopPropagation()}
+                          >
                             <Checkbox
                               aria-label={`Select ${job.candidateName}, job #${job.job_id}`}
-                              checked={selectedJobIds.includes(job.job_id)}
+                              checked={isSelected}
                               disabled={assignmentDisabled}
-                              onChange={(event) => setSelectedJobIds((previous) => event.target.checked
-                                ? [...new Set([...previous, job.job_id])]
-                                : previous.filter((jobId) => jobId !== job.job_id))}
+                              onChange={(event) =>
+                                setSelectedJobIds((previous) =>
+                                  event.target.checked
+                                    ? [...new Set([...previous, job.job_id])]
+                                    : previous.filter((jobId) => jobId !== job.job_id),
+                                )
+                              }
                             />
                           </span>
-                          <div className="w-8 h-8 rounded-full bg-[#003220] text-white flex items-center justify-center shrink-0 shadow-sm">
-                            <UserRound size={15} />
+
+                          <div className="w-7 h-7 rounded-full bg-[#003220] text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                            <UserRound size={14} />
                           </div>
-                          <div className="min-w-0">
-                            <div
-                              className="font-bold text-slate-900 text-[12px] truncate"
-                              title={job.candidateName}
-                            >
-                              {job.candidateName}
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span
+                                className="font-bold text-slate-900 text-[12.5px] leading-tight truncate max-w-[155px]"
+                                title={job.candidateName}
+                              >
+                                {job.candidateName}
+                              </span>
+                              {job.hasCandidateName && (
+                                <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md leading-none shrink-0">
+                                  #{job.job_id}
+                                </span>
+                              )}
                             </div>
-                            <div className="text-[9.5px] text-slate-400 font-medium mt-0.5">
-                              Candidate · Job #{job.job_id}
+
+                            <div className="flex items-center gap-2 mt-1 flex-wrap text-[10.5px] text-slate-500">
+                              {!job.hasCandidateName && (
+                                <span>Candidate name not set</span>
+                              )}
+                              {job.scheduledTime && (
+                                <span
+                                  className="inline-flex items-center gap-1 font-semibold text-slate-700 bg-slate-100/90 px-1.5 py-0.5 rounded leading-none"
+                                  title="Scheduled shift / pickup time"
+                                >
+                                  <Clock size={10} className="text-slate-500" />
+                                  {job.scheduledTime}
+                                </span>
+                              )}
+                              {job.fixedDriver && (
+                                <span
+                                  className="inline-flex items-center gap-1 text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded font-medium leading-none truncate max-w-[130px]"
+                                  title={`Fixed driver: ${job.fixedDriver}`}
+                                >
+                                  Driver: {job.fixedDriver}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {currentOptimization?.result?.routes && (
-                            <div
-                              onClick={(event) => event.stopPropagation()}
-                              onMouseDown={(event) => event.stopPropagation()}
-                              onKeyDown={(event) => event.stopPropagation()}
-                            >
-                              <Select
-                                size="small"
-                                placeholder="Assign to..."
-                                disabled={assignmentDisabled}
-                                loading={assigningJobId === job.job_id}
-                                style={{ width: 108, fontSize: "10px" }}
-                                dropdownStyle={{ fontSize: "10px" }}
-                                onChange={(val) => {
-                                  if (val !== undefined && val !== null && job.job_id) {
-                                    handleAssignJob(job.job_id, Number(val));
-                                  }
-                                }}
-                                value={null}
-                                options={currentOptimization.result.routes.map((r, i) => ({
-                                  value: i,
-                                  label: r.team_member_name || `Route ${i + 1}`,
-                                }))}
-                              />
+
+                        {/* Quick Assign Select */}
+                        {routeSelectOptions.length > 0 && (
+                          <div
+                            className="shrink-0"
+                            onClick={(event) => event.stopPropagation()}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => event.stopPropagation()}
+                          >
+                            <Select
+                              size="small"
+                              placeholder="Assign to..."
+                              disabled={assignmentDisabled}
+                              loading={assigningJobId === job.job_id}
+                              style={{ width: 118, fontSize: "11px" }}
+                              popupMatchSelectWidth={false}
+                              onChange={(val) => {
+                                if (val !== undefined && val !== null && job.job_id) {
+                                  handleAssignJob(job.job_id, Number(val));
+                                }
+                              }}
+                              value={null}
+                              options={routeSelectOptions.map((opt) => ({
+                                value: opt.value,
+                                label: opt.label,
+                              }))}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Location & Client Info */}
+                      {(job.address || job.hasClientName) && (
+                        <div className="pl-6 space-y-1 text-[11px]">
+                          {job.address && (
+                            <div className="flex items-start gap-1.5 text-slate-600 leading-snug">
+                              <MapPin size={12} className="text-emerald-600 shrink-0 mt-0.5" />
+                              <span className="line-clamp-1 font-medium" title={job.address}>
+                                {job.address}
+                              </span>
+                            </div>
+                          )}
+                          {job.hasClientName && (
+                            <div className="flex items-start gap-1.5 text-slate-600 leading-snug">
+                              <Building2 size={12} className="text-blue-500 shrink-0 mt-0.5" />
+                              <span className="truncate" title={job.clientName}>
+                                <span className="text-slate-400 font-medium mr-1">Client:</span>
+                                <span className="font-semibold text-slate-700">{job.clientName}</span>
+                              </span>
                             </div>
                           )}
                         </div>
-                      </div>
-
-                      <div className="flex items-start gap-1.5 px-1 text-[10.5px] leading-tight">
-                        <Building2 size={12} className="text-blue-500 shrink-0 mt-0.5" />
-                        <div className="min-w-0">
-                          <span className="text-[9px] uppercase tracking-wide text-slate-400 font-semibold mr-1.5">
-                            Client
-                          </span>
-                          <span
-                            className="text-slate-700 font-semibold"
-                            title={job.clientName}
-                          >
-                            {job.clientName}
-                          </span>
-                        </div>
-                      </div>
-
-                      {job.address && (
-                        <div className="flex items-start gap-1.5 px-1 text-slate-500 leading-tight text-[10.5px]">
-                          <MapPin size={12} className="text-emerald-600 shrink-0 mt-0.5" />
-                          <span className="line-clamp-1" title={job.address}>
-                            {job.address}
-                          </span>
-                        </div>
                       )}
 
+                      {/* Clear Diagnostic Reason Box */}
                       {job.reason && (
-                        <div className="flex items-start gap-1 p-1.5 bg-rose-50 border border-rose-100 rounded text-[10px] leading-tight">
-                          <AlertCircle size={10} className="text-rose-500 shrink-0 mt-0.5" />
-                          <span className="line-clamp-2 text-rose-700">{job.reason}</span>
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedReasonJobIds((prev) =>
+                              prev.includes(job.job_id)
+                                ? prev.filter((id) => id !== job.job_id)
+                                : [...prev, job.job_id],
+                            );
+                          }}
+                          className={`rounded-lg border ${reasonBorder} ${reasonBg} p-2 transition-colors cursor-pointer`}
+                          title="Click to expand or collapse full reason and fix suggestions"
+                        >
+                          <div className="flex items-center justify-between gap-1.5 mb-0.5">
+                            <span className={`inline-flex items-center gap-1 text-[10.5px] font-bold ${reasonColor}`}>
+                              <ReasonIcon size={11} className="shrink-0" />
+                              {reasonLabel}
+                            </span>
+                            <span className="text-[9.5px] text-slate-500 font-medium">
+                              {isReasonExpanded ? "Less" : "Why?"}
+                            </span>
+                          </div>
+                          <p className={`text-[10.5px] text-slate-700 m-0 leading-snug ${isReasonExpanded ? "" : "line-clamp-2"}`}>
+                            {isReasonExpanded ? job.reason : job.reasonParts.primary}
+                          </p>
+                          {isReasonExpanded && job.suggested_actions && job.suggested_actions.length > 0 && (
+                            <div className="mt-1.5 pt-1.5 border-t border-black/5 space-y-1">
+                              <span className="text-[9.5px] font-bold uppercase tracking-wider text-slate-500 block">
+                                Suggested fix
+                              </span>
+                              {job.suggested_actions.map((act, i) => (
+                                <div key={i} className="flex items-start gap-1.5 text-[10.5px] text-slate-700 leading-snug">
+                                  <span className="text-emerald-600 font-bold">•</span>
+                                  <span>{act}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-                        <div className="flex items-center gap-1 text-[9.5px] text-emerald-700 font-semibold opacity-70 group-hover:opacity-100 transition-opacity">
-                          <Eye size={11} />
-                          <span>Click to view job details</span>
-                        </div>
-                        <GripVertical
-                          size={14}
-                          className="text-slate-300"
-                          aria-label="Drag job to a route"
-                        />
+                      {/* Card Footer */}
+                      <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
+                        <span className="inline-flex items-center gap-1 text-[10.5px] text-emerald-700 font-semibold group-hover:text-emerald-800 transition-colors">
+                          <Eye size={12} />
+                          <span>View / edit job details</span>
+                        </span>
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] text-slate-400 group-hover:text-slate-600 transition-colors"
+                          title="Drag this card onto any route in the timeline"
+                        >
+                          <span>Drag to route</span>
+                          <GripVertical size={13} className="text-slate-400" />
+                        </span>
                       </div>
                     </div>
-                  ))}
-                  {filteredUnassignedJobCards.length === 0 && (
-                    <div className="py-6 text-center text-[11px] text-slate-400">
-                      No jobs match “{unassignedJobSearch.trim()}”
-                    </div>
-                  )}
-                </div>
-              )}
+                  );
+                })}
+
+                {filteredUnassignedJobCards.length === 0 && (
+                  <div className="py-8 px-4 text-center space-y-2">
+                    <p className="text-xs font-medium text-slate-500 m-0">
+                      No unassigned jobs match your filter.
+                    </p>
+                    {(unassignedJobSearch.trim() || activeReasonFilter !== "ALL") && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUnassignedJobSearch("");
+                          setActiveReasonFilter("ALL");
+                        }}
+                        className="text-[11px] font-semibold text-emerald-700 hover:underline cursor-pointer"
+                      >
+                        Reset search &amp; filters
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             /* ── Minimised Pill ──────────────────────────────────────── */
             <div className="flex justify-end">
               <button
                 onClick={() => setIsUnassignedExpanded(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-full shadow-lg border border-gray-200 text-gray-800 hover:border-rose-300 hover:shadow-rose-100 transition-all cursor-pointer select-none group"
+                className="flex items-center gap-2.5 px-3.5 py-2 bg-white rounded-full shadow-lg border border-rose-200 text-slate-800 hover:border-rose-300 hover:shadow-xl transition-all cursor-pointer select-none group"
               >
-                <AlertTriangle size={12} className="text-rose-600 shrink-0" />
-                <span className="font-semibold text-xs text-gray-900">
+                <div className="w-5 h-5 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                  <AlertTriangle size={12} />
+                </div>
+                <span className="font-bold text-xs text-slate-900">
                   Unassigned Jobs
                 </span>
-                <span className="bg-rose-600 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full leading-none">
+                <span className="bg-rose-600 text-white font-bold text-[10.5px] px-2 py-0.5 rounded-full leading-none">
                   {unassignedJobs.length}
                 </span>
                 <ChevronUp
-                  size={13}
-                  className="text-gray-400 group-hover:text-gray-700 transition-colors"
+                  size={14}
+                  className="text-slate-400 group-hover:text-slate-700 transition-colors"
                 />
               </button>
             </div>

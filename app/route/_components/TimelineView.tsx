@@ -1830,70 +1830,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                     )
                   : 0;
 
-                const driverWorkRange = driverGroup.routes.reduce<{
-                  start: dayjs.Dayjs | null;
-                  end: dayjs.Dayjs | null;
-                }>(
-                  (range, { route: driverRoute }) =>
-                    ((driverRoute.stops || []) as TimelineCompletionStop[]).reduce(
-                      (currentRange, stop) => {
-                        if (!stop.arrival_time) return currentRange;
-                        const arrival = dayjs(stop.arrival_time);
-                        const completion = stop.departure_time
-                          ? dayjs(stop.departure_time)
-                          : arrival.add(stop.service_duration_minutes || 0, "minute");
-                        if (!arrival.isValid() || !completion.isValid()) return currentRange;
-                        if (arrival.isBefore(startTime) || arrival.isAfter(endTime)) {
-                          return currentRange;
-                        }
-                        return {
-                          start:
-                            !currentRange.start || arrival.isBefore(currentRange.start)
-                              ? arrival
-                              : currentRange.start,
-                          end:
-                            !currentRange.end || completion.isAfter(currentRange.end)
-                              ? completion
-                              : currentRange.end,
-                        };
-                      },
-                      range,
-                    ),
-                  { start: null, end: null },
-                );
-
-                const overtimeWindows: DriverAvailabilityWindow[] = [];
-                if (
-                  driverWorkRange.start &&
-                  driverWorkRange.end &&
-                  driverAvailabilityWindows.length > 0
-                ) {
-                  let coveredUntil = driverWorkRange.start;
-                  displayedAvailabilityWindows.forEach((window) => {
-                    if (
-                      window.end.isBefore(coveredUntil) ||
-                      window.end.isSame(coveredUntil) ||
-                      window.start.isAfter(driverWorkRange.end!)
-                    ) {
-                      return;
-                    }
-                    if (window.start.diff(coveredUntil, "minute", true) > 1) {
-                      overtimeWindows.push({
-                        start: coveredUntil,
-                        end: window.start.isBefore(driverWorkRange.end!)
-                          ? window.start
-                          : driverWorkRange.end!,
-                      });
-                    }
-                    if (window.end.isAfter(coveredUntil)) coveredUntil = window.end;
-                  });
-                  if (coveredUntil.isBefore(driverWorkRange.end)) {
-                    overtimeWindows.push({
-                      start: coveredUntil,
-                      end: driverWorkRange.end,
-                    });
-                  }
-                }
                 const isDraggingShift = shiftDrag?.teamId === teamId;
                 const liveShift =
                   Number.isFinite(teamId) && shiftDrag?.teamId === teamId
@@ -2087,35 +2023,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     </>
                                   )}
                               </React.Fragment>
-                            );
-                          })}
-
-                          {overtimeWindows.map((window, windowIndex) => {
-                            const left = Math.max(
-                              0,
-                              Math.min(
-                                timelineWidth,
-                                window.start.diff(startTime, "minute", true) * pixelsPerMinute,
-                              ),
-                            );
-                            const right = Math.max(
-                              left,
-                              Math.min(
-                                timelineWidth,
-                                window.end.diff(startTime, "minute", true) * pixelsPerMinute,
-                              ),
-                            );
-                            if (right <= left) return null;
-                            return (
-                              <div
-                                key={`overtime-${teamId}-${windowIndex}`}
-                                className="absolute top-2 bottom-2 border border-orange-200/90"
-                                style={{
-                                  left,
-                                  width: right - left,
-                                  backgroundColor: "rgba(255, 237, 213, 0.48)",
-                                }}
-                              />
                             );
                           })}
 
