@@ -3,6 +3,7 @@ import { Route, Stop } from "@/types/routes.type";
 import { decodePolyline } from "@/utils/googleMaps.utils";
 import { getRouteColor } from "@/utils/timeline.utils";
 import { Job } from "@/types/job.type";
+import { isRedundantLeaderClientStart } from "./leaderRoute.utils";
 
 /** Stroke colour used for routes that are not the focused one. */
 const DIMMED_ROUTE_COLOR = "#9ca3af";
@@ -134,7 +135,8 @@ export const generateMapMarkers = (
     const validStops = routeItem.stops
       .map((stop: any, rawIndex: number) => ({ stop, rawIndex }))
       .filter(
-        ({ stop }) =>
+        ({ stop, rawIndex }) =>
+          !isRedundantLeaderClientStart(routeItem, rawIndex) &&
           typeof stop.latitude === "number" &&
           typeof stop.longitude === "number",
       );

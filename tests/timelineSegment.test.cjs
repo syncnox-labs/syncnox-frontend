@@ -48,3 +48,44 @@ test("a team leader's workday is work, not travel or idle waiting", () => {
   assert.equal(result.waitingSeconds, 0);
   assert.equal(result.isWaiting, false);
 });
+
+test("driver 1's 380-minute GO/RETURN gap cannot inherit the terminal zero", () => {
+  const result = getTimelineSegment({
+    leg: "GO", arrival_time: "2026-09-04T06:40:00", latitude: 45.5278707, longitude: -73.6122252,
+    distance_to_next_stop_meters: 0, time_to_next_stop_seconds: 0,
+  }, {
+    leg: "RETURN", arrival_time: "2026-09-04T13:00:00", latitude: 45.4703015, longitude: -73.7749519,
+  });
+  assert.equal(result.elapsedSeconds, 380 * 60);
+  assert.equal(result.isBetweenTrips, true);
+  assert.equal(result.distanceMeters, null);
+  assert.equal(result.waitingSeconds, null);
+});
+
+test("driver 5's overnight transfer is distinct from a co-located dropoff", () => {
+  const stop = {
+    leg: "GO", arrival_time: "2026-09-04T05:10:00", latitude: 45.7679916, longitude: -74.0234335,
+    distance_to_next_stop_meters: 0, travel_time_to_next_stop_seconds: 0, service_duration_seconds: 0,
+  };
+  assert.equal(getTimelineSegment(stop, { ...stop }).distanceMeters, 0);
+  const result = getTimelineSegment(stop, {
+    leg: "RETURN", arrival_time: "2026-09-05T00:30:00", latitude: 45.5669276, longitude: -73.448457,
+  });
+  assert.equal(result.elapsedSeconds, 1160 * 60);
+  assert.equal(result.distanceMeters, null);
+  assert.equal(result.travelSeconds, null);
+  assert.equal(result.isWaiting, false);
+});
+
+test("measured transfer travel stays separate from the long trip gap", () => {
+  const result = getTimelineSegment({
+    ...start, leg: "GO", segment_type_to_next: "between_trips",
+    distance_to_next_stop_meters: 10000, travel_time_to_next_stop_seconds: 900,
+    service_duration_seconds: 0, waiting_time_to_next_stop_seconds: 0,
+  }, { ...next, leg: "RETURN" });
+  assert.equal(result.distanceMeters, 10000);
+  assert.equal(result.travelSeconds, 900);
+  assert.equal(result.waitingSeconds, 2700);
+  assert.equal(result.isBetweenTrips, true);
+  assert.equal(result.isWaiting, false);
+});

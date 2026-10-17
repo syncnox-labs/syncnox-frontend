@@ -123,3 +123,9 @@ export interface RouteOperationResponse {
   routes?: (Routes | Record<string, unknown>)[];
   is_async?: boolean;
 }
+
+export interface BulkAssignJobsResponse extends RouteOperationResponse {
+  assigned_job_ids: number[];
+  already_assigned_job_ids: number[];
+  result: Route["result"];
+}
