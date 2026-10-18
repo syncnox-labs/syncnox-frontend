@@ -17,6 +17,7 @@ import {
   Switch,
   Checkbox,
   Select,
+  Radio,
 } from "antd";
 import {
   ArrowLeftOutlined,
@@ -27,6 +28,8 @@ import {
   EditOutlined,
   LoadingOutlined,
   ReloadOutlined,
+  BarsOutlined,
+  TableOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 
@@ -36,6 +39,8 @@ import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
 import { buildMapSearchIndex } from "./mapSearch.utils";
 import TimelineView from "./TimelineView";
+import AssignedJobsTable from "./AssignedJobsTable";
+import { getAssignedRouteJobs } from "./assignedRouteJobs.utils";
 import AddJobsModal from "@/app/plan/AddJobsModal";
 import JobForm from "@/components/Jobs/JobForm";
 import SwapDriverDrawer from "./SwapDriverDrawer";
@@ -171,18 +176,25 @@ const OptimizationView = ({
     reOptimize,
     pollUntilComplete,
   } = useOptimizationStore();
-  const { jobs, fetchJobsByDate, fetchJobsByIds } = useJobsStore();
+  const { jobs, fetchJobsByDate, fetchJobsByIds, isLoading: isJobsLoading, error: jobsError } = useJobsStore();
   const { updateRoute } = useRouteStore();
   const { teams, initializeTeams, updateTeamAction } = useTeamStore();
   const { vehicles, initializeVehicles } = useVehicleStore();
 
+  const [detailView, setDetailView] = useState<"timeline" | "table">("timeline");
+  const [hasOpenedTable, setHasOpenedTable] = useState(false);
+  const planJobIds = useMemo(() => [...new Set([
+    ...(route.job_ids || []),
+    ...(route.result?.routes || []).flatMap(trip => (trip.stops || []).map(stop => stop.job_id).filter((id): id is number => typeof id === "number")),
+  ])], [route.job_ids, route.result?.routes]);
+
   useEffect(() => {
-    if (route.job_ids && route.job_ids.length > 0) {
-      fetchJobsByIds(route.job_ids);
+    if (planJobIds.length > 0) {
+      fetchJobsByIds(planJobIds);
     } else if (route.scheduled_date) {
       fetchJobsByDate(route.scheduled_date);
     }
-  }, [route.job_ids, route.scheduled_date, fetchJobsByIds, fetchJobsByDate]);
+  }, [planJobIds, route.scheduled_date, fetchJobsByIds, fetchJobsByDate]);
 
   // Ensure team list is loaded for swap driver
   useEffect(() => {
@@ -694,7 +706,7 @@ const OptimizationView = ({
     [route.result?.routes, jobs],
   );
 
-  const handleSelectCandidate = (item: (typeof candidateIndex)[0]) => {
+  const handleSelectCandidate = useCallback((item: (typeof candidateIndex)[0]) => {
     setFocusedRouteIndex(item.routeIndex);
     if (typeof item.stop.latitude === "number" && typeof item.stop.longitude === "number") {
       setCenter({ lat: item.stop.latitude, lng: item.stop.longitude });
@@ -710,7 +722,7 @@ const OptimizationView = ({
       // Use the timeline-matching display number for the job details card header
       stopIndex: item.displayStopNumber,
     });
-  };
+  }, []);
 
   const clearFocus = useCallback(() => {
     setFocusedRouteIndex(null);
@@ -953,6 +965,23 @@ const OptimizationView = ({
     focusedRouteIndex !== null
       ? route.result?.routes?.[focusedRouteIndex]
       : undefined;
+
+  const assignedTableJobs = useMemo(
+    () => getAssignedRouteJobs(route, jobs, focusedRouteIndex, allowedRouteIndices),
+    [route, jobs, focusedRouteIndex, allowedRouteIndices],
+  );
+  const tableTeamsMap = useMemo(() => ({
+    ...Object.fromEntries(teams.map(team => [team.id, team.name])),
+    ...Object.fromEntries((route.result?.routes || []).map(trip => [trip.team_member_id, trip.team_member_name])),
+  }), [teams, route.result?.routes]);
+  const isWorkerShuttle = route.result?.routes?.some(trip => trip.leg !== undefined)
+    || jobs.some(job => job.template_type === "worker_shuttle" || Boolean(job.worker_shuttle_detail));
+  const handleOpenTableJob = useCallback((job: Job) => {
+    const match = candidateIndex.find(item => Number(item.jobId) === job.id
+      && (focusedRouteIndex === null || item.routeIndex === focusedRouteIndex)
+      && (allowedRouteIndices === null || allowedRouteIndices.has(item.routeIndex)));
+    if (match) handleSelectCandidate(match);
+  }, [candidateIndex, focusedRouteIndex, allowedRouteIndices, handleSelectCandidate]);
 
   // Focusing from the timeline recenters the map on that route, otherwise the
   // dispatcher can end up staring at an empty area with everything else gray.
@@ -1846,14 +1875,14 @@ const OptimizationView = ({
 
       {/* Header - matching NavBar height */}
       <nav className="bg-white border-b border-gray-200 px-3 shrink-0">
-        <div className="flex items-center justify-between h-14 relative">
-          {/* Left: Back Button + Route Name & Subtitle Stats */}
-          <div className="flex items-center gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-2 min-h-14 py-2 relative">
+          {/* Left: Route details */}
+          <div className="flex items-center gap-3 min-w-0">
             <Icon
               component={ArrowLeftOutlined}
               style={{ color: "#003220" }}
               onClick={handleBackToPlanRoutes}
-              className="cursor-pointer text-base hover:opacity-75 transition-opacity"
+              className="cursor-pointer text-base shrink-0 hover:opacity-75 transition-opacity"
             />
 
             <div className="flex flex-col justify-center min-w-0">
@@ -1887,7 +1916,7 @@ const OptimizationView = ({
               )}
 
               {/* Stats below Route Name (Sample UI style) */}
-              <div className="flex items-center text-xs text-gray-500 font-normal leading-tight mt-0.5 select-none">
+              <div className="flex flex-wrap items-center text-xs text-gray-500 font-normal leading-tight mt-0.5 select-none">
                 {formattedRouteDate && <span>{formattedRouteDate}</span>}
                 {formattedRouteDate && <span className="mx-1 text-gray-400">·</span>}
                 <span>
@@ -1919,8 +1948,24 @@ const OptimizationView = ({
             </div>
           </div>
 
-          {/* Right: Action Buttons */}
-          <div className="flex gap-2">
+          {/* Center: View switch */}
+          <Radio.Group
+            aria-label="Route view"
+            size="small"
+            buttonStyle="solid"
+            className="col-span-2 row-start-2 justify-self-center shrink-0 xl:col-span-1 xl:col-start-2 xl:row-start-1"
+            value={detailView}
+            onChange={({ target: { value } }) => {
+              setDetailView(value as "timeline" | "table");
+              if (value === "table") setHasOpenedTable(true);
+            }}
+          >
+            <Radio.Button value="timeline"><BarsOutlined className="mr-1.5" />Timeline</Radio.Button>
+            <Radio.Button value="table"><TableOutlined className="mr-1.5" />Table</Radio.Button>
+          </Radio.Group>
+
+          {/* Right: Action buttons */}
+          <div className="col-start-2 row-start-1 xl:col-start-3 flex flex-wrap items-center justify-end gap-2 min-w-0">
             {/* Undo Button */}
             {undoStep && (
               <Button
@@ -2375,47 +2420,58 @@ const OptimizationView = ({
                 </div>
               )}
               <div className="flex-1 min-h-0 min-w-0">
-                <TimelineView
-                  routes={route.result?.routes || []}
-                  jobs={jobs}
-                  teams={teams}
-                  scheduledDate={route.scheduled_date}
-                  showDriverWorkingTime={showDriverWorkingTime}
-                  onDriverWorkingHoursChange={showDriverWorkingTime ? handleDriverWorkingHoursChange : undefined}
-                  templateType={
-                    route.result?.routes?.some((r: any) => (r as any).leg !== undefined) ||
-                    jobs?.some((j: any) => j?.template_type === "worker_shuttle" || Boolean(j?.worker_shuttle_detail))
-                      ? "worker_shuttle"
-                      : undefined
-                  }
-                  vehicles={vehicles}
-                  selectedMarkerId={selectedMarkerId}
-                  onStopClick={handleStopClick}
-                  onAddStop={(idx) => {
-                    targetRouteIndexRef.current = idx;
-                    setAddStopRouteIndex(idx);
-                  }}
-                  onAddUnassignedJob={handleAddUnassignedJob}
-                  onSwapDriver={(idx) => setSwapDriverRouteIndex(idx)}
-                  onChangeVehicle={route.status === "completed" || route.status === "failed"
-                    ? setChangeVehicleRouteIndex : undefined}
-                  onReverseRoute={handleReverseRoute}
-                  onReOptimize={handleReOptimize}
-                  onReorderStops={handleReorderStops}
-                  onSaveAndReOptimize={handleSaveAndReOptimize}
-                  onRemoveStop={(rIdx, jId, stopType) => handleRemoveJob(rIdx, jId, stopType)}
-                  focusedRouteIndex={focusedRouteIndex}
-                  onFocusRoute={handleFocusRoute}
-                  driverSearch={driverSearch}
-                  onDriverSearchChange={setDriverSearch}
-                  exactMatch={exactMatch}
-                  onExactMatchChange={setExactMatch}
-                  pendingDeletedJobIds={pendingDeletedJobIds}
-                  onDeleteJob={handleStageDeleteJob}
-                  onUndoDeleteJob={handleUndoStageDeleteJob}
-                  reorderingRouteIndex={reorderingRouteIndex}
-                  onTransferStops={handleTransferStops}
-                />
+                <div className="h-full" hidden={detailView !== "timeline"}>
+                  <TimelineView
+                    routes={route.result?.routes || []}
+                    jobs={jobs}
+                    teams={teams}
+                    scheduledDate={route.scheduled_date}
+                    showDriverWorkingTime={showDriverWorkingTime}
+                    onDriverWorkingHoursChange={showDriverWorkingTime ? handleDriverWorkingHoursChange : undefined}
+                    templateType={isWorkerShuttle ? "worker_shuttle" : undefined}
+                    vehicles={vehicles}
+                    selectedMarkerId={selectedMarkerId}
+                    onStopClick={handleStopClick}
+                    onAddStop={(idx) => {
+                      targetRouteIndexRef.current = idx;
+                      setAddStopRouteIndex(idx);
+                    }}
+                    onAddUnassignedJob={handleAddUnassignedJob}
+                    onSwapDriver={(idx) => setSwapDriverRouteIndex(idx)}
+                    onChangeVehicle={route.status === "completed" || route.status === "failed"
+                      ? setChangeVehicleRouteIndex : undefined}
+                    onReverseRoute={handleReverseRoute}
+                    onReOptimize={handleReOptimize}
+                    onReorderStops={handleReorderStops}
+                    onSaveAndReOptimize={handleSaveAndReOptimize}
+                    onRemoveStop={(rIdx, jId, stopType) => handleRemoveJob(rIdx, jId, stopType)}
+                    focusedRouteIndex={focusedRouteIndex}
+                    onFocusRoute={handleFocusRoute}
+                    driverSearch={driverSearch}
+                    onDriverSearchChange={setDriverSearch}
+                    exactMatch={exactMatch}
+                    onExactMatchChange={setExactMatch}
+                    pendingDeletedJobIds={pendingDeletedJobIds}
+                    onDeleteJob={handleStageDeleteJob}
+                    onUndoDeleteJob={handleUndoStageDeleteJob}
+                    reorderingRouteIndex={reorderingRouteIndex}
+                    onTransferStops={handleTransferStops}
+                  />
+                </div>
+                {hasOpenedTable && (
+                  <div className="h-full" hidden={detailView !== "table"}>
+                    <AssignedJobsTable
+                      jobs={assignedTableJobs}
+                      loading={isJobsLoading}
+                      error={jobsError}
+                      templateType={isWorkerShuttle ? "worker_shuttle" : "pickup_delivery_job"}
+                      teamsMap={tableTeamsMap}
+                      onOpenJob={handleOpenTableJob}
+                      driverFilter={driverSearch}
+                      onClearDriverFilter={() => setDriverSearch("")}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </Panel>
