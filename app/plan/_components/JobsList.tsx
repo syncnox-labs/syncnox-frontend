@@ -47,7 +47,6 @@ export default function JobsList() {
   const {
     jobs,
     draftJobs,
-    allJobs,
     isLoading: isJobsLoading,
     initializeJobs,
     fetchJobsByStatus,
@@ -133,8 +132,7 @@ export default function JobsList() {
   }, [resetAllJobs]);
 
   // Status and Date Filtered Jobs
-  const sourceJobs =
-    allJobs.length > 0 ? allJobs : (jobs.length > 0 ? jobs : []);
+  const sourceJobs = jobs;
 
   const statusFilteredJobs =
     selectedJobTab === "all"
@@ -217,6 +215,7 @@ export default function JobsList() {
 
   const baseColumns = createJobTableColumns({
     templateType: activeJobTemplate || "pickup_delivery_job",
+    jobStatus: selectedJobTab === "all" ? undefined : selectedJobTab,
     viewColumnRenderer: (params: any) => (
       <button
         type="button"
