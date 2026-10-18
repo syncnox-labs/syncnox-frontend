@@ -39,6 +39,7 @@ import TimelineView from "./TimelineView";
 import AddJobsModal from "@/app/plan/AddJobsModal";
 import JobForm from "@/components/Jobs/JobForm";
 import SwapDriverDrawer from "./SwapDriverDrawer";
+import ChangeVehicleModal from "./ChangeVehicleModal";
 import { Route } from "@/types/routes.type";
 import type { Job } from "@/types/job.type";
 import { useJobsStore } from "@/store/jobs.store";
@@ -655,6 +656,7 @@ const OptimizationView = ({
     null,
   );
   const targetRouteIndexRef = useRef<number | null>(null);
+  const [changeVehicleRouteIndex, setChangeVehicleRouteIndex] = useState<number | null>(null);
   const [swapDriverRouteIndex, setSwapDriverRouteIndex] = useState<
     number | null
   >(null);
@@ -2395,6 +2397,8 @@ const OptimizationView = ({
                   }}
                   onAddUnassignedJob={handleAddUnassignedJob}
                   onSwapDriver={(idx) => setSwapDriverRouteIndex(idx)}
+                  onChangeVehicle={route.status === "completed" || route.status === "failed"
+                    ? setChangeVehicleRouteIndex : undefined}
                   onReverseRoute={handleReverseRoute}
                   onReOptimize={handleReOptimize}
                   onReorderStops={handleReorderStops}
@@ -2539,6 +2543,22 @@ const OptimizationView = ({
           }
         }}
       />
+
+      {changeVehicleRouteIndex !== null && (
+        <ChangeVehicleModal
+          optimizationId={route.id}
+          routeIndex={changeVehicleRouteIndex}
+          routes={route.result?.routes || []}
+          onClose={() => setChangeVehicleRouteIndex(null)}
+          onSuccess={() => {
+            void Promise.allSettled([
+              fetchOptimization(route.id),
+              fetchJobsByIds(route.job_ids || []),
+              refreshUndoHistory(),
+            ]);
+          }}
+        />
+      )}
 
       {/* Swap Driver Modal */}
       {swapDriverRouteIndex !== null && (

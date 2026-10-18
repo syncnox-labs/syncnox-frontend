@@ -208,6 +208,52 @@ export const swapRouteDriver = async (
   return response.data;
 };
 
+export interface VehicleReplacementOption {
+  id: number;
+  name: string;
+  license_plate: string | null;
+  capacity: number;
+  available: boolean;
+  reason: string | null;
+}
+
+export interface VehicleReplacementOptions {
+  driver_id: number;
+  driver_name: string;
+  current_vehicle_id: number | null;
+  current_vehicle_name: string | null;
+  leg: string | null;
+  is_team_leader: boolean;
+  route_indices: number[];
+  required_capacity: number;
+  vehicles: VehicleReplacementOption[];
+}
+
+export const getRouteVehicleOptions = async (
+  optimizationId: number, routeIndex: number, scope: "route" | "driver" = "route",
+): Promise<VehicleReplacementOptions> => {
+  const response = await apiClient.get(
+    `optimization/requests/${optimizationId}/routes/${routeIndex}/vehicle-options`, { params: { scope } },
+  );
+  return response.data;
+};
+
+export const changeRouteVehicle = async (
+  optimizationId: number, routeIndex: number,
+  payload: {
+    vehicle_id: number;
+    expected_driver_id: number;
+    expected_vehicle_id: number | null;
+    expected_leg: string | null;
+    scope: "route" | "driver";
+  },
+): Promise<RouteOperationResponse> => {
+  const response = await apiClient.post(
+    `optimization/requests/${optimizationId}/routes/${routeIndex}/change-vehicle`, payload,
+  );
+  return response.data;
+};
+
 /** Reverse the stop order of a driver's route (synchronous) */
 export const reverseRoute = async (
   optimizationId: number,
