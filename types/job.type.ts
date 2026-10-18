@@ -130,8 +130,13 @@ export interface Job {
   worker_shuttle_detail?: WorkerShuttleDetail;
   pickup_delivery_detail?: PickupDeliveryDetail;
 
+  route_id?: number | null;
   route_name?: string;
   optimization_id?: number;
+  pickup_eta?: string | null;
+  dropoff_eta?: string | null;
+  vehicle_id?: number | null;
+  vehicle_name?: string | null;
   custom_fields?: Record<string, any>;
 }
 

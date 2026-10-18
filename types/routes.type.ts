@@ -34,6 +34,8 @@ export interface Routes {
   vehicle_id: number;
   /** Real vehicle name resolved backend-side (avoids stale driver.vehicle labels). */
   vehicle_name?: string | null;
+  vehicle_locked?: boolean;
+  is_team_leader?: boolean;
   /** Real seat capacity resolved backend-side from load_constraints. */
   vehicle_capacity?: number | null;
   route_polyline: string;

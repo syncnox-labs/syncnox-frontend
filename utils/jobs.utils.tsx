@@ -2,7 +2,7 @@ import { ColDef } from "ag-grid-community";
 import Link from "next/link";
 import { Job, JobStatus } from "@/types/job.type";
 import StatusBadge from "@/components/Jobs/StatusBanner";
-import { formatTimeWindow } from "./app.utils";
+import { formatTime12h, formatTimeWindow } from "./app.utils";
 import { COUNTRY_CODES } from "@/constants/country";
 import { Popover, Checkbox } from "antd";
 import { useState } from "react";
@@ -254,6 +254,15 @@ export const createJobTableColumns = (options?: {
   };
 }): ColDef<Job>[] => {
   const isWorkerShuttle = options?.templateType === "worker_shuttle";
+  const getTeamName = (teamId?: number) =>
+    teamId ? options?.teamsMap?.[teamId] || "Unknown" : "";
+  const teamColumn: ColDef<Job> = {
+    headerName: "Team",
+    field: "assigned_to",
+    filter: "agTextColumnFilter",
+    filterValueGetter: (params) => getTeamName(params.data?.assigned_to),
+    valueFormatter: (params) => getTeamName(params.value),
+  };
 
   if (isWorkerShuttle) {
     const shuttleColumns: ColDef<Job>[] = [
@@ -316,6 +325,7 @@ export const createJobTableColumns = (options?: {
         field: "start_hour",
         headerName: "Shift Start Time",
         width: 140,
+        valueFormatter: (params) => formatTime12h(params.value),
         valueGetter: (params: any) =>
           params.data?.start_hour ||
           params.data?.worker_shuttle_detail?.start_hour ||
@@ -326,6 +336,7 @@ export const createJobTableColumns = (options?: {
         field: "end_hour",
         headerName: "Shift End Time",
         width: 140,
+        valueFormatter: (params) => formatTime12h(params.value),
         valueGetter: (params: any) =>
           params.data?.end_hour ||
           params.data?.worker_shuttle_detail?.end_hour ||
@@ -448,14 +459,31 @@ export const createJobTableColumns = (options?: {
           params.data?.first_name ||
           "-",
       },
-      {
-        headerName: "Team",
-        field: "assigned_to",
-        valueFormatter: (params: any) => {
-          if (!params.value) return "";
-          return options?.teamsMap?.[params.value] || "Unknown";
-        },
-      },
+      teamColumn,
+      ...(options?.jobStatus === "assigned"
+        ? [
+            {
+              field: "pickup_eta",
+              headerName: "Pickup ETA",
+              width: 160,
+              valueFormatter: (params) => formatTime12h(params.value),
+              tooltipField: "pickup_eta",
+            },
+            {
+              field: "dropoff_eta",
+              headerName: "Drop-off ETA",
+              width: 160,
+              valueFormatter: (params) => formatTime12h(params.value),
+              tooltipField: "dropoff_eta",
+            },
+            {
+              field: "vehicle_name",
+              headerName: "Assigned Vehicle",
+              width: 180,
+              valueFormatter: (params) => params.value || "-",
+            },
+          ] satisfies ColDef<Job>[]
+        : []),
       {
         field: "route_name",
         headerName: "Route Name",
@@ -574,14 +602,7 @@ export const createJobTableColumns = (options?: {
         );
       },
     },
-    {
-      headerName: "Team",
-      field: "assigned_to",
-      valueFormatter: (params: any) => {
-        if (!params.value) return "";
-        return options?.teamsMap?.[params.value] || "Unknown";
-      },
-    },
+    teamColumn,
     {
       field: "phone_number",
       headerName: "Phone",

@@ -7,6 +7,7 @@ import {
   Typography,
   Button,
   Tooltip,
+  Popover,
   Input,
   message,
   Modal,
@@ -16,6 +17,7 @@ import {
   Switch,
   Checkbox,
   Select,
+  Radio,
 } from "antd";
 import {
   ArrowLeftOutlined,
@@ -26,17 +28,23 @@ import {
   EditOutlined,
   LoadingOutlined,
   ReloadOutlined,
+  BarsOutlined,
+  TableOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 
 import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
-import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft } from "lucide-react";
+import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil } from "lucide-react";
 import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
+import { buildMapSearchIndex } from "./mapSearch.utils";
 import TimelineView from "./TimelineView";
+import AssignedJobsTable from "./AssignedJobsTable";
+import { getAssignedRouteJobs } from "./assignedRouteJobs.utils";
 import AddJobsModal from "@/app/plan/AddJobsModal";
 import JobForm from "@/components/Jobs/JobForm";
 import SwapDriverDrawer from "./SwapDriverDrawer";
+import ChangeVehicleModal from "./ChangeVehicleModal";
 import { Route } from "@/types/routes.type";
 import type { Job } from "@/types/job.type";
 import { useJobsStore } from "@/store/jobs.store";
@@ -102,6 +110,7 @@ interface MapOverlaysState {
   stops: boolean;
   depots: boolean;
   additionalLocations: boolean;
+  driverWorkingTime: boolean;
   visibleLocationTypes?: string[];
 }
 
@@ -109,6 +118,7 @@ const DEFAULT_MAP_OVERLAYS: MapOverlaysState = {
   stops: true,
   depots: false,
   additionalLocations: false,
+  driverWorkingTime: true,
   visibleLocationTypes: undefined,
 };
 
@@ -125,6 +135,10 @@ const getStoredMapOverlays = (): MapOverlaysState => {
         typeof parsed?.additionalLocations === "boolean"
           ? parsed.additionalLocations
           : DEFAULT_MAP_OVERLAYS.additionalLocations,
+      driverWorkingTime:
+        typeof parsed?.driverWorkingTime === "boolean"
+          ? parsed.driverWorkingTime
+          : DEFAULT_MAP_OVERLAYS.driverWorkingTime,
       visibleLocationTypes: Array.isArray(parsed?.visibleLocationTypes)
         ? parsed.visibleLocationTypes
         : undefined,
@@ -162,18 +176,25 @@ const OptimizationView = ({
     reOptimize,
     pollUntilComplete,
   } = useOptimizationStore();
-  const { jobs, fetchJobsByDate, fetchJobsByIds } = useJobsStore();
+  const { jobs, fetchJobsByDate, fetchJobsByIds, isLoading: isJobsLoading, error: jobsError } = useJobsStore();
   const { updateRoute } = useRouteStore();
   const { teams, initializeTeams, updateTeamAction } = useTeamStore();
   const { vehicles, initializeVehicles } = useVehicleStore();
 
+  const [detailView, setDetailView] = useState<"timeline" | "table">("timeline");
+  const [hasOpenedTable, setHasOpenedTable] = useState(false);
+  const planJobIds = useMemo(() => [...new Set([
+    ...(route.job_ids || []),
+    ...(route.result?.routes || []).flatMap(trip => (trip.stops || []).map(stop => stop.job_id).filter((id): id is number => typeof id === "number")),
+  ])], [route.job_ids, route.result?.routes]);
+
   useEffect(() => {
-    if (route.job_ids && route.job_ids.length > 0) {
-      fetchJobsByIds(route.job_ids);
+    if (planJobIds.length > 0) {
+      fetchJobsByIds(planJobIds);
     } else if (route.scheduled_date) {
       fetchJobsByDate(route.scheduled_date);
     }
-  }, [route.job_ids, route.scheduled_date, fetchJobsByIds, fetchJobsByDate]);
+  }, [planJobIds, route.scheduled_date, fetchJobsByIds, fetchJobsByDate]);
 
   // Ensure team list is loaded for swap driver
   useEffect(() => {
@@ -362,6 +383,8 @@ const OptimizationView = ({
   const [visibleLocationTypes, setVisibleLocationTypes] = useState<string[] | undefined>(undefined);
   const [isAdditionalTypesExpanded, setIsAdditionalTypesExpanded] = useState<boolean>(true);
   const [locationTypeSearch, setLocationTypeSearch] = useState("");
+  const [isMapSettingsOpen, setIsMapSettingsOpen] = useState(false);
+  const [showDriverWorkingTime, setShowDriverWorkingTime] = useState(DEFAULT_MAP_OVERLAYS.driverWorkingTime);
 
   useEffect(() => {
     const stored = getStoredMapOverlays();
@@ -369,6 +392,18 @@ const OptimizationView = ({
     setShowDepots(stored.depots);
     setShowAdditionalLocations(stored.additionalLocations);
     setVisibleLocationTypes(stored.visibleLocationTypes);
+    setShowDriverWorkingTime(stored.driverWorkingTime);
+  }, []);
+
+  const handleToggleDriverWorkingTime = useCallback((checked: boolean) => {
+    setShowDriverWorkingTime(checked);
+    try {
+      const current = getStoredMapOverlays();
+      localStorage.setItem(
+        MAP_OVERLAYS_STORAGE_KEY,
+        JSON.stringify({ ...current, driverWorkingTime: checked }),
+      );
+    } catch {}
   }, []);
 
   const handleToggleStops = useCallback((checked: boolean) => {
@@ -633,6 +668,7 @@ const OptimizationView = ({
     null,
   );
   const targetRouteIndexRef = useRef<number | null>(null);
+  const [changeVehicleRouteIndex, setChangeVehicleRouteIndex] = useState<number | null>(null);
   const [swapDriverRouteIndex, setSwapDriverRouteIndex] = useState<
     number | null
   >(null);
@@ -664,111 +700,13 @@ const OptimizationView = ({
 
   // Global Candidate & Job Search State — search UI is now inside the map (MapSearch component)
 
-  // Extract all searchable candidates across all routes & stops
-  const candidateIndex = useMemo(() => {
-    if (!route.result?.routes) return [];
+  // Index job details once per route/job update for the in-map search.
+  const candidateIndex = useMemo(
+    () => buildMapSearchIndex(route.result?.routes || [], jobs),
+    [route.result?.routes, jobs],
+  );
 
-    const jobsMap = new Map(jobs.map((j) => [j.id, j]));
-    const results: Array<{
-      id: string;
-      candidateName: string;
-      candidatePhone: string;
-      candidateId: string;
-      pickupAddress: string;
-      dropoffAddress: string;
-      driverName: string;
-      leg?: string;
-      routeIndex: number;
-      stopIndex: number;
-      /** 1-based stop number counting only non-depot stops — matches timeline display */
-      displayStopNumber: number;
-      stop: any;
-      job: Job | null;
-      searchableText: string;
-    }> = [];
-
-    route.result.routes.forEach((routeItem, routeIdx) => {
-      const driverName = routeItem.team_member_name || `Driver ${routeIdx + 1}`;
-      // Per-route counter that only increments for visible (non-depot) stops — same
-      // logic as jobStopCounter in TimelineView so the number always matches.
-      let displayStopCounter = 0;
-      routeItem.stops?.forEach((stop: any, stopIdx: number) => {
-        if (stop.stop_type === "depot" || stop.stop_type === "depot_start" || stop.stop_type === "depot_end") {
-          return;
-        }
-        displayStopCounter++;
-
-        const jobId = stop.job_id || stop.id;
-        const matchedJob =
-          (jobId
-            ? jobsMap.get(Number(jobId)) || jobsMap.get(jobId as any)
-            : null) ||
-          stop.job ||
-          null;
-        const custom = matchedJob?.custom_fields || {};
-
-        const candName =
-          custom.candidate_name ||
-          matchedJob?.candidate_name ||
-          (matchedJob?.first_name || matchedJob?.last_name
-            ? `${matchedJob.first_name || ""} ${matchedJob.last_name || ""}`.trim()
-            : null) ||
-          stop.candidate_name ||
-          "Unknown Candidate";
-
-        const candPhone =
-          custom.candidate_phone ||
-          matchedJob?.candidate_phone ||
-          custom.client_phone ||
-          matchedJob?.phone_number ||
-          stop.candidate_phone ||
-          "";
-
-        const candId =
-          custom.candidate_id ||
-          matchedJob?.candidate_id ||
-          custom.client_id ||
-          matchedJob?.client_id ||
-          custom.quant_id ||
-          custom.quart_id ||
-          "";
-
-        const pickup =
-          stop.address_formatted ||
-          matchedJob?.pick_up_address ||
-          custom.candidate_address ||
-          "";
-
-        const dropoff =
-          matchedJob?.drop_off_address ||
-          custom.client_address ||
-          "";
-
-        const searchStr = `${candName} ${candPhone} ${candId} ${pickup} ${dropoff} ${driverName}`.toLowerCase();
-
-        results.push({
-          id: `${routeIdx}-${stopIdx}-${jobId || stopIdx}`,
-          candidateName: candName,
-          candidatePhone: candPhone,
-          candidateId: candId,
-          pickupAddress: pickup,
-          dropoffAddress: dropoff,
-          driverName,
-          leg: routeItem.leg,
-          routeIndex: routeIdx,
-          stopIndex: stopIdx,
-          displayStopNumber: displayStopCounter,
-          stop,
-          job: matchedJob,
-          searchableText: searchStr,
-        });
-      });
-    });
-
-    return results;
-  }, [route.result?.routes, jobs]);
-
-  const handleSelectCandidate = (item: (typeof candidateIndex)[0]) => {
+  const handleSelectCandidate = useCallback((item: (typeof candidateIndex)[0]) => {
     setFocusedRouteIndex(item.routeIndex);
     if (typeof item.stop.latitude === "number" && typeof item.stop.longitude === "number") {
       setCenter({ lat: item.stop.latitude, lng: item.stop.longitude });
@@ -784,7 +722,7 @@ const OptimizationView = ({
       // Use the timeline-matching display number for the job details card header
       stopIndex: item.displayStopNumber,
     });
-  };
+  }, []);
 
   const clearFocus = useCallback(() => {
     setFocusedRouteIndex(null);
@@ -1027,6 +965,23 @@ const OptimizationView = ({
     focusedRouteIndex !== null
       ? route.result?.routes?.[focusedRouteIndex]
       : undefined;
+
+  const assignedTableJobs = useMemo(
+    () => getAssignedRouteJobs(route, jobs, focusedRouteIndex, allowedRouteIndices),
+    [route, jobs, focusedRouteIndex, allowedRouteIndices],
+  );
+  const tableTeamsMap = useMemo(() => ({
+    ...Object.fromEntries(teams.map(team => [team.id, team.name])),
+    ...Object.fromEntries((route.result?.routes || []).map(trip => [trip.team_member_id, trip.team_member_name])),
+  }), [teams, route.result?.routes]);
+  const isWorkerShuttle = route.result?.routes?.some(trip => trip.leg !== undefined)
+    || jobs.some(job => job.template_type === "worker_shuttle" || Boolean(job.worker_shuttle_detail));
+  const handleOpenTableJob = useCallback((job: Job) => {
+    const match = candidateIndex.find(item => Number(item.jobId) === job.id
+      && (focusedRouteIndex === null || item.routeIndex === focusedRouteIndex)
+      && (allowedRouteIndices === null || allowedRouteIndices.has(item.routeIndex)));
+    if (match) handleSelectCandidate(match);
+  }, [candidateIndex, focusedRouteIndex, allowedRouteIndices, handleSelectCandidate]);
 
   // Focusing from the timeline recenters the map on that route, otherwise the
   // dispatcher can end up staring at an empty area with everything else gray.
@@ -1920,14 +1875,14 @@ const OptimizationView = ({
 
       {/* Header - matching NavBar height */}
       <nav className="bg-white border-b border-gray-200 px-3 shrink-0">
-        <div className="flex items-center justify-between h-14 relative">
-          {/* Left: Back Button + Route Name & Subtitle Stats */}
-          <div className="flex items-center gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-2 min-h-14 py-2 relative">
+          {/* Left: Route details */}
+          <div className="flex items-center gap-3 min-w-0">
             <Icon
               component={ArrowLeftOutlined}
               style={{ color: "#003220" }}
               onClick={handleBackToPlanRoutes}
-              className="cursor-pointer text-base hover:opacity-75 transition-opacity"
+              className="cursor-pointer text-base shrink-0 hover:opacity-75 transition-opacity"
             />
 
             <div className="flex flex-col justify-center min-w-0">
@@ -1961,7 +1916,7 @@ const OptimizationView = ({
               )}
 
               {/* Stats below Route Name (Sample UI style) */}
-              <div className="flex items-center text-xs text-gray-500 font-normal leading-tight mt-0.5 select-none">
+              <div className="flex flex-wrap items-center text-xs text-gray-500 font-normal leading-tight mt-0.5 select-none">
                 {formattedRouteDate && <span>{formattedRouteDate}</span>}
                 {formattedRouteDate && <span className="mx-1 text-gray-400">·</span>}
                 <span>
@@ -1993,8 +1948,24 @@ const OptimizationView = ({
             </div>
           </div>
 
-          {/* Right: Action Buttons */}
-          <div className="flex gap-2">
+          {/* Center: View switch */}
+          <Radio.Group
+            aria-label="Route view"
+            size="small"
+            buttonStyle="solid"
+            className="col-span-2 row-start-2 justify-self-center shrink-0 xl:col-span-1 xl:col-start-2 xl:row-start-1"
+            value={detailView}
+            onChange={({ target: { value } }) => {
+              setDetailView(value as "timeline" | "table");
+              if (value === "table") setHasOpenedTable(true);
+            }}
+          >
+            <Radio.Button value="timeline"><BarsOutlined className="mr-1.5" />Timeline</Radio.Button>
+            <Radio.Button value="table"><TableOutlined className="mr-1.5" />Table</Radio.Button>
+          </Radio.Group>
+
+          {/* Right: Action buttons */}
+          <div className="col-start-2 row-start-1 xl:col-start-3 flex flex-wrap items-center justify-end gap-2 min-w-0">
             {/* Undo Button */}
             {undoStep && (
               <Button
@@ -2016,15 +1987,16 @@ const OptimizationView = ({
 
             {/* Reoptimize All Routes button — highlighted when job edits are pending */}
             {route.status === "completed" && (
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={handleReOptimizeAll}
-                className={hasPendingOptimization
-                  ? "border-amber-400 text-amber-700 bg-amber-50 font-semibold"
-                  : ""}
-              >
-                Reoptimize All Routes
-              </Button>
+              <Tooltip title="Reoptimize All Routes">
+                <Button
+                  aria-label="Reoptimize All Routes"
+                  icon={<ReloadOutlined />}
+                  onClick={handleReOptimizeAll}
+                  className={hasPendingOptimization
+                    ? "border-amber-400 text-amber-700 bg-amber-50 font-semibold"
+                    : ""}
+                />
+              </Tooltip>
             )}
             <Button icon={<ExportOutlined />} onClick={handleExportRoutes}>
               Export
@@ -2083,18 +2055,53 @@ const OptimizationView = ({
                 onAreaDrawn={handleAreaDrawn}
                 selectionArea={selectionArea}
                 mapToolbarExtra={
-                  <Tooltip title={isDrawingArea ? "Cancel drawing" : "Draw an area to select jobs"}>
+                  <Popover
+                    title="Map settings"
+                    trigger="click"
+                    placement="bottomRight"
+                    open={isMapSettingsOpen}
+                    onOpenChange={setIsMapSettingsOpen}
+                    content={
+                      <div className="flex flex-col gap-3 min-w-[280px] max-w-[320px] text-xs">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMapSettingsOpen(false);
+                            handleToggleAreaDrawing();
+                          }}
+                          aria-pressed={isDrawingArea}
+                          className="flex items-center gap-2 text-left py-1 text-gray-700 hover:text-[#003220] cursor-pointer"
+                        >
+                          <Pencil size={15} />
+                          {isDrawingArea ? "Cancel drawing" : "Draw an area to select jobs"}
+                        </button>
+                        <div className="flex items-center justify-between gap-4 border-t border-gray-100 pt-3">
+                          <span id="driver-working-time-label" className="text-gray-700">
+                            Show driver working time in timeline
+                          </span>
+                          <Switch
+                            size="small"
+                            aria-labelledby="driver-working-time-label"
+                            checked={showDriverWorkingTime}
+                            onChange={handleToggleDriverWorkingTime}
+                            className={showDriverWorkingTime ? "!bg-[#003220]" : ""}
+                          />
+                        </div>
+                      </div>
+                    }
+                  >
                     <Button
                       type="text"
-                      aria-label="Select jobs by area"
-                      onClick={handleToggleAreaDrawing}
-                      icon={<PenTool size={16} />}
+                      aria-label="Map settings"
+                      aria-expanded={isMapSettingsOpen}
+                      title="Map settings"
+                      icon={<Settings size={16} />}
                       style={{
                         borderRadius: 0,
                         color: isDrawingArea || selectionArea ? "#E8834B" : undefined,
                       }}
                     />
-                  </Tooltip>
+                  </Popover>
                 }
                 showInfoWindow={(m) => Boolean(m.isDepot || m.isAdditionalLocation)}
                 layersDropdownExtra={
@@ -2156,10 +2163,10 @@ const OptimizationView = ({
                           onClick={() => setIsAdditionalTypesExpanded((prev) => !prev)}
                         >
                           <span
-                            className={`text-gray-400 transition-transform duration-200 inline-flex items-center justify-center w-4 h-4 -ml-0.5 ${
+                            className={`text-gray-400 transition-transform duration-200 items-center justify-center w-4 h-4 -ml-0.5 ${
                               showAdditionalLocations
-                                ? "group-hover:text-gray-700"
-                                : "invisible"
+                                ? "inline-flex group-hover:text-gray-700"
+                                : "hidden"
                             }`}
                             style={{
                               transform: isAdditionalTypesExpanded
@@ -2169,7 +2176,7 @@ const OptimizationView = ({
                           >
                             <ChevronRight size={13} />
                           </span>
-                          <span className="font-semibold text-gray-700 flex items-center gap-1.5">
+                          <span className="font-semibold text-gray-700 flex items-center gap-2">
                             <MapPin size={14} className="text-[#003220]" />
                             <span>Additional Locations</span>
                             {locationMappings.length > 0 && (
@@ -2413,44 +2420,58 @@ const OptimizationView = ({
                 </div>
               )}
               <div className="flex-1 min-h-0 min-w-0">
-                <TimelineView
-                  routes={route.result?.routes || []}
-                  jobs={jobs}
-                  teams={teams}
-                  scheduledDate={route.scheduled_date}
-                  onDriverWorkingHoursChange={handleDriverWorkingHoursChange}
-                  templateType={
-                    route.result?.routes?.some((r: any) => (r as any).leg !== undefined) ||
-                    jobs?.some((j: any) => j?.template_type === "worker_shuttle" || Boolean(j?.worker_shuttle_detail))
-                      ? "worker_shuttle"
-                      : undefined
-                  }
-                  vehicles={vehicles}
-                  selectedMarkerId={selectedMarkerId}
-                  onStopClick={handleStopClick}
-                  onAddStop={(idx) => {
-                    targetRouteIndexRef.current = idx;
-                    setAddStopRouteIndex(idx);
-                  }}
-                  onAddUnassignedJob={handleAddUnassignedJob}
-                  onSwapDriver={(idx) => setSwapDriverRouteIndex(idx)}
-                  onReverseRoute={handleReverseRoute}
-                  onReOptimize={handleReOptimize}
-                  onReorderStops={handleReorderStops}
-                  onSaveAndReOptimize={handleSaveAndReOptimize}
-                  onRemoveStop={(rIdx, jId, stopType) => handleRemoveJob(rIdx, jId, stopType)}
-                  focusedRouteIndex={focusedRouteIndex}
-                  onFocusRoute={handleFocusRoute}
-                  driverSearch={driverSearch}
-                  onDriverSearchChange={setDriverSearch}
-                  exactMatch={exactMatch}
-                  onExactMatchChange={setExactMatch}
-                  pendingDeletedJobIds={pendingDeletedJobIds}
-                  onDeleteJob={handleStageDeleteJob}
-                  onUndoDeleteJob={handleUndoStageDeleteJob}
-                  reorderingRouteIndex={reorderingRouteIndex}
-                  onTransferStops={handleTransferStops}
-                />
+                <div className="h-full" hidden={detailView !== "timeline"}>
+                  <TimelineView
+                    routes={route.result?.routes || []}
+                    jobs={jobs}
+                    teams={teams}
+                    scheduledDate={route.scheduled_date}
+                    showDriverWorkingTime={showDriverWorkingTime}
+                    onDriverWorkingHoursChange={showDriverWorkingTime ? handleDriverWorkingHoursChange : undefined}
+                    templateType={isWorkerShuttle ? "worker_shuttle" : undefined}
+                    vehicles={vehicles}
+                    selectedMarkerId={selectedMarkerId}
+                    onStopClick={handleStopClick}
+                    onAddStop={(idx) => {
+                      targetRouteIndexRef.current = idx;
+                      setAddStopRouteIndex(idx);
+                    }}
+                    onAddUnassignedJob={handleAddUnassignedJob}
+                    onSwapDriver={(idx) => setSwapDriverRouteIndex(idx)}
+                    onChangeVehicle={route.status === "completed" || route.status === "failed"
+                      ? setChangeVehicleRouteIndex : undefined}
+                    onReverseRoute={handleReverseRoute}
+                    onReOptimize={handleReOptimize}
+                    onReorderStops={handleReorderStops}
+                    onSaveAndReOptimize={handleSaveAndReOptimize}
+                    onRemoveStop={(rIdx, jId, stopType) => handleRemoveJob(rIdx, jId, stopType)}
+                    focusedRouteIndex={focusedRouteIndex}
+                    onFocusRoute={handleFocusRoute}
+                    driverSearch={driverSearch}
+                    onDriverSearchChange={setDriverSearch}
+                    exactMatch={exactMatch}
+                    onExactMatchChange={setExactMatch}
+                    pendingDeletedJobIds={pendingDeletedJobIds}
+                    onDeleteJob={handleStageDeleteJob}
+                    onUndoDeleteJob={handleUndoStageDeleteJob}
+                    reorderingRouteIndex={reorderingRouteIndex}
+                    onTransferStops={handleTransferStops}
+                  />
+                </div>
+                {hasOpenedTable && (
+                  <div className="h-full" hidden={detailView !== "table"}>
+                    <AssignedJobsTable
+                      jobs={assignedTableJobs}
+                      loading={isJobsLoading}
+                      error={jobsError}
+                      templateType={isWorkerShuttle ? "worker_shuttle" : "pickup_delivery_job"}
+                      teamsMap={tableTeamsMap}
+                      onOpenJob={handleOpenTableJob}
+                      driverFilter={driverSearch}
+                      onClearDriverFilter={() => setDriverSearch("")}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </Panel>
@@ -2578,6 +2599,22 @@ const OptimizationView = ({
           }
         }}
       />
+
+      {changeVehicleRouteIndex !== null && (
+        <ChangeVehicleModal
+          optimizationId={route.id}
+          routeIndex={changeVehicleRouteIndex}
+          routes={route.result?.routes || []}
+          onClose={() => setChangeVehicleRouteIndex(null)}
+          onSuccess={() => {
+            void Promise.allSettled([
+              fetchOptimization(route.id),
+              fetchJobsByIds(route.job_ids || []),
+              refreshUndoHistory(),
+            ]);
+          }}
+        />
+      )}
 
       {/* Swap Driver Modal */}
       {swapDriverRouteIndex !== null && (

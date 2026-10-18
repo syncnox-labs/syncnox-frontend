@@ -8,24 +8,7 @@ import React, {
 } from "react";
 import { Search, X, MapPin, Phone, User, ChevronRight, Plus } from "lucide-react";
 import { Tooltip } from "antd";
-
-export interface MapSearchResult {
-  id: string;
-  candidateName: string;
-  candidatePhone: string;
-  candidateId: string;
-  pickupAddress: string;
-  dropoffAddress: string;
-  driverName: string;
-  leg?: string;
-  routeIndex: number;
-  stopIndex: number;
-  /** 1-based display stop number (excludes depots) — matches timeline */
-  displayStopNumber: number;
-  stop: any;
-  job: any;
-  searchableText: string;
-}
+import { filterMapSearchResults, type MapSearchResult } from "./mapSearch.utils";
 
 interface MapSearchProps {
   /** Full candidate index built by OptimizationView */
@@ -72,11 +55,10 @@ const MapSearch: React.FC<MapSearchProps> = ({
   const listRef = useRef<HTMLDivElement>(null);
 
   // ── Filter results ────────────────────────────────────────────────────────
-  const searchResults = useMemo((): MapSearchResult[] => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return candidates.filter((c) => c.searchableText.includes(q)).slice(0, 40);
-  }, [candidates, query]);
+  const searchResults = useMemo(
+    () => filterMapSearchResults(candidates, query),
+    [candidates, query],
+  );
 
   // Group by driver
   const groupedResults = useMemo(() => {
@@ -90,7 +72,7 @@ const MapSearch: React.FC<MapSearchProps> = ({
   }, [searchResults]);
 
   // Flat list for keyboard navigation
-  const flatResults = searchResults;
+  const flatResults = useMemo(() => Array.from(groupedResults.values()).flat(), [groupedResults]);
 
   // ── Open / close logic ────────────────────────────────────────────────────
   const open = useCallback(() => {
@@ -134,7 +116,7 @@ const MapSearch: React.FC<MapSearchProps> = ({
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setHighlightedIdx((prev) => Math.max(prev - 1, 0));
-    } else if (e.key === "Enter" && highlightedIdx >= 0) {
+    } else if (e.key === "Enter" && highlightedIdx >= 0 && highlightedIdx < flatResults.length) {
       e.preventDefault();
       handleSelect(flatResults[highlightedIdx]);
     }
@@ -192,7 +174,7 @@ const MapSearch: React.FC<MapSearchProps> = ({
           {/* Search icon button */}
           <button
             type="button"
-            aria-label="Search candidates"
+            aria-label="Search jobs and candidates"
             onClick={() => (isOpen ? undefined : open())}
             className={`
               flex items-center justify-center shrink-0 transition-colors cursor-pointer
@@ -211,7 +193,8 @@ const MapSearch: React.FC<MapSearchProps> = ({
             <input
               ref={inputRef}
               type="text"
-              placeholder="Search candidate, phone, ID…"
+              placeholder="Name, address, shift ref, ID, phone…"
+              aria-label="Search by candidate name, client or candidate address, shift reference, job ID, candidate ID, or candidate phone"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -356,11 +339,19 @@ const MapSearch: React.FC<MapSearchProps> = ({
                           </span>
                         </div>
 
+                        {/* Job and shift reference */}
+                        {(item.jobId || item.shiftRef) && (
+                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-500">
+                            {item.jobId && <span>Job #{item.jobId}</span>}
+                            {item.shiftRef && <span className="truncate" title={item.shiftRef}>Shift ref: {item.shiftRef}</span>}
+                          </div>
+                        )}
+
                         {/* ID + phone */}
                         <div className="flex items-center gap-2 mt-0.5">
                           {item.candidateId && (
                             <span className="text-[10px] text-gray-500 truncate">
-                              ID: {item.candidateId}
+                              Candidate ID: {item.candidateId}
                             </span>
                           )}
                           {item.candidatePhone && (
@@ -371,18 +362,21 @@ const MapSearch: React.FC<MapSearchProps> = ({
                           )}
                         </div>
 
-                        {/* Address */}
-                        {item.pickupAddress && (
-                          <div className="flex items-start gap-1 mt-0.5">
+                        {/* Both endpoints remain visible for address searches. */}
+                        {[
+                          ["Pickup", item.pickupAddress],
+                          ["Drop-off", item.dropoffAddress],
+                        ].filter(([, address]) => address).map(([label, address]) => (
+                          <div key={label} className="flex items-start gap-1 mt-0.5">
                             <MapPin
                               size={9}
                               className="text-gray-300 shrink-0 mt-0.5"
                             />
-                            <span className="text-[10px] text-gray-400 truncate leading-tight">
-                              {item.pickupAddress}
+                            <span className="text-[10px] text-gray-400 truncate leading-tight" title={address}>
+                              {label}: {address}
                             </span>
                           </div>
-                        )}
+                        ))}
                       </button>
                     );
                   })}
