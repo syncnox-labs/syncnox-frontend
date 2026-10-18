@@ -33,6 +33,7 @@ import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
 import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft } from "lucide-react";
 import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
+import { buildMapSearchIndex } from "./mapSearch.utils";
 import TimelineView from "./TimelineView";
 import AddJobsModal from "@/app/plan/AddJobsModal";
 import JobForm from "@/components/Jobs/JobForm";
@@ -664,109 +665,11 @@ const OptimizationView = ({
 
   // Global Candidate & Job Search State — search UI is now inside the map (MapSearch component)
 
-  // Extract all searchable candidates across all routes & stops
-  const candidateIndex = useMemo(() => {
-    if (!route.result?.routes) return [];
-
-    const jobsMap = new Map(jobs.map((j) => [j.id, j]));
-    const results: Array<{
-      id: string;
-      candidateName: string;
-      candidatePhone: string;
-      candidateId: string;
-      pickupAddress: string;
-      dropoffAddress: string;
-      driverName: string;
-      leg?: string;
-      routeIndex: number;
-      stopIndex: number;
-      /** 1-based stop number counting only non-depot stops — matches timeline display */
-      displayStopNumber: number;
-      stop: any;
-      job: Job | null;
-      searchableText: string;
-    }> = [];
-
-    route.result.routes.forEach((routeItem, routeIdx) => {
-      const driverName = routeItem.team_member_name || `Driver ${routeIdx + 1}`;
-      // Per-route counter that only increments for visible (non-depot) stops — same
-      // logic as jobStopCounter in TimelineView so the number always matches.
-      let displayStopCounter = 0;
-      routeItem.stops?.forEach((stop: any, stopIdx: number) => {
-        if (stop.stop_type === "depot" || stop.stop_type === "depot_start" || stop.stop_type === "depot_end") {
-          return;
-        }
-        displayStopCounter++;
-
-        const jobId = stop.job_id || stop.id;
-        const matchedJob =
-          (jobId
-            ? jobsMap.get(Number(jobId)) || jobsMap.get(jobId as any)
-            : null) ||
-          stop.job ||
-          null;
-        const custom = matchedJob?.custom_fields || {};
-
-        const candName =
-          custom.candidate_name ||
-          matchedJob?.candidate_name ||
-          (matchedJob?.first_name || matchedJob?.last_name
-            ? `${matchedJob.first_name || ""} ${matchedJob.last_name || ""}`.trim()
-            : null) ||
-          stop.candidate_name ||
-          "Unknown Candidate";
-
-        const candPhone =
-          custom.candidate_phone ||
-          matchedJob?.candidate_phone ||
-          custom.client_phone ||
-          matchedJob?.phone_number ||
-          stop.candidate_phone ||
-          "";
-
-        const candId =
-          custom.candidate_id ||
-          matchedJob?.candidate_id ||
-          custom.client_id ||
-          matchedJob?.client_id ||
-          custom.quant_id ||
-          custom.quart_id ||
-          "";
-
-        const pickup =
-          stop.address_formatted ||
-          matchedJob?.pick_up_address ||
-          custom.candidate_address ||
-          "";
-
-        const dropoff =
-          matchedJob?.drop_off_address ||
-          custom.client_address ||
-          "";
-
-        const searchStr = `${candName} ${candPhone} ${candId} ${pickup} ${dropoff} ${driverName}`.toLowerCase();
-
-        results.push({
-          id: `${routeIdx}-${stopIdx}-${jobId || stopIdx}`,
-          candidateName: candName,
-          candidatePhone: candPhone,
-          candidateId: candId,
-          pickupAddress: pickup,
-          dropoffAddress: dropoff,
-          driverName,
-          leg: routeItem.leg,
-          routeIndex: routeIdx,
-          stopIndex: stopIdx,
-          displayStopNumber: displayStopCounter,
-          stop,
-          job: matchedJob,
-          searchableText: searchStr,
-        });
-      });
-    });
-
-    return results;
-  }, [route.result?.routes, jobs]);
+  // Index job details once per route/job update for the in-map search.
+  const candidateIndex = useMemo(
+    () => buildMapSearchIndex(route.result?.routes || [], jobs),
+    [route.result?.routes, jobs],
+  );
 
   const handleSelectCandidate = (item: (typeof candidateIndex)[0]) => {
     setFocusedRouteIndex(item.routeIndex);
