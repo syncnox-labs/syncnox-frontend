@@ -254,6 +254,15 @@ export const createJobTableColumns = (options?: {
   };
 }): ColDef<Job>[] => {
   const isWorkerShuttle = options?.templateType === "worker_shuttle";
+  const getTeamName = (teamId?: number) =>
+    teamId ? options?.teamsMap?.[teamId] || "Unknown" : "";
+  const teamColumn: ColDef<Job> = {
+    headerName: "Team",
+    field: "assigned_to",
+    filter: "agTextColumnFilter",
+    filterValueGetter: (params) => getTeamName(params.data?.assigned_to),
+    valueFormatter: (params) => getTeamName(params.value),
+  };
 
   if (isWorkerShuttle) {
     const shuttleColumns: ColDef<Job>[] = [
@@ -448,14 +457,7 @@ export const createJobTableColumns = (options?: {
           params.data?.first_name ||
           "-",
       },
-      {
-        headerName: "Team",
-        field: "assigned_to",
-        valueFormatter: (params: any) => {
-          if (!params.value) return "";
-          return options?.teamsMap?.[params.value] || "Unknown";
-        },
-      },
+      teamColumn,
       {
         field: "route_name",
         headerName: "Route Name",
@@ -574,14 +576,7 @@ export const createJobTableColumns = (options?: {
         );
       },
     },
-    {
-      headerName: "Team",
-      field: "assigned_to",
-      valueFormatter: (params: any) => {
-        if (!params.value) return "";
-        return options?.teamsMap?.[params.value] || "Unknown";
-      },
-    },
+    teamColumn,
     {
       field: "phone_number",
       headerName: "Phone",
