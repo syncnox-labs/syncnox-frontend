@@ -2016,15 +2016,16 @@ const OptimizationView = ({
 
             {/* Reoptimize All Routes button — highlighted when job edits are pending */}
             {route.status === "completed" && (
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={handleReOptimizeAll}
-                className={hasPendingOptimization
-                  ? "border-amber-400 text-amber-700 bg-amber-50 font-semibold"
-                  : ""}
-              >
-                Reoptimize All Routes
-              </Button>
+              <Tooltip title="Reoptimize All Routes">
+                <Button
+                  aria-label="Reoptimize All Routes"
+                  icon={<ReloadOutlined />}
+                  onClick={handleReOptimizeAll}
+                  className={hasPendingOptimization
+                    ? "border-amber-400 text-amber-700 bg-amber-50 font-semibold"
+                    : ""}
+                />
+              </Tooltip>
             )}
             <Button icon={<ExportOutlined />} onClick={handleExportRoutes}>
               Export
