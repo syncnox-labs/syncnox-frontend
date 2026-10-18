@@ -7,6 +7,7 @@ import {
   Typography,
   Button,
   Tooltip,
+  Popover,
   Input,
   message,
   Modal,
@@ -30,7 +31,7 @@ import {
 import dayjs from "dayjs";
 
 import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
-import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft } from "lucide-react";
+import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil } from "lucide-react";
 import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
 import { buildMapSearchIndex } from "./mapSearch.utils";
@@ -103,6 +104,7 @@ interface MapOverlaysState {
   stops: boolean;
   depots: boolean;
   additionalLocations: boolean;
+  driverWorkingTime: boolean;
   visibleLocationTypes?: string[];
 }
 
@@ -110,6 +112,7 @@ const DEFAULT_MAP_OVERLAYS: MapOverlaysState = {
   stops: true,
   depots: false,
   additionalLocations: false,
+  driverWorkingTime: true,
   visibleLocationTypes: undefined,
 };
 
@@ -126,6 +129,10 @@ const getStoredMapOverlays = (): MapOverlaysState => {
         typeof parsed?.additionalLocations === "boolean"
           ? parsed.additionalLocations
           : DEFAULT_MAP_OVERLAYS.additionalLocations,
+      driverWorkingTime:
+        typeof parsed?.driverWorkingTime === "boolean"
+          ? parsed.driverWorkingTime
+          : DEFAULT_MAP_OVERLAYS.driverWorkingTime,
       visibleLocationTypes: Array.isArray(parsed?.visibleLocationTypes)
         ? parsed.visibleLocationTypes
         : undefined,
@@ -363,6 +370,8 @@ const OptimizationView = ({
   const [visibleLocationTypes, setVisibleLocationTypes] = useState<string[] | undefined>(undefined);
   const [isAdditionalTypesExpanded, setIsAdditionalTypesExpanded] = useState<boolean>(true);
   const [locationTypeSearch, setLocationTypeSearch] = useState("");
+  const [isMapSettingsOpen, setIsMapSettingsOpen] = useState(false);
+  const [showDriverWorkingTime, setShowDriverWorkingTime] = useState(DEFAULT_MAP_OVERLAYS.driverWorkingTime);
 
   useEffect(() => {
     const stored = getStoredMapOverlays();
@@ -370,6 +379,18 @@ const OptimizationView = ({
     setShowDepots(stored.depots);
     setShowAdditionalLocations(stored.additionalLocations);
     setVisibleLocationTypes(stored.visibleLocationTypes);
+    setShowDriverWorkingTime(stored.driverWorkingTime);
+  }, []);
+
+  const handleToggleDriverWorkingTime = useCallback((checked: boolean) => {
+    setShowDriverWorkingTime(checked);
+    try {
+      const current = getStoredMapOverlays();
+      localStorage.setItem(
+        MAP_OVERLAYS_STORAGE_KEY,
+        JSON.stringify({ ...current, driverWorkingTime: checked }),
+      );
+    } catch {}
   }, []);
 
   const handleToggleStops = useCallback((checked: boolean) => {
@@ -1987,18 +2008,53 @@ const OptimizationView = ({
                 onAreaDrawn={handleAreaDrawn}
                 selectionArea={selectionArea}
                 mapToolbarExtra={
-                  <Tooltip title={isDrawingArea ? "Cancel drawing" : "Draw an area to select jobs"}>
+                  <Popover
+                    title="Map settings"
+                    trigger="click"
+                    placement="bottomRight"
+                    open={isMapSettingsOpen}
+                    onOpenChange={setIsMapSettingsOpen}
+                    content={
+                      <div className="flex flex-col gap-3 min-w-[280px] max-w-[320px] text-xs">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMapSettingsOpen(false);
+                            handleToggleAreaDrawing();
+                          }}
+                          aria-pressed={isDrawingArea}
+                          className="flex items-center gap-2 text-left py-1 text-gray-700 hover:text-[#003220] cursor-pointer"
+                        >
+                          <Pencil size={15} />
+                          {isDrawingArea ? "Cancel drawing" : "Draw an area to select jobs"}
+                        </button>
+                        <div className="flex items-center justify-between gap-4 border-t border-gray-100 pt-3">
+                          <span id="driver-working-time-label" className="text-gray-700">
+                            Show driver working time in timeline
+                          </span>
+                          <Switch
+                            size="small"
+                            aria-labelledby="driver-working-time-label"
+                            checked={showDriverWorkingTime}
+                            onChange={handleToggleDriverWorkingTime}
+                            className={showDriverWorkingTime ? "!bg-[#003220]" : ""}
+                          />
+                        </div>
+                      </div>
+                    }
+                  >
                     <Button
                       type="text"
-                      aria-label="Select jobs by area"
-                      onClick={handleToggleAreaDrawing}
-                      icon={<PenTool size={16} />}
+                      aria-label="Map settings"
+                      aria-expanded={isMapSettingsOpen}
+                      title="Map settings"
+                      icon={<Settings size={16} />}
                       style={{
                         borderRadius: 0,
                         color: isDrawingArea || selectionArea ? "#E8834B" : undefined,
                       }}
                     />
-                  </Tooltip>
+                  </Popover>
                 }
                 showInfoWindow={(m) => Boolean(m.isDepot || m.isAdditionalLocation)}
                 layersDropdownExtra={
@@ -2060,10 +2116,10 @@ const OptimizationView = ({
                           onClick={() => setIsAdditionalTypesExpanded((prev) => !prev)}
                         >
                           <span
-                            className={`text-gray-400 transition-transform duration-200 inline-flex items-center justify-center w-4 h-4 -ml-0.5 ${
+                            className={`text-gray-400 transition-transform duration-200 items-center justify-center w-4 h-4 -ml-0.5 ${
                               showAdditionalLocations
-                                ? "group-hover:text-gray-700"
-                                : "invisible"
+                                ? "inline-flex group-hover:text-gray-700"
+                                : "hidden"
                             }`}
                             style={{
                               transform: isAdditionalTypesExpanded
@@ -2073,7 +2129,7 @@ const OptimizationView = ({
                           >
                             <ChevronRight size={13} />
                           </span>
-                          <span className="font-semibold text-gray-700 flex items-center gap-1.5">
+                          <span className="font-semibold text-gray-700 flex items-center gap-2">
                             <MapPin size={14} className="text-[#003220]" />
                             <span>Additional Locations</span>
                             {locationMappings.length > 0 && (
@@ -2322,7 +2378,8 @@ const OptimizationView = ({
                   jobs={jobs}
                   teams={teams}
                   scheduledDate={route.scheduled_date}
-                  onDriverWorkingHoursChange={handleDriverWorkingHoursChange}
+                  showDriverWorkingTime={showDriverWorkingTime}
+                  onDriverWorkingHoursChange={showDriverWorkingTime ? handleDriverWorkingHoursChange : undefined}
                   templateType={
                     route.result?.routes?.some((r: any) => (r as any).leg !== undefined) ||
                     jobs?.some((j: any) => j?.template_type === "worker_shuttle" || Boolean(j?.worker_shuttle_detail))

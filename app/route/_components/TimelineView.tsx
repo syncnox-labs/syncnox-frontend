@@ -122,6 +122,7 @@ interface TimelineViewProps {
   jobs?: Job[];
   teams?: Team[];
   scheduledDate?: string | null;
+  showDriverWorkingTime?: boolean;
   onDriverWorkingHoursChange?: (
     teamId: number,
     dayKey: string,
@@ -442,6 +443,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   jobs = [],
   teams = [],
   scheduledDate,
+  showDriverWorkingTime = true,
   onDriverWorkingHoursChange,
   templateType,
   vehicles = [],
@@ -646,14 +648,16 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
   const persistedShiftsByTeamId = useMemo(() => {
     const shifts = new Map<number, DriverShift>();
+    if (!showDriverWorkingTime) return shifts;
     teams.forEach((team) => {
       const shift = getDriverShiftForDay(team, scheduleDayKey);
       if (shift) shifts.set(team.id, shift);
     });
     return shifts;
-  }, [teams, scheduleDayKey]);
+  }, [teams, scheduleDayKey, showDriverWorkingTime]);
 
   const { startTime, endTime } = useMemo(() => {
+    if (!showDriverWorkingTime) return baseTimeRange;
     let earliest = baseTimeRange.startTime;
     let latest = baseTimeRange.endTime;
 
@@ -697,6 +701,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     scheduleDay,
     shiftDrag,
     shiftOverrides,
+    showDriverWorkingTime,
   ]);
 
   const teamsById = useMemo(() => {
@@ -713,6 +718,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
   const availabilityWindowsByTeamId = useMemo(() => {
     const map = new Map<number, DriverAvailabilityWindow[]>();
+    if (!showDriverWorkingTime) return map;
     teams.forEach((team) => {
       map.set(
         team.id,
@@ -725,7 +731,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       );
     });
     return map;
-  }, [teams, startTime, endTime, scheduleDay, shiftOverrides]);
+  }, [teams, startTime, endTime, scheduleDay, shiftOverrides, showDriverWorkingTime]);
 
   const jobsMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -776,7 +782,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     setShiftOverrides({});
     setShiftDrag(null);
     shiftDragValueRef.current = null;
-  }, [scheduledDate, scheduleDayKey]);
+  }, [scheduledDate, scheduleDayKey, showDriverWorkingTime]);
 
   const persistDriverShift = useCallback(
     async (
@@ -882,7 +888,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     edge: "start" | "end",
     shift: DriverShift,
   ) => {
-    if (savingShiftTeamId === teamId || confirmingShiftTeamId === teamId) return;
+    if (!showDriverWorkingTime || savingShiftTeamId === teamId || confirmingShiftTeamId === teamId) return;
     event.preventDefault();
     event.stopPropagation();
     const dragState: ShiftDragState = {
@@ -907,7 +913,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     shift: DriverShift,
   ) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    if (savingShiftTeamId === teamId || confirmingShiftTeamId === teamId) return;
+    if (!showDriverWorkingTime || savingShiftTeamId === teamId || confirmingShiftTeamId === teamId) return;
     event.preventDefault();
     event.stopPropagation();
     const direction = event.key === "ArrowRight" ? 1 : -1;
@@ -946,7 +952,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   };
 
   useEffect(() => {
-    if (!shiftDrag) return;
+    if (!showDriverWorkingTime || !shiftDrag) return;
 
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
@@ -1028,7 +1034,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       document.body.style.cursor = previousCursor;
       document.body.style.userSelect = previousUserSelect;
     };
-  }, [shiftDrag, pixelsPerMinute, confirmDriverShiftChange]);
+  }, [shiftDrag, pixelsPerMinute, confirmDriverShiftChange, showDriverWorkingTime]);
 
   /** Precompute grouped stops, occupancy maps, and non-depot groupings per route once,
    * avoiding re-computation during 60Hz drag operations. */
@@ -1784,11 +1790,11 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                 const persistedShift = Number.isFinite(teamId)
                   ? persistedShiftsByTeamId.get(teamId)
                   : undefined;
-                const fallbackShift = matchedTeam && !persistedShift
+                const fallbackShift = showDriverWorkingTime && matchedTeam && !persistedShift
                   ? deriveDriverShiftFromRoutes(driverGroup.routes, scheduleDay)
                   : undefined;
                 const selectedDayOverrideKey = getShiftOverrideKey(teamId, scheduleDayKey);
-                const activeShift = Number.isFinite(teamId)
+                const activeShift = showDriverWorkingTime && Number.isFinite(teamId)
                   ? shiftOverrides[selectedDayOverrideKey] || persistedShift || fallbackShift
                   : undefined;
                 const driverAvailabilityWindows = Number.isFinite(teamId)
@@ -1947,7 +1953,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                         width: timelineWidth,
                       }}
                     >
-                      {Number.isFinite(teamId) &&
+                      {showDriverWorkingTime && Number.isFinite(teamId) &&
                         (displayedAvailabilityWindows.length > 0 || activeShift) && (
                         <div className="absolute inset-0 pointer-events-none">
                           {displayedAvailabilityWindows.map((window, windowIndex) => {

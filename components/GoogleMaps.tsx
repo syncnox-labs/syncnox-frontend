@@ -402,7 +402,7 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
                     </Radio.Group>
                   </div>
                 )}
-                trigger={["hover", "click"]}
+                trigger={["click"]}
                 placement="bottomRight"
               >
                 <Button
