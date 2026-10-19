@@ -17,12 +17,26 @@ function loadSource(filename, imports = {}) {
   return exports;
 }
 
-const schema = loadSource("components/Jobs/jobForm.schema.ts");
+const schema = loadSource("components/Jobs/jobForm.schema.ts", {
+  "@/utils/jobPickupType.utils": loadSource("utils/jobPickupType.utils.ts"),
+});
 const { getJobFormFields, getJobFieldControl, getJobInitialValues, buildJobFormPayload, parseCoordinates } = schema;
 function field(field_key, overrides = {}) {
   return { id: 1, tenant_id: 7, entity_type: "job", field_key, label: field_key, data_type: "string",
     group: "additional", is_required: false, is_visible_in_list: true, display_order: 0, ...overrides };
 }
+
+test("editing either round-trip leg preserves the configured booking type", () => {
+  const fields = [field("pickup_type", { data_type: "select", options: ["one_way", "return_only", "round_trip"] })];
+  for (const job_type of ["one_way", "return_only"]) {
+    const job = { job_type, pickup_type: job_type, custom_fields: { pickup_type: "round_trip" } };
+    const values = getJobInitialValues(fields, job);
+    assert.equal(values.pickup_type, "round_trip");
+    const payload = buildJobFormPayload(fields, values, "worker_shuttle");
+    assert.equal(payload.pickup_type, "round_trip");
+    assert.equal(payload.custom_fields.pickup_type, "round_trip");
+  }
+});
 
 test("saved schema is authoritative across all groups, ordered and filtered only by dispatch visibility", () => {
   const definitions = [

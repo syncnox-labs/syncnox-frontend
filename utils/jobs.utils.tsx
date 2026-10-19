@@ -6,6 +6,7 @@ import { formatTime12h, formatTimeWindow } from "./app.utils";
 import { COUNTRY_CODES } from "@/constants/country";
 import { Popover, Checkbox } from "antd";
 import { useState } from "react";
+import { getJobPickupType } from "./jobPickupType.utils";
 
 export const filterCountryOptions = (input: string, option: any): boolean => {
   const searchText = input.toLowerCase();
@@ -348,15 +349,7 @@ export const createJobTableColumns = (options?: {
         headerName: "Pickup Type",
         width: 140,
         valueGetter: (params: any) => {
-          const raw =
-            params.data?.pickup_type ||
-            params.data?.worker_shuttle_detail?.pickup_type ||
-            params.data?.custom_fields?.pickup_type;
-          if (!raw) return "-";
-          return String(raw)
-            .split("_")
-            .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-            .join(" ");
+          return formatJobTypeLabel(getJobPickupType(params.data));
         },
       },
       {

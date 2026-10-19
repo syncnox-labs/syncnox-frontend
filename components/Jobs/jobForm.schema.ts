@@ -2,6 +2,7 @@ import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import type { CustomFieldDefinition } from "@/apis/custom-fields.api";
 import type { Job } from "@/types/job.type";
+import { getJobPickupType } from "@/utils/jobPickupType.utils";
 
 dayjs.extend(customParseFormat);
 
@@ -56,6 +57,7 @@ export function getJobInitialValues(
   for (const field of getJobFormFields(fields)) {
     const key = field.field_key;
     const sources = [root?.[key], detail?.[key], initialData?.custom_fields?.[key]];
+    if (key === "pickup_type") sources.unshift(getJobPickupType(initialData));
     if (key === "quart_id") sources.push(initialData?.quant_id, detail?.quant_id);
     if (key === "quant_id") sources.push(initialData?.quart_id);
     let value = sources.find(item => item !== undefined && item !== null);

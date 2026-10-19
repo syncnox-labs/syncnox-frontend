@@ -20,7 +20,26 @@ function load(relativePath, imports = {}) {
 }
 
 const childrenOnly = ({ children }) => React.createElement(React.Fragment, null, children);
+const timelineTooltip = load("app/route/_components/TimelineTooltip.tsx", { antd: { Tooltip: childrenOnly } });
+const jsxRuntime = require("react/jsx-runtime");
+let renderedRows = [];
+let renderedLanes = [];
+let renderedTracks = [];
+let renderedStops = [];
+function recordElement(factory, type, props, key) {
+  if (type === "div" && props["data-driver-key"]) renderedRows.push(props);
+  if (type === "div" && props["data-timeline-driver-track"]) renderedTracks.push(props);
+  if (type === "div" && /^route-\d+$/.test(String(key))) {
+    renderedLanes.push({ routeIndex: Number(String(key).slice(6)), props });
+  }
+  return factory(type, props, key);
+}
 const TimelineView = load("app/route/_components/TimelineView.tsx", {
+  "react/jsx-runtime": {
+    ...jsxRuntime,
+    jsx: (...args) => recordElement(jsxRuntime.jsx, ...args),
+    jsxs: (...args) => recordElement(jsxRuntime.jsxs, ...args),
+  },
   antd: {
     Avatar: childrenOnly, Tooltip: childrenOnly, Dropdown: childrenOnly,
     Select: () => null, Input: () => null, message: {}, Modal: {},
@@ -29,8 +48,13 @@ const TimelineView = load("app/route/_components/TimelineView.tsx", {
   "./optimizationView.utils": { isDriverMatch: () => true },
   "./ReorderStopsModal": () => null,
   "./TransferStopsModal": () => null,
-  "./TimelineStopArrow": () => React.createElement("span", { "data-test": "route-stop" }),
+  "./TimelineStopArrow": props => {
+    renderedStops.push(props);
+    return React.createElement("span", { "data-test": "route-stop" });
+  },
   "./timelineSegment.utils": load("app/route/_components/timelineSegment.utils.ts"),
+  "./TimelineTooltip": timelineTooltip,
+  "./TimelineTravelSegment": load("app/route/_components/TimelineTravelSegment.tsx", { "./TimelineTooltip": timelineTooltip }),
   "./leaderRoute.utils": load("app/route/_components/leaderRoute.utils.ts"),
   "@/utils/timeline.utils": load("utils/timeline.utils.ts", { "./app.utils": load("utils/app.utils.ts") }),
 }).default;
@@ -76,6 +100,90 @@ test("working time is shown by default, including inferred shifts", () => {
   assert.match(html, /border-emerald-200\/80 bg-emerald-50\/50/);
   assert.match(html, /aria-label="Change Driver Example shift start/);
   assert.match(html, /aria-label="Change Driver Example shift end/);
+});
+
+function renderMultipleTrips(extraProps = {}) {
+  const trip = (driverId, name, leg, hour) => ({
+    ...route, team_member_id: driverId, team_member_name: name, leg,
+    stops: route.stops.map((stop, index) => ({ ...stop, leg,
+      arrival_time: `2026-09-29T${String(hour + index).padStart(2, "0")}:00:00` })),
+  });
+  // Same order and separate-leg arrangement as the reported Driver 3 / 1211 /
+  // 13 / 10 result: appended RETURN routes must stay with their own driver.
+  const routes = [trip(3, "Driver 3", "GO", 6), trip(12, "Driver 1211", "GO", 7),
+    trip(13, "Driver 13", "GO", 8), trip(10, "Driver 10", "COMBINED", 15),
+    trip(3, "Driver 3", "RETURN", 16), trip(12, "Driver 1211", "RETURN", 22),
+    trip(13, "Driver 13", "RETURN", 17)];
+  renderedRows = [];
+  renderedLanes = [];
+  renderedTracks = [];
+  renderedStops = [];
+  renderToStaticMarkup(React.createElement(TimelineView, {
+    routes, scheduledDate: "2026-09-29", showDriverWorkingTime: false, ...extraProps,
+  }));
+  return { rows: renderedRows, lanes: renderedLanes, tracks: renderedTracks, stops: renderedStops };
+}
+
+for (const showDriverWorkingTime of [false, true]) test(`driver rows stay compact with separate GO/RETURN trips and working time ${showDriverWorkingTime}`, () => {
+  const { rows, lanes } = renderMultipleTrips({ showDriverWorkingTime });
+  assert.deepEqual(rows.map(row => row["data-driver-key"]), ["driver-id-3", "driver-id-12", "driver-id-13", "driver-id-10"]);
+  for (const row of rows) {
+    const indices = row["data-route-indices"].split(",").map(Number);
+    const trips = lanes.filter(lane => indices.includes(lane.routeIndex));
+    assert.equal(trips.length, indices.length);
+    assert.equal(row.style.height, 60, "Multiple trips must not increase driver row height");
+    for (const lane of trips) {
+      assert.equal(lane.props.style.height, row.style.height);
+      assert.match(lane.props.className, /\babsolute\b.*\binset-0\b/, "All trips share their driver's row origin");
+      assert.equal(lane.props.style.pointerEvents, "none", "An empty RETURN overlay must not cover GO markers");
+      assert.match(lane.props.className, /\[&>\*\]:pointer-events-auto/, "Actual route controls remain interactive");
+    }
+  }
+  assert.equal(rows.find(row => row["data-driver-key"] === "driver-id-10").style.height, 60);
+});
+
+function dropEvent(clientX = 400) {
+  return {
+    preventDefault() {}, stopPropagation() {}, clientX,
+    currentTarget: { getBoundingClientRect: () => ({ left: 100 }) },
+    dataTransfer: { types: ["application/json"], getData: () => JSON.stringify({ type: "unassigned_job", jobId: 999 }) },
+  };
+}
+
+test("dropping on GO, RETURN or the next driver's lane retains the correct route index", async () => {
+  const added = [];
+  const { lanes } = renderMultipleTrips({ onAddUnassignedJob: async (...args) => added.push(args) });
+  for (const routeIndex of [0, 4, 1, 5, 2, 6, 3]) {
+    const lane = lanes.find(lane => lane.routeIndex === routeIndex);
+    const event = dropEvent();
+    lane.props.onDragOver(event);
+    await lane.props.onDrop(event);
+  }
+  assert.deepEqual(added.map(([routeIndex, jobId]) => [routeIndex, jobId]),
+    [0, 4, 1, 5, 2, 6, 3].map(routeIndex => [routeIndex, 999]));
+});
+
+test("dropping on blank driver-row space chooses the trip nearest the pointer time", async () => {
+  const added = [];
+  const { tracks, stops } = renderMultipleTrips({ onAddUnassignedJob: async (...args) => added.push(args) });
+  const track = tracks.find(track => track["data-timeline-driver-track"] === "driver-id-3");
+  assert.ok(track);
+  // Rendered arrows carry actual timeline positions, including the start buffer.
+  const morning = stops[0].left;
+  const evening = stops[2].left;
+  for (const x of [morning - 20, evening + 20]) {
+    const event = dropEvent(100 + x);
+    track.onDragOver(event);
+    await track.onDrop(event);
+  }
+  assert.deepEqual(added.map(([routeIndex, jobId]) => [routeIndex, jobId]), [[0, 999], [4, 999]]);
+});
+
+test("GO and RETURN marker clicks retain their original route indices in the shared row", () => {
+  const clicks = [];
+  const { stops } = renderMultipleTrips({ onStopClick: (...args) => clicks.push(args) });
+  for (const stop of stops) stop.onClick({});
+  assert.deepEqual(clicks.map(([, routeIndex]) => routeIndex), [0, 0, 4, 4, 1, 1, 5, 5, 2, 2, 6, 6, 3, 3]);
 });
 
 test("working time preference survives reloads and preserves other map settings", () => {

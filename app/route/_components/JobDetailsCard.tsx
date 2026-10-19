@@ -34,6 +34,7 @@ import dayjs from "dayjs";
 import type { Job, JobStatus } from "@/types/job.type";
 import { STATUS_COLORS, formatJobTypeLabel } from "@/utils/jobs.utils";
 import { formatTime12h } from "@/utils/app.utils";
+import { getJobPickupType } from "@/utils/jobPickupType.utils";
 import { updateJobStatus, updateJob } from "@/apis/jobs.api";
 import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
@@ -253,7 +254,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   const clientPickUpTime = formatTime12h(clientPickUpTimeRaw);
   const startHour = formatTime12h(shuttleValue("start_hour"));
   const endHour = formatTime12h(shuttleValue("end_hour"));
-  const pickupType = shuttleValue("pickup_type");
+  const pickupType = getJobPickupType(job);
   const scheduledDate =
     job?.scheduled_date ||
     shuttleValue("scheduled_date") ||
@@ -324,7 +325,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     job_type: job?.job_type || shuttleValue("job_type", "pickup_type") || "one_way",
     start_hour: shuttleValue("start_hour") || "",
     end_hour: shuttleValue("end_hour") || "",
-    pickup_type: shuttleValue("pickup_type") || "",
+    pickup_type: pickupType || "",
     quart_id: shuttleValue("quart_id", "quant_id") || "",
     reach_before_minutes: Number(reachBeforeMinutes ?? 10),
     pick_up_address: pickUpAddress || "",

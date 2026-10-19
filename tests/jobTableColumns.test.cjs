@@ -25,8 +25,19 @@ function loadUtility(filename, imports = {}) {
 const appUtils = loadUtility("app.utils.ts");
 const { createJobTableColumns } = loadUtility("jobs.utils.tsx", {
   "./app.utils": appUtils,
+  "./jobPickupType.utils": loadUtility("jobPickupType.utils.ts"),
   "@/components/Jobs/StatusBanner": () => null,
   "@/constants/country": { COUNTRY_CODES: [] },
+});
+
+test("split round trips retain their booking pickup type and directional job type", () => {
+  const pickup = columns().find(column => column.field === "pickup_type");
+  for (const job_type of ["one_way", "return_only"]) {
+    const job = { job_type, pickup_type: job_type, custom_fields: { pickup_type: "round_trip" } };
+    assert.equal(pickup.valueGetter({ data: job }), "Round Trip");
+    assert.equal(job.job_type, job_type);
+    assert.equal(pickup.valueGetter({ data: { job_type } }), job_type === "one_way" ? "One Way" : "Return Only");
+  }
 });
 
 function columns(templateType = "worker_shuttle", jobStatus = "assigned") {
