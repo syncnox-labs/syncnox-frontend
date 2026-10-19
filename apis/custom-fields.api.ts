@@ -75,10 +75,20 @@ export interface FieldTemplate {
   entity_type: "job" | "vehicle" | "team_member" | "depot";
   fields: FieldTemplateItem[];
   is_active: boolean;
+  is_applied: boolean;
 }
+
+export const CUSTOM_FIELDS_CHANGED_EVENT = "syncnox_custom_fields_changed";
+
+const notifyFieldChanges = (entityType?: string) => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(CUSTOM_FIELDS_CHANGED_EVENT, { detail: { entityType } }));
+  }
+};
 
 export interface ApplyTemplateResponse {
   message: string;
+  active_job_template?: string | null;
   template_id: number;
   template_slug: string;
   entity_type: string;
@@ -95,20 +105,24 @@ export const getCustomFields = async (entityType?: string): Promise<CustomFieldD
 
 export const createCustomField = async (data: CustomFieldDefinitionCreate): Promise<CustomFieldDefinition> => {
   const response = await apiClient.post<CustomFieldDefinition>("/custom-fields", data);
+  notifyFieldChanges(response.data.entity_type);
   return response.data;
 };
 
 export const updateCustomField = async (id: number, data: CustomFieldDefinitionUpdate): Promise<CustomFieldDefinition> => {
   const response = await apiClient.patch<CustomFieldDefinition>(`/custom-fields/${id}`, data);
+  notifyFieldChanges(response.data.entity_type);
   return response.data;
 };
 
 export const deleteCustomField = async (id: number): Promise<void> => {
   await apiClient.delete(`/custom-fields/${id}`);
+  notifyFieldChanges();
 };
 
 export const resetCustomFields = async (entityType: string): Promise<void> => {
   await apiClient.post("/custom-fields/reset", null, { params: { entity_type: entityType } });
+  notifyFieldChanges(entityType);
 };
 
 export const getFieldTemplates = async (entityType?: string): Promise<FieldTemplate[]> => {
@@ -129,5 +143,6 @@ export const applyFieldTemplate = async (
   const response = await apiClient.post<ApplyTemplateResponse>(`/custom-fields/templates/${id}/apply`, {
     apply_mode: applyMode,
   });
+  notifyFieldChanges(response.data.entity_type);
   return response.data;
 };

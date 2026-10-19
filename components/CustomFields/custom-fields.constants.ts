@@ -75,9 +75,7 @@ export const TEMPLATE_BASE_FIELDS: Record<string, BaseFieldDefinition[]> = {
     { field_key: "candidate_id", label: "Candidate ID", data_type: "string", is_required: false, description: "Candidate reference ID", group: "additional", surfaces: { disp: true, driver: true, track: false } },
     { field_key: "candidate_name", label: "Candidate Name", data_type: "string", is_required: false, description: "Candidate full name", group: "additional", surfaces: { disp: true, driver: true, track: true } },
     { field_key: "candidate_phone", label: "Candidate Phone", data_type: "string", is_required: false, description: "Candidate phone number", group: "additional", surfaces: { disp: true, driver: true, track: true } },
-    { field_key: "client_id", label: "Client / Worker ID", data_type: "string", is_required: false, description: "Client or passenger ID", group: "additional", surfaces: { disp: true, driver: true, track: false } },
     { field_key: "client_name", label: "Passenger Name", data_type: "string", is_required: false, description: "Client or passenger full name", group: "additional", surfaces: { disp: true, driver: true, track: true } },
-    { field_key: "client_phone", label: "Passenger Phone", data_type: "string", is_required: false, description: "Client contact phone number", group: "additional", surfaces: { disp: true, driver: true, track: true } },
     { field_key: "notes", label: "Notes", data_type: "string", is_required: false, description: "Shuttle special notes", group: "additional", surfaces: { disp: true, driver: true, track: false } },
   ],
 };

@@ -30,13 +30,11 @@ import {
 } from "@/components/CustomFields/custom-fields.constants";
 import { CustomFieldFormModal } from "@/components/CustomFields/CustomFieldFormModal";
 import { FieldsSectionCard } from "@/components/CustomFields/FieldsSectionCard";
-import { Select } from "antd";
-import { STANDARD_JOB_FIELD_KEYS } from "@/utils/jobs.utils";
 import { useIndexStore } from "@/store/index.store";
 
 export default function CustomFieldsSettingsPage() {
   const [selectedEntity, setSelectedEntity] = useState<EntityTab>("job");
-  const { activeJobTemplate: storeActiveJobTemplate, updateActiveJobTemplate } = useIndexStore();
+  const { activeJobTemplate: storeActiveJobTemplate } = useIndexStore();
   const [activeJobTemplate, setActiveJobTemplate] = useState<string>("pickup_delivery_job");
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
   const [hiddenBaseFields, setHiddenBaseFields] = useState<string[]>([]);
@@ -63,10 +61,10 @@ export default function CustomFieldsSettingsPage() {
         field_key: f.field_key,
         label: f.label,
         data_type: f.data_type,
-        is_required: override?.is_required ?? f.is_required,
+        is_required: selectedEntity === "job" ? f.is_required : override?.is_required ?? f.is_required,
         description: f.description || "",
-        group: (f.group as any) || "optimization",
-        surfaces: override?.surfaces ?? f.surfaces,
+        group: (f.group as BaseFieldDefinition["group"]) || "optimization",
+        surfaces: selectedEntity === "job" ? f.surfaces : override?.surfaces ?? f.surfaces,
       };
     });
 
@@ -76,7 +74,7 @@ export default function CustomFieldsSettingsPage() {
       : DEFAULT_BASE_FIELDS[selectedEntity];
 
   const currentBaseFields: BaseFieldDefinition[] =
-    customFields.length > 0 ? baseItemsFromApi : fallbackBaseFields;
+    selectedEntity === "job" || customFields.length > 0 ? baseItemsFromApi : fallbackBaseFields;
 
   const baseFieldKeys = new Set(currentBaseFields.map((f) => f.field_key));
   const filteredCustomFields = customFields.filter((f) => !isBaseField(f) && !baseFieldKeys.has(f.field_key));
@@ -90,7 +88,7 @@ export default function CustomFieldsSettingsPage() {
   // Form State
   const [label, setLabel] = useState<string>("");
   const [fieldKey, setFieldKey] = useState<string>("");
-  const [dataType, setDataType] = useState<"string" | "number" | "boolean" | "select" | "date">("string");
+  const [dataType, setDataType] = useState<CustomFieldDefinition["data_type"]>("string");
   const [defaultValue, setDefaultValue] = useState<string>("");
   const [isRequired, setIsRequired] = useState<boolean>(false);
   const [isVisibleInList, setIsVisibleInList] = useState<boolean>(true);
@@ -105,13 +103,21 @@ export default function CustomFieldsSettingsPage() {
       setLoading(true);
       const data = await getCustomFields(entity);
       setCustomFields(data);
+      if (entity === "job") {
+        // The API owns the job schema; browser-only overrides must not hide
+        // fields or disagree with forms in another browser.
+        setHiddenBaseFields([]);
+        setBaseFieldOverrides({});
+        await useIndexStore.getState().fetchTenant();
+        return;
+      }
 
       const storedHidden = localStorage.getItem(`syncnox_hidden_base_fields_${entity}`);
       setHiddenBaseFields(storedHidden ? JSON.parse(storedHidden) : []);
 
       const storedOverrides = localStorage.getItem(`syncnox_base_field_overrides_${entity}`);
       setBaseFieldOverrides(storedOverrides ? JSON.parse(storedOverrides) : {});
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to load custom fields", err);
       message.error("Failed to load custom fields");
     } finally {
@@ -123,7 +129,12 @@ export default function CustomFieldsSettingsPage() {
     loadFields(selectedEntity);
   }, [selectedEntity]);
 
-  const handleToggleBaseRequired = (key: string, currentRequired: boolean, fieldLabel: string) => {
+  const handleToggleBaseRequired = async (key: string, currentRequired: boolean, fieldLabel: string) => {
+    const field = customFields.find(item => item.field_key === key);
+    if (selectedEntity === "job" && field) {
+      await handleToggleCustomRequired(field);
+      return;
+    }
     const updated = {
       ...baseFieldOverrides,
       [key]: {
@@ -141,7 +152,7 @@ export default function CustomFieldsSettingsPage() {
       await updateCustomField(field.id, { is_required: !field.is_required });
       message.success(`Set '${field.label}' to ${!field.is_required ? "Required" : "Optional"}`);
       loadFields(selectedEntity);
-    } catch (err: any) {
+    } catch {
       message.error("Failed to update custom field requirement");
     }
   };
@@ -189,11 +200,11 @@ export default function CustomFieldsSettingsPage() {
         await updateCustomField(editingField.id, {
           label: label.trim(),
           data_type: dataType,
-          default_value: defaultValue.trim() || undefined,
+          default_value: defaultValue.trim() || null,
           is_required: isRequired,
           is_visible_in_list: Boolean(surfacesState.disp),
           options: optionsArr,
-          description: description.trim() || undefined,
+          description: description.trim() || null,
           group: groupSection,
           surfaces: surfacesState,
         });
@@ -218,8 +229,10 @@ export default function CustomFieldsSettingsPage() {
       setIsModalOpen(false);
       resetForm();
       loadFields(selectedEntity);
-    } catch (err: any) {
-      message.error(err?.detail || err?.response?.data?.detail || "Failed to save field");
+    } catch (err: unknown) {
+      const detail = (err as { detail?: unknown; response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+        ?? (err as { detail?: unknown })?.detail;
+      message.error(typeof detail === "string" ? detail : "Failed to save field");
     }
   };
 
@@ -228,13 +241,13 @@ export default function CustomFieldsSettingsPage() {
     setEditingBaseFieldKey(null);
     setLabel(field.label);
     setFieldKey(field.field_key);
-    setDataType(field.data_type as any);
+    setDataType(field.data_type as typeof dataType);
     setDefaultValue(field.default_value || "");
     setIsRequired(field.is_required);
     setIsVisibleInList(field.is_visible_in_list);
     setOptionsStr(Array.isArray(field.options) ? field.options.join(", ") : "");
     setDescription(field.description || "");
-    setGroupSection((field.group as any) || "additional");
+    setGroupSection((field.group as typeof groupSection) || "additional");
     setSurfacesState(field.surfaces || DEFAULT_SURFACES);
     setIsModalOpen(true);
   };
@@ -244,17 +257,22 @@ export default function CustomFieldsSettingsPage() {
     currentRequired: boolean,
     currentSurfaces?: FieldSurfaces | null
   ) => {
+    const configuredField = customFields.find(field => field.field_key === bf.field_key);
+    if (selectedEntity === "job" && configuredField) {
+      handleOpenEditModal(configuredField);
+      return;
+    }
     setEditingBaseFieldKey(bf.field_key);
     setEditingField(null);
     setLabel(bf.label);
     setFieldKey(bf.field_key);
-    setDataType(bf.data_type as any);
+    setDataType(bf.data_type as typeof dataType);
     setDefaultValue("");
     setIsRequired(currentRequired);
     setIsVisibleInList(true);
     setOptionsStr("");
     setDescription(bf.description || "");
-    setGroupSection((bf.group as any) || "additional");
+    setGroupSection((bf.group as typeof groupSection) || "additional");
     setSurfacesState(currentSurfaces || DEFAULT_SURFACES);
     setIsModalOpen(true);
   };
@@ -273,7 +291,7 @@ export default function CustomFieldsSettingsPage() {
           await deleteCustomField(id);
           message.success("Custom field deleted");
           loadFields(selectedEntity);
-        } catch (err: any) {
+        } catch {
           message.error("Failed to delete custom field");
         }
       },
@@ -285,7 +303,17 @@ export default function CustomFieldsSettingsPage() {
     return;
   };
 
-  const handleToggleBaseField = (key: string) => {
+  const handleToggleBaseField = async (key: string) => {
+    const field = customFields.find(item => item.field_key === key);
+    if (selectedEntity === "job" && field) {
+      try {
+        await updateCustomField(field.id, { surfaces: { ...field.surfaces, disp: field.surfaces?.disp === false } });
+        await loadFields(selectedEntity);
+      } catch {
+        message.error("Failed to update field visibility");
+      }
+      return;
+    }
     const updated = hiddenBaseFields.includes(key)
       ? hiddenBaseFields.filter((k) => k !== key)
       : [...hiddenBaseFields, key];
@@ -315,7 +343,7 @@ export default function CustomFieldsSettingsPage() {
           setBaseFieldOverrides({});
           message.success(`Custom fields for ${entityLabel} reset to default`);
           loadFields(selectedEntity);
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error(err);
           message.error("Failed to reset fields to default");
         }
@@ -440,7 +468,7 @@ export default function CustomFieldsSettingsPage() {
               badgeNumber="1"
               title="Required fields"
               categoryTag="OPTIMIZATION"
-              description="Hard-coded into route optimization — map each to a solver role, hide unused, but these can't be deleted."
+              description="Fields used by route optimization. Their saved labels, requirements and dispatch visibility also control the job form."
               baseItems={currentBaseFields.filter((f) => f.group === "optimization")}
               customItems={filteredCustomFields.filter((f) => f.group === "optimization")}
               hiddenBaseFields={hiddenBaseFields}

@@ -1,11 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
-import { CustomFieldDefinition, getCustomFields, FieldSurfaces } from "@/apis/custom-fields.api";
-import {
-  EntityTab,
-  DEFAULT_BASE_FIELDS,
-  TEMPLATE_BASE_FIELDS,
-  BaseFieldDefinition,
-} from "@/components/CustomFields/custom-fields.constants";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { CustomFieldDefinition, getCustomFields, FieldSurfaces, CUSTOM_FIELDS_CHANGED_EVENT } from "@/apis/custom-fields.api";
+import { EntityTab, DEFAULT_BASE_FIELDS } from "@/components/CustomFields/custom-fields.constants";
 import { useIndexStore } from "@/store/index.store";
 
 export interface ResolvedFieldConfig {
@@ -20,140 +15,61 @@ export interface ResolvedFieldConfig {
   isCustomField?: boolean;
 }
 
-export function useFieldConfig(
-  entity: EntityTab = "job",
-  templateSlug: string = "pickup_delivery_job"
-) {
+export function useFieldConfig(entity: EntityTab = "job") {
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
-  const [baseFieldOverrides, setBaseFieldOverrides] = useState<
-    Record<string, { is_required?: boolean; surfaces?: FieldSurfaces | null }>
-  >({});
-  const [hiddenBaseFields, setHiddenBaseFields] = useState<string[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const request = useRef(0);
 
   const loadConfigs = useCallback(async () => {
+    const current = ++request.current;
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
       const data = await getCustomFields(entity);
+      if (current !== request.current) return;
       setCustomFields(data || []);
-
-      if (entity === "job" && data && data.length > 0) {
-        const shuttleKeys = [
-          "pickup_type",
-          "drop_off_address",
-          "pick_up_address",
-          "go_pickup_point",
-          "quant_id",
-          "dress_code",
-        ];
-        const hasShuttleKey = data.some((f) => shuttleKeys.includes(f.field_key));
-        const detectedTemplate = hasShuttleKey ? "worker_shuttle" : "pickup_delivery_job";
-
-        // Access the store directly since hooks are used inside components
-        const store = useIndexStore.getState();
-        if (store.activeJobTemplate !== detectedTemplate) {
-          store.updateActiveJobTemplate(detectedTemplate);
-        }
+      // Reading fields must never guess or change the applied template.
+      if (entity === "job") await useIndexStore.getState().fetchTenant();
+    } catch {
+      if (current === request.current) {
+        setCustomFields([]);
+        setError("Unable to load field settings. Please try again.");
       }
-
-      if (typeof window !== "undefined") {
-        const storedOverrides = localStorage.getItem(`syncnox_base_field_overrides_${entity}`);
-        if (storedOverrides) {
-          try {
-            setBaseFieldOverrides(JSON.parse(storedOverrides));
-          } catch (e) {
-            setBaseFieldOverrides({});
-          }
-        } else {
-          setBaseFieldOverrides({});
-        }
-
-        const storedHidden = localStorage.getItem(`syncnox_hidden_base_fields_${entity}`);
-        if (storedHidden) {
-          try {
-            setHiddenBaseFields(JSON.parse(storedHidden));
-          } catch (e) {
-            setHiddenBaseFields([]);
-          }
-        } else {
-          setHiddenBaseFields([]);
-        }
-      }
-    } catch (err) {
-      console.error(`Failed to load field configs for ${entity}:`, err);
     } finally {
-      setLoading(false);
+      if (current === request.current) setLoading(false);
     }
   }, [entity]);
 
   useEffect(() => {
-    loadConfigs();
-  }, [loadConfigs, templateSlug]);
+    const counter = request;
+    void loadConfigs();
+    const refresh = (event: Event) => {
+      const changed = (event as CustomEvent<{ entityType?: string }>).detail?.entityType;
+      if (!changed || changed === entity) void loadConfigs();
+    };
+    window.addEventListener(CUSTOM_FIELDS_CHANGED_EVENT, refresh);
+    return () => {
+      ++counter.current;
+      window.removeEventListener(CUSTOM_FIELDS_CHANGED_EVENT, refresh);
+    };
+  }, [loadConfigs, entity]);
 
-  const getFieldConfig = useCallback(
-    (fieldKey: string): ResolvedFieldConfig => {
-      // 1. Check default base fields definitions
-      const defaultBaseFields: BaseFieldDefinition[] =
-        entity === "job"
-          ? TEMPLATE_BASE_FIELDS[templateSlug] || DEFAULT_BASE_FIELDS.job
-          : DEFAULT_BASE_FIELDS[entity] || [];
+  const getFieldConfig = useCallback((key: string): ResolvedFieldConfig => {
+    const definition = customFields.find(field => field.field_key === key);
+    const base = entity === "job" ? undefined : DEFAULT_BASE_FIELDS[entity]?.find(field => field.field_key === key);
+    return {
+      field_key: key,
+      label: definition?.label || base?.label || key.replaceAll("_", " "),
+      isRequired: definition?.is_required ?? base?.is_required ?? false,
+      isVisible: Boolean(definition || base) && (definition?.surfaces ?? base?.surfaces)?.disp !== false,
+      data_type: definition?.data_type ?? base?.data_type,
+      options: definition?.options ?? base?.options,
+      surfaces: definition?.surfaces ?? base?.surfaces,
+      description: definition?.description ?? base?.description ?? undefined,
+      isCustomField: Boolean(definition),
+    };
+  }, [customFields, entity]);
 
-      const baseDef = defaultBaseFields.find((f) => f.field_key === fieldKey);
-
-      // 2. Check custom field definitions returned from API
-      const customDef = customFields.find((f) => f.field_key === fieldKey);
-
-      // 3. Check local overrides from localStorage
-      const override = baseFieldOverrides[fieldKey];
-      const isHidden = hiddenBaseFields.includes(fieldKey);
-
-      // Resolve label priority: customDef label > baseDef label > formatted key
-      let label =
-        customDef?.label ||
-        baseDef?.label ||
-        fieldKey
-          .split("_")
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-          .join(" ");
-
-      // Resolve isRequired priority: override > customDef > baseDef > false
-      let isRequired = baseDef?.is_required ?? false;
-      if (customDef?.is_required !== undefined) {
-        isRequired = customDef.is_required;
-      }
-      if (override?.is_required !== undefined) {
-        isRequired = override.is_required;
-      }
-
-      // Resolve surfaces / visibility
-      const surfaces =
-        override?.surfaces ??
-        customDef?.surfaces ??
-        baseDef?.surfaces ?? { disp: true, driver: true, track: true };
-
-      const isVisible = !isHidden && surfaces?.disp !== false;
-
-      return {
-        field_key: fieldKey,
-        label,
-        isRequired,
-        isVisible,
-        surfaces,
-        data_type: customDef?.data_type || baseDef?.data_type,
-        options: customDef?.options || baseDef?.options,
-        description: customDef?.description || baseDef?.description,
-        isCustomField: Boolean(customDef && !baseDef),
-      };
-    },
-    [entity, templateSlug, customFields, baseFieldOverrides, hiddenBaseFields]
-  );
-
-  return {
-    customFields,
-    baseFieldOverrides,
-    hiddenBaseFields,
-    loading,
-    getFieldConfig,
-    reloadConfigs: loadConfigs,
-  };
+  return { customFields, loading, error, getFieldConfig, reloadConfigs: loadConfigs };
 }

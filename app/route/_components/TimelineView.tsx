@@ -38,6 +38,8 @@ import {
 import ReorderStopsModal from "./ReorderStopsModal";
 import TransferStopsModal from "./TransferStopsModal";
 import TimelineStopArrow from "./TimelineStopArrow";
+import TimelineTravelSegment from "./TimelineTravelSegment";
+import TimelineTooltip, { TimelineTooltipProvider } from "./TimelineTooltip";
 import { getTimelineSegment } from "./timelineSegment.utils";
 import { isRedundantLeaderClientStart } from "./leaderRoute.utils";
 import {
@@ -1048,6 +1050,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         occupancyMap: Map<number, number>;
         routeColor: string;
         nonDepotGroups: GroupedStop[];
+        startPosition: number | null;
+        endPosition: number | null;
       }
     >();
 
@@ -1077,16 +1081,39 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         return st !== "depot" && st !== "depot_start" && st !== "depot_end";
       });
 
+      const positions = (route.stops || []).flatMap((stop: { arrival_time?: string }) =>
+        stop.arrival_time && dayjs(stop.arrival_time).isValid()
+          ? [getPosition(stop.arrival_time, startTime, pixelsPerMinute)] : [],
+      );
+
       map.set(routeIndex, {
         groupedStops: grouped,
         occupancyMap: occMap,
         routeColor: getRouteColor(routeIndex),
         nonDepotGroups: nonDepot,
+        startPosition: positions.length ? Math.min(...positions) : null,
+        endPosition: positions.length ? Math.max(...positions) : null,
       });
     });
 
     return map;
-  }, [routes]);
+  }, [routes, startTime, pixelsPerMinute]);
+
+  const getDriverDropRouteIndex = (e: React.DragEvent, driverRoutes: DriverGroup["routes"]) => {
+    const mouseX = e.clientX - e.currentTarget.getBoundingClientRect().left;
+    let closestIndex = driverRoutes[0].originalIndex;
+    let closestDistance = Infinity;
+    for (const { originalIndex } of driverRoutes) {
+      const data = routeDataMap.get(originalIndex);
+      if (data?.startPosition == null || data.endPosition == null) continue;
+      const distance = Math.max(data.startPosition - mouseX, mouseX - data.endPosition, 0);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = originalIndex;
+      }
+    }
+    return closestIndex;
+  };
 
   const handleTimelineTrackDragOver = (
     e: React.DragEvent,
@@ -1509,6 +1536,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   ];
 
   return (
+    <TimelineTooltipProvider leftInset={DRIVER_COLUMN_WIDTH} topInset={HEADER_HEIGHT}>
     <div 
       className="relative flex flex-col h-full bg-white select-none"
       onDragOver={(e) => {
@@ -1646,7 +1674,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                   style={{ left: marker.position, height: "100%" }}
                 >
                   {marker.isNewDay ? (
-                    <Tooltip
+                    <TimelineTooltip
                       color="#ffffff"
                       overlayInnerStyle={{
                         padding: "6px 12px",
@@ -1668,9 +1696,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                         <span className="text-[10px] font-black uppercase tracking-wide">{marker.dateLabel}</span>
                         <span className="text-[11px] font-bold ml-0.5">{marker.label}</span>
                       </div>
-                    </Tooltip>
+                    </TimelineTooltip>
                   ) : (
-                    <Tooltip
+                    <TimelineTooltip
                       color="#ffffff"
                       overlayInnerStyle={{
                         padding: "4px 8px",
@@ -1690,7 +1718,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                         ) : null}
                         <span>{marker.label}</span>
                       </span>
-                    </Tooltip>
+                    </TimelineTooltip>
                   )}
                 </div>
               ))}
@@ -1706,7 +1734,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
             >
               {timeMarkers.map((marker, i) =>
                 marker.isNewDay ? (
-                  <Tooltip
+                  <TimelineTooltip
                     key={i}
                     color="#ffffff"
                     overlayInnerStyle={{
@@ -1729,7 +1757,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                       className="absolute top-0 bottom-0 border-l-2 border-dashed border-[#003220] z-0 pointer-events-auto cursor-pointer hover:border-emerald-600 hover:opacity-100 transition-all opacity-85"
                       style={{ left: marker.position }}
                     />
-                  </Tooltip>
+                  </TimelineTooltip>
                 ) : (
                   <div
                     key={i}
@@ -1912,7 +1940,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                         </div>
 
                         {/* Quick Transfer Button */}
-                        {/* <Tooltip title="Transfer stops to another driver">
+                        {/* <TimelineTooltip title="Transfer stops to another driver">
                           <div
                             className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer transition-colors text-gray-400 shrink-0"
                             onClick={(e) => {
@@ -1923,10 +1951,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                           >
                             <SwapOutlined className="text-xs" />
                           </div>
-                        </Tooltip> */}
+                        </TimelineTooltip> */}
 
                         {/* Quick Reorder Button */}
-                        {/* <Tooltip title="Reorder stops (Drag & Drop)">
+                        {/* <TimelineTooltip title="Reorder stops (Drag & Drop)">
                           <div
                             className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer transition-colors text-gray-400 shrink-0"
                             onClick={(e) => {
@@ -1936,7 +1964,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                           >
                             <MenuOutlined className="text-xs" />
                           </div>
-                        </Tooltip> */}
+                        </TimelineTooltip> */}
 
                         {/* ••• Menu */}
                         <Dropdown
@@ -1957,8 +1985,15 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                     {/* Timeline Track */}
                     <div
                       className="relative z-10"
+                      data-timeline-driver-track={driverGroup.driverKey}
                       style={{
                         width: timelineWidth,
+                      }}
+                      onDragOver={(e) => handleTimelineTrackDragOver(e, getDriverDropRouteIndex(e, driverGroup.routes))}
+                      onDrop={(e) => {
+                        const routeIndex = getDriverDropRouteIndex(e, driverGroup.routes);
+                        handleTimelineTrackDragOver(e, routeIndex);
+                        void handleTimelineDrop(e, routeIndex);
                       }}
                     >
                       {showDriverWorkingTime && Number.isFinite(teamId) &&
@@ -2212,7 +2247,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                         return (
                           <div
                             key={`route-${routeIndex}`}
-                            className={`relative z-10 h-full transition-colors duration-150 ${
+                            role="group"
+                            aria-label={`${driverGroup.driverName} ${route.leg || "route"}`}
+                            // Share a row origin without letting empty track overlays
+                            // intercept stops and drop targets on another trip.
+                            style={{ height: ROW_HEIGHT, pointerEvents: "none" }}
+                            className={`absolute inset-0 z-10 [&>*]:pointer-events-auto transition-colors duration-150 ${
                               isTrackBeingDraggedOver
                                 ? "bg-emerald-50/25 ring-1 ring-emerald-400/40 rounded-sm"
                                 : ""
@@ -2222,7 +2262,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                           >
                             {/* Shimmer loading accent when recalculating ETAs */}
                             {isReorderingThisRoute && (
-                              <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 animate-pulse z-40" />
+                              <div style={{ pointerEvents: "none" }} className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 animate-pulse z-40" />
                             )}
 
                             {/* Track-level High-Precision Drag & Drop Insertion Guide */}
@@ -2233,6 +2273,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   style={{
                                     left: dragOverStopInfo.indicatorX,
                                     transform: "translateX(-50%)",
+                                    pointerEvents: "none",
                                   }}
                                 >
                                   {/* Top floating pill badge */}
@@ -2283,7 +2324,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               if (width <= 0) return null;
 
                               const segment = getTimelineSegment(stop, nextStop);
-                              const distanceKm = segment.distanceMeters === null ? null : segment.distanceMeters / 1000;
                               const timeMin = Math.round(segment.elapsedSeconds / 60);
 
                               // Do not draw a connection line between shifts after depot_end
@@ -2302,112 +2342,27 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                               if (segment.isWorking) {
                                 return (
-                                  <Tooltip key={`work-${routeIndex}-${index}`} title={`Working at client · ${timeMin} min · vehicle stays with the team leader`}>
+                                  <TimelineTooltip key={`work-${routeIndex}-${index}`} title={`Working at client · ${timeMin} min · vehicle stays with the team leader`}>
                                     <div
                                       className="absolute top-1/2 border-y border-slate-300 bg-slate-100 cursor-pointer"
                                       style={{ left: startPos, width, height: 8, transform: "translateY(-50%)", opacity: isDimmed ? 0.15 : 0.85, pointerEvents: draggedStopInfo ? "none" : undefined }}
                                     />
-                                  </Tooltip>
+                                  </TimelineTooltip>
                                 );
                               }
 
-                              return (
-                                <Tooltip
-                                  key={`link-${routeIndex}-${index}`}
-                                  color="#ffffff"
-                                  overlayStyle={{ maxWidth: "none" }}
-                                  overlayInnerStyle={{
-                                    padding: "8px 12px",
-                                    borderRadius: "6px",
-                                    color: "#1e293b",
-                                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.06)",
-                                    border: "1px solid #cbd5e1",
-                                  }}
-                                  title={
-                                    <div className="flex flex-col gap-1.5 text-xs text-slate-800 pointer-events-auto select-none min-w-[140px]">
-                                      {routeVehicleName && (
-                                        <div className="flex items-center gap-1.5 pb-1 border-b border-slate-200 font-bold text-slate-900">
-                                          <Truck size={13} style={{ color: routeColor }} className="shrink-0" />
-                                          <span className="truncate">{routeVehicleName}</span>
-                                          {routeVehicleCap ? (
-                                            <span className="inline-flex items-center text-[10px] font-extrabold text-slate-600 bg-slate-100 px-1.5 py-0.2 border border-slate-200 rounded shrink-0">
-                                              {routeVehicleCap} seats
-                                            </span>
-                                          ) : null}
-                                        </div>
-                                      )}
-                                      <div className="flex items-center gap-3 text-[11px] font-medium text-slate-600">
-                                        {isWaiting ? (
-                                          <span className="flex items-center gap-1 font-semibold text-amber-700">
-                                            <ClockCircleOutlined className="text-amber-600 text-xs" />
-                                            <span>Waiting: <strong className="text-amber-900">{Math.round((segment.waitingSeconds ?? 0) / 60)} min</strong></span>
-                                          </span>
-                                        ) : (
-                                          <span className="flex items-center gap-1">
-                                            <ClockCircleOutlined className="text-slate-400 text-xs" />
-                                            <strong className="text-slate-800">{segment.isBetweenTrips ? "Between trips: " : ""}{timeMin} min elapsed</strong>
-                                          </span>
-                                        )}
-                                        <span className="flex items-center gap-1">
-                                          <EnvironmentOutlined className="text-slate-400 text-xs" />
-                                          <strong className="text-slate-800">{distanceKm === null ? (segment.isBetweenTrips ? "Transfer distance unavailable" : "Distance unavailable") : distanceKm === 0 ? "Same location" : `${distanceKm.toFixed(2)} km`}</strong>
-                                        </span>
-                                      </div>
-                                      {segment.travelSeconds !== null && (
-                                        <div>Travel: {Math.round(segment.travelSeconds / 60)} min</div>
-                                      )}
-                                      {segment.serviceSeconds !== null && segment.serviceSeconds > 0 && (
-                                        <div>Boarding / alighting: {Math.round(segment.serviceSeconds / 60)} min</div>
-                                      )}
-                                      {!isWaiting && segment.waitingSeconds !== null && segment.waitingSeconds > 0 && (
-                                        <div>Waiting: {Math.round(segment.waitingSeconds / 60)} min</div>
-                                      )}
-                                    </div>
-                                  }
-                                >
-                                  <div
-                                    className="absolute top-1/2"
-                                    style={{ left: startPos, width, height: 6, transform: "translateY(-50%)", pointerEvents: draggedStopInfo ? "none" : undefined }}
-                                  >
-                                  <div
-                                    className="absolute top-1/2 left-0 transition-opacity cursor-pointer border-t border-b border-slate-300 rounded-xs"
-                                    style={{
-                                      height: isWaiting ? "6px" : "5px",
-                                      backgroundColor: isWaiting || segment.isBetweenTrips ? "#e2e8f0" : routeColor,
-                                      backgroundImage: isWaiting || segment.isBetweenTrips
-                                        ? `repeating-linear-gradient(
-                                            45deg,
-                                            transparent,
-                                            transparent 3px,
-                                            rgba(0, 0, 0, 0.12) 3px,
-                                            rgba(0, 0, 0, 0.12) 6px
-                                          )`
-                                        : undefined,
-                                      opacity: isDimmed ? 0.15 : isWaiting ? 0.85 : 0.35,
-                                      left: 0,
-                                      width: width,
-                                      transform: "translateY(-50%)",
-                                      pointerEvents: draggedStopInfo ? "none" : undefined,
-                                    }}
-                                  />
-                                  {!isWaiting && (segment.waitingSeconds ?? 0) > 0 && (
-                                    <div
-                                      className="absolute top-1/2 cursor-pointer border-y border-slate-300"
-                                      style={{
-                                        left: Math.max(0, width - (segment.waitingSeconds! / 60) * pixelsPerMinute),
-                                        width: Math.min(width, (segment.waitingSeconds! / 60) * pixelsPerMinute),
-                                        height: "6px",
-                                        backgroundColor: "#e2e8f0",
-                                        backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 6px)",
-                                        opacity: isDimmed ? 0.15 : 0.85,
-                                        transform: "translateY(-50%)",
-                                        pointerEvents: draggedStopInfo ? "none" : undefined,
-                                      }}
-                                    />
-                                  )}
-                                  </div>
-                                </Tooltip>
-                              );
+                              return <TimelineTravelSegment
+                                key={`link-${routeIndex}-${index}`}
+                                segment={segment}
+                                left={startPos}
+                                width={width}
+                                pixelsPerMinute={pixelsPerMinute}
+                                routeColor={routeColor}
+                                vehicleName={routeVehicleName}
+                                vehicleCapacity={routeVehicleCap}
+                                isDimmed={isDimmed}
+                                isDragging={Boolean(draggedStopInfo)}
+                              />;
                             })}
 
                             {/* Break Time Block */}
@@ -2428,7 +2383,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 if (breakWidth <= 0) return null;
 
                                 return (
-                                  <Tooltip
+                                  <TimelineTooltip
                                     key={`break-${routeIndex}`}
                                     title={
                                       <div>
@@ -2468,7 +2423,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         ☕
                                       </span>
                                     </div>
-                                  </Tooltip>
+                                  </TimelineTooltip>
                                 );
                               })()}
 
@@ -2515,7 +2470,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 if (idleWidth <= 0) return null;
 
                                 return (
-                                  <Tooltip
+                                  <TimelineTooltip
                                     key={`idle-${routeIndex}-${idleIndex}`}
                                     title={
                                       <div>
@@ -2550,7 +2505,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           )`,
                                       }}
                                     />
-                                  </Tooltip>
+                                  </TimelineTooltip>
                                 );
                               },
                             )}
@@ -3025,7 +2980,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                                   if (!isWorkerShuttle && isJob && serviceDuration > 0) {
                                     return (
-                                      <Tooltip
+                                      <TimelineTooltip
                                         key={`stop-${routeIndex}-${groupIndex}`}
                                         title={tooltipContent}
                                         color="#ffffff"
@@ -3132,7 +3087,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             </div>
                                           )}
                                         </div>
-                                      </Tooltip>
+                                      </TimelineTooltip>
                                     );
                                   }
 
@@ -3148,7 +3103,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         jobStatus === "success";
 
                                     return (
-                                      <Tooltip
+                                      <TimelineTooltip
                                         key={`stop-${routeIndex}-${groupIndex}`}
                                         title={tooltipContent}
                                         color="#ffffff"
@@ -3195,12 +3150,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           }
                                           onDragEnd={handleTimelineStopDragEnd}
                                         />
-                                      </Tooltip>
+                                      </TimelineTooltip>
                                     );
                                   }
 
                                   return (
-                                    <Tooltip
+                                    <TimelineTooltip
                                       key={`stop-${routeIndex}-${groupIndex}`}
                                       title={tooltipContent}
                                       color="#ffffff"
@@ -3320,7 +3275,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           </>
                                         )}
                                       </div>
-                                    </Tooltip>
+                                    </TimelineTooltip>
                                   );
                               });
                             })()}
@@ -3415,6 +3370,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         </div>
       )}
     </div>
+    </TimelineTooltipProvider>
   );
 };
 
