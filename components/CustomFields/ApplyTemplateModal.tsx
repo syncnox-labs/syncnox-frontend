@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Modal, Radio, message, Alert } from "antd";
 import { FieldTemplate, applyFieldTemplate } from "@/apis/custom-fields.api";
-import { Sparkles, Replace, GitMerge, AlertTriangle } from "lucide-react";
+import { Sparkles, AlertTriangle } from "lucide-react";
 import { useIndexStore } from "@/store/index.store";
 
 interface ApplyTemplateModalProps {
@@ -30,10 +30,9 @@ export const ApplyTemplateModal: React.FC<ApplyTemplateModalProps> = ({
       const res = await applyFieldTemplate(template.id, applyMode);
 
       if (template.entity_type === "job" || res.entity_type === "job") {
-        const slug = res.template_slug || template.slug || "";
-        const targetTemplate = slug.includes("shuttle") ? "worker_shuttle" : "pickup_delivery_job";
         const store = useIndexStore.getState();
-        store.updateActiveJobTemplate(targetTemplate);
+        // The apply endpoint saves selection together with the field schema.
+        store.setActiveJobTemplate(res.active_job_template || res.template_slug || template.slug);
       }
 
       message.success(
@@ -41,9 +40,10 @@ export const ApplyTemplateModal: React.FC<ApplyTemplateModalProps> = ({
       );
       onApplied();
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      message.error(err?.response?.data?.detail || "Failed to apply template");
+      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      message.error(typeof detail === "string" ? detail : "Failed to apply template");
     } finally {
       setSubmitting(false);
     }
@@ -131,7 +131,7 @@ export const ApplyTemplateModal: React.FC<ApplyTemplateModalProps> = ({
                   <span>Merge with Existing Custom Fields</span>
                 </div>
                 <p className="text-[11px] text-gray-500 mt-0.5">
-                  Keeps your current custom fields intact and appends template fields that don't already exist.
+                  Keeps your current custom fields intact and appends template fields that don&apos;t already exist.
                 </p>
               </div>
             </div>

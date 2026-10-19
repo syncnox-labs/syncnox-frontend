@@ -3,7 +3,7 @@
 import React from "react";
 import { Modal, Select, Checkbox } from "antd";
 import { CustomFieldDefinition, FieldSurfaces } from "@/apis/custom-fields.api";
-import { EntityTab, DEFAULT_SURFACES } from "./custom-fields.constants";
+import { EntityTab } from "./custom-fields.constants";
 
 interface CustomFieldFormModalProps {
   open: boolean;
@@ -12,7 +12,7 @@ interface CustomFieldFormModalProps {
   editingBaseFieldKey: string | null;
   label: string;
   fieldKey: string;
-  dataType: "string" | "number" | "boolean" | "select" | "date";
+  dataType: CustomFieldDefinition["data_type"];
   defaultValue: string;
   isRequired: boolean;
   isVisibleInList: boolean;
@@ -24,13 +24,13 @@ interface CustomFieldFormModalProps {
   onSave: () => void;
   onLabelChange: (val: string) => void;
   setFieldKey: (val: string) => void;
-  setDataType: (val: any) => void;
+  setDataType: (val: CustomFieldDefinition["data_type"]) => void;
   setDefaultValue: (val: string) => void;
   setIsRequired: (val: boolean) => void;
   setIsVisibleInList: (val: boolean) => void;
   setOptionsStr: (val: string) => void;
   setDescription: (val: string) => void;
-  setGroupSection: (val: any) => void;
+  setGroupSection: (val: "additional" | "optimization" | "pod") => void;
   setSurfacesState: (val: FieldSurfaces) => void;
 }
 
@@ -44,7 +44,6 @@ export const CustomFieldFormModal: React.FC<CustomFieldFormModalProps> = ({
   dataType,
   defaultValue,
   isRequired,
-  isVisibleInList,
   optionsStr,
   description,
   groupSection,
@@ -56,7 +55,6 @@ export const CustomFieldFormModal: React.FC<CustomFieldFormModalProps> = ({
   setDataType,
   setDefaultValue,
   setIsRequired,
-  setIsVisibleInList,
   setOptionsStr,
   setDescription,
   setGroupSection,
@@ -96,9 +94,10 @@ export const CustomFieldFormModal: React.FC<CustomFieldFormModalProps> = ({
             <label className="block text-xs font-semibold text-gray-700 mb-1">Section Group</label>
             <Select
               value={groupSection}
-              onChange={(val) => setGroupSection(val as any)}
+              onChange={setGroupSection}
               className="w-full text-xs"
               options={[
+                ...(editingField?.group === "optimization" ? [{ value: "optimization", label: "Optimization Fields" }] : []),
                 { value: "additional", label: "Additional Fields (Display)" },
                 { value: "pod", label: "Proof of Delivery (POD)" },
               ]}
@@ -137,7 +136,7 @@ export const CustomFieldFormModal: React.FC<CustomFieldFormModalProps> = ({
           <label className="block text-xs font-semibold text-gray-700 mb-1">Data Type</label>
           <Select
             value={dataType}
-            onChange={(val) => setDataType(val as any)}
+            onChange={setDataType}
             className="w-full text-xs"
             disabled={Boolean(editingBaseFieldKey)}
             options={[
@@ -146,6 +145,7 @@ export const CustomFieldFormModal: React.FC<CustomFieldFormModalProps> = ({
               { value: "boolean", label: "Boolean (Yes / No)" },
               { value: "select", label: "Dropdown (Select)" },
               { value: "date", label: "Date" },
+              { value: "geo", label: "Coordinates (Latitude, Longitude)" },
             ]}
           />
         </div>
