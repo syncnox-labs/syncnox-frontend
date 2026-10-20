@@ -2678,7 +2678,8 @@ const OptimizationView = ({
             }
 
             setEditJobData(null);
-            setHasUnsavedJobEdits(true);
+            // The refreshed server stops indicate actual routing changes.
+            // Contact-only edits must not prompt a paid reoptimization.
             if (selectedDrawerJob && updatedJob) {
               setSelectedDrawerJob((prev) =>
                 prev ? { ...prev, job: updatedJob } : null

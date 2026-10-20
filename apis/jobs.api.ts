@@ -32,8 +32,9 @@ export const createJob = async (job: any): Promise<Job | Job[]> => {
   return response.data;
 };
 
-export const updateJob = async (job: Job): Promise<Job> => {
-  const response = await apiClient.put<Job>(`/jobs/${job.id}`, job);
+export const updateJob = async (job: { id: number } & Partial<Job>): Promise<Job> => {
+  const { id, ...changes } = job;
+  const response = await apiClient.put<Job>(`/jobs/${id}`, changes);
   return response.data;
 };
 
