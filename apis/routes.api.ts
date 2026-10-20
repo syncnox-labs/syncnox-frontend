@@ -297,6 +297,11 @@ export const transferRouteStops = async (
   jobIds: number[],
   targetPosition?: number,
   reoptimize?: boolean,
+  options?: {
+    scope?: "jobs" | "leg"; leg?: "GO" | "RETURN";
+    expected_source_driver_id?: number; expected_target_driver_id?: number;
+    expected_source_leg?: string; expected_target_leg?: string;
+  },
 ): Promise<RouteOperationResponse> => {
   const payload: {
     target_route_index: number;
@@ -307,6 +312,7 @@ export const transferRouteStops = async (
     target_route_index: targetRouteIndex,
     job_ids: jobIds,
     reoptimize: reoptimize ?? false,
+    ...options,
   };
   if (targetPosition !== undefined) {
     payload.target_position = targetPosition;

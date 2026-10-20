@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import ReorderStopsModal from "./ReorderStopsModal";
 import TransferStopsModal from "./TransferStopsModal";
+import type { TransferSelection } from "./transferStops.utils";
 import TimelineStopArrow from "./TimelineStopArrow";
 import TimelineTravelSegment from "./TimelineTravelSegment";
 import TimelineTooltip, { TimelineTooltipProvider } from "./TimelineTooltip";
@@ -114,6 +115,7 @@ interface TimelineViewProps {
     jobIds: number[],
     targetPosition?: number,
     reoptimize?: boolean,
+    selection?: TransferSelection,
   ) => Promise<void> | void;
 }
 
@@ -3257,9 +3259,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
           setSelectedStopJobIds(new Set());
           setSelectionSourceRouteIndex(null);
         }}
-        onTransfer={async (srcIdx, tgtIdx, jobIds, pos, reopt) => {
+        onTransfer={async (srcIdx, tgtIdx, jobIds, pos, reopt, selection) => {
           if (onTransferStops) {
-            await onTransferStops(srcIdx, tgtIdx, jobIds, pos, reopt);
+            await onTransferStops(srcIdx, tgtIdx, jobIds, pos, reopt, selection);
           }
           setSelectedStopJobIds(new Set());
           setSelectionSourceRouteIndex(null);

@@ -1466,6 +1466,7 @@ const OptimizationView = ({
       jobIds: number[],
       targetPosition?: number,
       reoptimize?: boolean,
+      selection?: import("./transferStops.utils").TransferSelection,
     ) => {
       if (sourceRouteIndex === targetRouteIndex || jobIds.length === 0) return;
 
@@ -1473,57 +1474,7 @@ const OptimizationView = ({
       const targetRoute = route.result?.routes?.[targetRouteIndex];
       const targetDriverName = targetRoute?.team_member_name || `Driver #${targetRouteIndex + 1}`;
 
-      const originalSnapshot = route;
-
-      // ── Instant Optimistic Update ─────────────────────────────────────────
-      try {
-        if (route.result?.routes) {
-          const jobIdsSet = new Set(jobIds);
-          const movedStops = (sourceRoute?.stops || [])
-            .filter((s: any) => s.job_id && jobIdsSet.has(s.job_id))
-            .map((s: any) => ({ ...s, is_new: true, needs_optimization: true }));
-
-          const remainingSourceStops = (sourceRoute?.stops || []).filter(
-            (s: any) => !s.job_id || !jobIdsSet.has(s.job_id)
-          );
-
-          const targetStops = [...(targetRoute?.stops || [])];
-          const lastDepotEndIdx = targetStops.findIndex(
-            (s: any, idx: number) => idx > 0 && (s.stop_type === "depot_end" || s.stop_type === "depot")
-          );
-          const insertIdx =
-            targetPosition !== undefined
-              ? Math.min(Math.max(0, targetPosition), targetStops.length)
-              : lastDepotEndIdx >= 0
-              ? lastDepotEndIdx
-              : targetStops.length;
-
-          targetStops.splice(insertIdx, 0, ...movedStops);
-
-          const updatedRoutes = [...route.result.routes];
-          updatedRoutes[sourceRouteIndex] = {
-            ...sourceRoute,
-            stops: remainingSourceStops,
-          };
-          updatedRoutes[targetRouteIndex] = {
-            ...targetRoute,
-            stops: targetStops,
-          };
-
-          useOptimizationStore.setState({
-            currentOptimization: {
-              ...route,
-              result: {
-                ...route.result,
-                routes: updatedRoutes,
-              },
-            },
-          });
-        }
-      } catch (e) {
-        console.warn("Transfer optimistic update error:", e);
-      }
-
+      let transferSaved = false;
       try {
         message.loading({
           content: `Transferring ${jobIds.length} stop(s) to ${targetDriverName}…`,
@@ -1538,7 +1489,14 @@ const OptimizationView = ({
           jobIds,
           targetPosition,
           reoptimize,
+          { ...selection,
+            expected_source_driver_id: sourceRoute?.team_member_id,
+            expected_target_driver_id: targetRoute?.team_member_id,
+            expected_source_leg: sourceRoute?.leg,
+            expected_target_leg: targetRoute?.leg },
         );
+        if (!res.success) throw new Error(res.message || "Transfer failed");
+        transferSaved = true;
 
         if (res.success) {
           message.success({
@@ -1551,22 +1509,27 @@ const OptimizationView = ({
             setOptimizationResult("processing");
 
             await pollUntilComplete(route.id);
-          } else {
-            await fetchOptimization(route.id);
+          }
+          const refresh = await Promise.allSettled([
+            fetchOptimization(route.id), fetchJobsByIds(route.job_ids || jobIds), refreshUndoHistory(),
+          ]);
+          if (refresh.some(item => item.status === "rejected") || useJobsStore.getState().error) {
+            message.warning("Transfer saved. Refresh the plan to load the latest assignments.");
           }
         }
       } catch (error: any) {
-        // Rollback on failure
-        useOptimizationStore.setState({
-          currentOptimization: originalSnapshot,
-        });
+        if (transferSaved) {
+          message.warning({ content: "Transfer saved. Re-optimization or refresh failed; refresh the plan before continuing.", key: "transfer_stops" });
+          return;
+        }
         message.error({
           content: error?.response?.data?.detail || error?.message || "Failed to transfer stops",
           key: "transfer_stops",
         });
+        throw error;
       }
     },
-    [route, fetchOptimization, pollUntilComplete, setOptimizationResult],
+    [route, fetchOptimization, fetchJobsByIds, refreshUndoHistory, pollUntilComplete, setOptimizationResult],
   );
 
   // Map marker removal uses the same validated confirmation as the timeline.
