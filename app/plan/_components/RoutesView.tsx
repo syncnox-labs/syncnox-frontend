@@ -11,6 +11,7 @@ import { createActionsColumn } from "@/components/Table/ActionsColumn";
 import Link from "next/link";
 import { useIndexStore } from "@/store/index.store";
 import { FilterFilled, DeleteOutlined, ExclamationCircleFilled } from "@ant-design/icons";
+import dayjs from "dayjs";
 
 const { Title } = Typography;
 
@@ -214,6 +215,22 @@ export default function RoutesView() {
       field: "assigned_team_members",
       valueFormatter: (params) =>
         params.value?.map((m: any) => m.name).join(", ") || "-",
+    },
+    {
+      headerName: "Created At",
+      field: "created_at",
+      valueFormatter: (params) => {
+        if (!params.value) return "-";
+        const d = dayjs(params.value);
+        return d.isValid() ? d.format("YYYY-MM-DD hh:mm A") : String(params.value);
+      },
+      comparator: (valueA, valueB) => {
+        if (!valueA && !valueB) return 0;
+        if (!valueA) return -1;
+        if (!valueB) return 1;
+        return new Date(valueA).getTime() - new Date(valueB).getTime();
+      },
+      width: 180,
     },
     {
       headerName: "Distance",

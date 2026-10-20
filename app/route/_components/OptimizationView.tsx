@@ -42,6 +42,7 @@ import { getRouteStopDisplay } from "./stopDisplay.utils";
 import TimelineView from "./TimelineView";
 import AssignedJobsTable from "./AssignedJobsTable";
 import { getAssignedRouteJobs, getUnassignedRouteJobs } from "./assignedRouteJobs.utils";
+import { getAddedJobIds, stopNeedsOptimization } from "./jobAddition.utils";
 import AddJobsModal from "@/app/plan/AddJobsModal";
 import JobForm from "@/components/Jobs/JobForm";
 import SwapDriverDrawer from "./SwapDriverDrawer";
@@ -72,6 +73,7 @@ import ResizeHandle from "@/components/ResizeHandle";
 import Icon from "@ant-design/icons";
 import {
   addStopToRoute,
+  createJobsInPlan,
   getOptimizationHistory,
   undoOptimizationRevision,
   removeStopFromRoute,
@@ -307,7 +309,7 @@ const OptimizationView = ({
       const restored = await fetchOptimization(route.id);
       await fetchJobsByDate(route.scheduled_date);
       setHasUnsavedJobEdits(restored.result?.routes?.some((driverRoute) =>
-        driverRoute.stops?.some((stop) => stop.is_new || stop.time_edited)
+        driverRoute.stops?.some(stopNeedsOptimization)
       ) || false);
       message.success({ content: `Undone: ${undoStep.label}`, key: "undo" });
     } catch (err: unknown) {
@@ -1119,26 +1121,30 @@ const OptimizationView = ({
 
   // ── Route Operations handlers ──
 
-  const handleJobCreatedForRoute = useCallback(
-    async (job: Job) => {
-      const targetRouteIndex = targetRouteIndexRef.current ?? addStopRouteIndex;
-      if (targetRouteIndex === null) return;
-      try {
-        const res = await addStopToRoute(route.id, targetRouteIndex, job.id);
-        if (res.success) {
-          const routeData = route.result?.routes?.[targetRouteIndex];
-          const driverName = routeData?.team_member_name || "Driver";
-          message.success(res.message || `Job #${job.id} added to ${driverName}'s route! Newly added stop is highlighted.`);
-          setHasUnsavedJobEdits(true);
-
-          await fetchOptimization(route.id);
-        }
-      } catch (error: any) {
-        message.error(error?.response?.data?.detail || "Failed to add job");
-      }
-    },
-    [route.id, addStopRouteIndex, fetchOptimization, route.result?.routes],
-  );
+  const createPlanJobs = useCallback(async (
+    payload: Record<string, unknown>, token: string, targetIndex?: number,
+  ) => {
+    const trip = targetIndex !== undefined ? route.result?.routes?.[targetIndex] : undefined;
+    if (targetIndex !== undefined && !trip) throw new Error("The selected route is unavailable. Refresh the plan.");
+    const response = await createJobsInPlan(route.id, payload, token, trip ? {
+      route_index: targetIndex!, expected_driver_id: trip.team_member_id, expected_leg: trip.leg,
+    } : undefined);
+    if (!response.success) throw new Error(response.message || "Unable to add jobs to this plan.");
+    response.jobs.forEach(job => useJobsStore.getState().patchJobLocally(job));
+    useOptimizationStore.setState(state => state.currentOptimization?.id === route.id ? {
+      currentOptimization: { ...state.currentOptimization, result: response.result, job_ids: response.job_ids },
+    } : {});
+    if (trip && new Set(response.jobs.map(job => job.route_id)).size > 1) {
+      // Show both of this driver's directional trips after adding a round trip.
+      setFocusedRouteIndex(null);
+      setDriverSearch(trip.team_member_name || "");
+      setExactMatch(true);
+    }
+    setHasUnsavedJobEdits(true);
+    void refreshUndoHistory();
+    message.success(response.message);
+    return response.jobs;
+  }, [route.id, route.result?.routes, refreshUndoHistory]);
 
   const handleRemoveJob = useCallback(
     (routeIndex: number, jobId: number, _stopType?: string, driverName?: string) => {
@@ -1482,7 +1488,7 @@ const OptimizationView = ({
           const jobIdsSet = new Set(jobIds);
           const movedStops = (sourceRoute?.stops || [])
             .filter((s: any) => s.job_id && jobIdsSet.has(s.job_id))
-            .map((s: any) => ({ ...s, is_new: true }));
+            .map((s: any) => ({ ...s, is_new: true, needs_optimization: true }));
 
           const remainingSourceStops = (sourceRoute?.stops || []).filter(
             (s: any) => !s.job_id || !jobIdsSet.has(s.job_id)
@@ -1845,7 +1851,7 @@ const OptimizationView = ({
     if (hasUnsavedJobEdits) return true;
     if (!route.result?.routes) return false;
     return route.result.routes.some((r) =>
-      r.stops?.some((s: any) => s.is_new || s.time_edited || s.is_edited)
+      r.stops?.some(stopNeedsOptimization)
     );
   }, [hasUnsavedJobEdits, route.result?.routes]);
 
@@ -2488,7 +2494,9 @@ const OptimizationView = ({
         {/* Upper-styled Floating Job Details Card Overlay (Over Map AND Timeline View!) */}
         {selectedDrawerJob && (
           <JobDetailsCard
-            stopData={selectedDrawerJob.stopData}
+            stopData={{ ...selectedDrawerJob.stopData,
+              is_new: Boolean(selectedDrawerJob.stopData?.is_new
+                || getAddedJobIds(route.result).has(Number(selectedDrawerJob.job?.id))) }}
             job={selectedDrawerJob.job}
             routeStops={selectedDrawerJob.routeIndex !== undefined
               ? route.result?.routes?.[selectedDrawerJob.routeIndex]?.stops || []
@@ -2564,7 +2572,11 @@ const OptimizationView = ({
             targetRouteIndexRef.current = null;
           }
         }}
-        onJobCreated={handleJobCreatedForRoute}
+        createJobs={(payload, token) => {
+          const target = targetRouteIndexRef.current ?? addStopRouteIndex;
+          if (target === null) throw new Error("Select a route before adding a job.");
+          return createPlanJobs(payload, token, target);
+        }}
         defaultTemplate={route.result?.routes?.some(r => (r as any).leg !== undefined) ? "worker_shuttle" : undefined}
         defaultDate={route?.scheduled_date ? String(route.scheduled_date) : undefined}
         defaultJobType={
@@ -2580,34 +2592,15 @@ const OptimizationView = ({
         setOpen={setIsAddJobOpen}
         onCancel={() => setIsAddJobOpen(false)}
         defaultTemplate={route.result?.routes?.some(r => (r as any).leg !== undefined) ? "worker_shuttle" : undefined}
-        onJobCreated={async (newJob) => {
-          if (route.scheduled_date) {
-            fetchJobsByDate(route.scheduled_date);
+        defaultDate={route?.scheduled_date ? String(route.scheduled_date) : undefined}
+        createJobs={(payload, token) => {
+          let target = focusedRouteIndex ?? undefined;
+          if (target === undefined && allowedRouteIndices?.size) {
+            const indices = [...allowedRouteIndices];
+            const drivers = new Set(indices.map(index => route.result.routes[index]?.team_member_id));
+            if (drivers.size === 1) target = indices[0];
           }
-          try {
-            const currentJobIds = route.job_ids || [];
-            if (newJob.id && !currentJobIds.includes(newJob.id)) {
-              const updatedResult = { ...route.result };
-              if (!updatedResult.unassigned_jobs) {
-                updatedResult.unassigned_jobs = [];
-              }
-              updatedResult.unassigned_jobs.push({
-                job_id: newJob.id,
-                reason_code: "MANUALLY_ADDED",
-                reason: "Added to unassigned pool manually"
-              });
-
-              await updateOptimization(route.id, {
-                job_ids: [...currentJobIds, newJob.id],
-                result: updatedResult
-              });
-              await fetchOptimization(route.id);
-            }
-            setHasUnsavedJobEdits(true);
-            message.success("New job added to unassigned pool. Click 'Reoptimize All Routes' to re-run the global optimization, or assign it manually and use 'Reoptimize Route'.");
-          } catch (err) {
-            message.error("Failed to link new job to the optimization request.");
-          }
+          return createPlanJobs(payload, token, target);
         }}
       />
 

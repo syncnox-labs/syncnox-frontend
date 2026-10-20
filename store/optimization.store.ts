@@ -9,6 +9,7 @@ import {
   UpdateOptimizationRequestPayload,
 } from "@/apis/routes.api";
 import { Route } from "@/types/routes.type";
+import { formatOptimizationError } from "@/utils/optimizationError.utils";
 
 interface OptimizationStore {
   currentOptimization: Route | null;
@@ -103,7 +104,7 @@ export const useOptimizationStore = create<OptimizationStore>((set, get) => ({
     try {
       set({ error: null });
       const optimization = await getOptimizationRequest(id);
-      set({ currentOptimization: optimization });
+      set({ currentOptimization: optimization, error: optimization.error_message ? formatOptimizationError(optimization.error_message) : null });
       return optimization;
     } catch (error: any) {
       const errorMessage =
@@ -153,23 +154,24 @@ export const useOptimizationStore = create<OptimizationStore>((set, get) => ({
   pollUntilComplete: async (id: number, intervalMs = 2000, maxAttempts = 90) => {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      let optimization: Route;
       try {
-        const optimization = await getOptimizationRequest(id);
-        set({ currentOptimization: optimization });
-        const status = optimization.status;
-        if (status === "completed" || status === "failed") {
-          set({ isOptimizing: false });
-          if (status === "failed") {
-            const errMsg = (optimization as any).error_message || "Re-optimization failed";
-            set({ error: errMsg });
-          } else {
-            set({ error: null });
-          }
-          return optimization;
-        }
+        optimization = await getOptimizationRequest(id);
       } catch (err: any) {
         // Network hiccup — keep polling
         console.warn("[pollUntilComplete] fetch error, retrying:", err?.message);
+        continue;
+      }
+      set({ currentOptimization: optimization });
+      const status = optimization.status;
+      if (status === "completed" || status === "failed") {
+        const rawError = optimization.error_message || (status === "failed" ? "Re-optimization failed" : null);
+        const errMsg = rawError ? formatOptimizationError(rawError) : null;
+        set({ isOptimizing: false, error: errMsg });
+        // A rejected route operation restores completed + error_message.
+        // Surface that rejection instead of displaying a success notification.
+        if (errMsg) throw new Error(errMsg);
+        return optimization;
       }
     }
     // Timed out

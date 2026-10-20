@@ -9,7 +9,14 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 const helpers = {};
-new Function("exports", compiled)(helpers);
+const additionHelpers = {};
+new Function("exports", ts.transpileModule(fs.readFileSync(path.join(__dirname, "../app/route/_components/jobAddition.utils.ts"), "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText)(additionHelpers);
+new Function("exports", "require", compiled)(helpers, name => {
+  assert.equal(name, "./jobAddition.utils");
+  return additionHelpers;
+});
 const { getAssignedRouteJobs } = helpers;
 
 const pickup = (job_id, hour = "08") => ({ job_id, stop_type: "pickup", arrival_time: `2026-09-29T${hour}:00:00` });
@@ -22,6 +29,17 @@ const plan = () => ({
     { team_member_id: 9, vehicle_id: 12, vehicle_name: "Bus", leg: "RETURN",
       stops: [pickup(3, "17"), dropoff(3, "18")] },
   ] },
+});
+
+test("optimized additions keep their badge in assigned and unassigned tables without changing lifecycle status", () => {
+  const route = plan();
+  route.result.added_job_ids = [1, 4];
+  route.result.unassigned_jobs = [{ job_id: 4, is_new: true }];
+  const jobs = [job(1), job(2), job(4, "draft")];
+  assert.equal(helpers.getAssignedRouteJobs(route, jobs)[0].is_new, true);
+  assert.equal(helpers.getAssignedRouteJobs(route, jobs)[1].is_new, false);
+  assert.equal(helpers.getUnassignedRouteJobs(route, jobs)[0].is_new, true);
+  assert.equal(jobs[0].is_new, undefined);
 });
 
 test("shows each assigned job once and excludes unassigned jobs and jobs from other plans", () => {
