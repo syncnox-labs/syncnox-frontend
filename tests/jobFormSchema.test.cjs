@@ -148,7 +148,16 @@ test("the configured delivery window remains one field and supplies the API's ro
 });
 
 function renderJobForm(fields, config = {}, props = {}) {
+  const antd = require("antd");
+  const ObservedForm = formProps => {
+    config.onForm?.(formProps);
+    return React.createElement(antd.Form, formProps);
+  };
+  Object.assign(ObservedForm, antd.Form);
   const { default: JobForm } = loadSource("components/Jobs/JobForm.tsx", {
+    antd: config.onForm ? { ...antd, Form: ObservedForm,
+      message: { useMessage: () => [{ success() {}, error: value => config.errors?.push(value) }, null] },
+    } : antd,
     "./jobForm.schema": schema,
     "@/hooks/useFieldConfig": { useFieldConfig: () => ({ customFields: fields, loading: false, error: null, reloadConfigs() {}, ...config }) },
     "@/store/jobs.store": { useJobsStore: () => ({ isLoading: false }) },
@@ -249,4 +258,63 @@ test("pickup type select labels are readable while submitted values keep their A
     const payload = buildJobFormPayload(fields, getJobInitialValues(fields, initialData), "worker_shuttle");
     assert.equal(payload.pickup_type, value);
   }
+});
+
+test("creation failures stay retryable, duplicate clicks are blocked, and both legs reach an awaited callback", async () => {
+  let finish, calls = 0, releaseCreation, releaseAttachment;
+  const errors = [], busy = [], received = [];
+  renderJobForm([field("pickup_type", { data_type: "select", options: ["round_trip"] })], {
+    errors, onForm: props => { finish = props.onFinish; },
+  }, {
+    createJobs: async () => {
+      calls++;
+      if (calls === 1) throw { response: { data: { detail: "Address could not be located" } } };
+      return new Promise(resolve => { releaseCreation = resolve; });
+    },
+    onSubmittingChange: value => busy.push(value),
+    onSubmit: async (first, jobs) => {
+      received.push([first, jobs]);
+      await new Promise(resolve => { releaseAttachment = resolve; });
+    },
+  });
+  await finish({ pickup_type: "round_trip" });
+  assert.deepEqual(errors, ["Address could not be located"]);
+  assert.equal(received.length, 0);
+  const pending = finish({ pickup_type: "round_trip" });
+  await finish({ pickup_type: "round_trip" });
+  assert.equal(calls, 2, "the second simultaneous submit must not create another booking");
+  releaseCreation([{ id: 1, job_type: "one_way" }, { id: 2, job_type: "return_only" }]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(received[0][0].id, 1);
+  assert.deepEqual(received[0][1].map(job => job.id), [1, 2]);
+  assert.equal(busy.at(-1), true, "the form stays busy until its caller completes");
+  releaseAttachment();
+  await pending;
+  assert.equal(busy.at(-1), false);
+});
+
+test("add modal waits for attachment, preserves the booking array, and reuses its retry token", async () => {
+  let formProps, closed = 0, release, received;
+  const tokens = [];
+  const { default: Modal } = loadSource("app/plan/AddJobsModal.tsx", {
+    "@/components/Jobs/JobForm": { __esModule: true, default: props => { formProps = props; return null; } },
+    antd: { Modal: ({ children }) => children },
+  });
+  const createJobs = async (_, token) => { tokens.push(token); return [{ id: 1 }, { id: 2 }]; };
+  const props = { open: true, setOpen: open => { if (!open) closed++; }, createJobs,
+    onJobCreated: async (_, jobs) => { received = jobs; await new Promise(resolve => { release = resolve; }); },
+  };
+  renderToStaticMarkup(React.createElement(Modal, props));
+  await formProps.createJobs({});
+  await formProps.createJobs({});
+  assert.equal(tokens[0], tokens[1]);
+  const pending = formProps.onSubmit({ id: 1 }, [{ id: 1 }, { id: 2 }]);
+  assert.equal(closed, 0);
+  assert.equal(received.length, 2);
+  release();
+  await pending;
+  assert.equal(closed, 1);
+  renderToStaticMarkup(React.createElement(Modal, props));
+  await formProps.createJobs({});
+  assert.notEqual(tokens[2], tokens[0], "a fresh add form starts a new booking");
 });

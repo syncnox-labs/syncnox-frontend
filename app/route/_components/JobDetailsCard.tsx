@@ -563,7 +563,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
           {Boolean(stopData?.is_new || job?.is_new) && (
             <span className="shrink-0 text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-400 flex items-center gap-1 animate-pulse">
               <Sparkles size={11} className="text-emerald-700" />
-              NEW STOP
+              Newly added
             </span>
           )}
           {Boolean(stopData?.time_edited || (job as any)?.time_edited || stopData?.is_edited || (job as any)?.is_edited) && (

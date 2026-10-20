@@ -23,6 +23,7 @@ export interface Stop {
   leg?: "GO" | "RETURN";
   segment_type_to_next?: "team_leader_work";
   is_new?: boolean;
+  needs_optimization?: boolean;
   time_edited?: boolean;
   candidate_name?: string;
   passenger_count?: number;
@@ -49,6 +50,7 @@ export interface Routes {
 
 export interface UnassignedJob {
   job_id: number;
+  is_new?: boolean;
   job_name?: string;
   worker_name?: string;
   candidate_name?: string;
@@ -61,6 +63,8 @@ export interface UnassignedJob {
 }
 
 interface RouteResult {
+  added_job_ids?: number[];
+  manual_job_creations?: Record<string, { fingerprint: string; job_ids: number[] }>;
   routes: Routes[];
   status: OptimizationStatus;
   generated_at: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
 import { Alert, Button, Checkbox, Col, DatePicker, Empty, Flex, Form, Input, InputNumber, Row, Select, Spin, TimePicker, message } from "antd";
 import type { Rule } from "antd/es/form";
@@ -18,7 +18,9 @@ import { ADDRESS_LOCATION_KEYS, buildJobFormPayload, getJobFieldControl, getJobF
 
 interface JobFormProps {
   initialData?: Job | null;
-  onSubmit?: (job?: Job) => void;
+  onSubmit?: (job?: Job, jobs?: Job[]) => void | Promise<void>;
+  createJobs?: (payload: Record<string, unknown>) => Promise<Job | Job[]>;
+  onSubmittingChange?: (saving: boolean) => void;
   defaultTemplate?: string;
   defaultDate?: string | dayjs.Dayjs;
   defaultJobType?: string;
@@ -30,8 +32,10 @@ const GeoInput = ({ value, onChange }: { value?: unknown; onChange?: (value: str
     placeholder="Latitude, longitude" onChange={event => onChange?.(event.target.value)} />;
 };
 
-const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, defaultJobType }: JobFormProps) => {
+const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, defaultJobType, createJobs, onSubmittingChange }: JobFormProps) => {
   const [form] = Form.useForm();
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [messageApi, contextHolder] = message.useMessage();
   const { isLoading, createJobAction, updateJobAction } = useJobsStore();
   const { teams } = useTeamStore();
@@ -71,18 +75,27 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
   }, [form, initialValues, initialData, loading]);
 
   const onFinish = async (values: Record<string, unknown>) => {
-    if (loading || error || !fields.length) return;
-    const payload = buildJobFormPayload(fields, values, activeTemplate, addressLocations.current);
+    if (loading || error || !fields.length || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    onSubmittingChange?.(true);
     try {
+      const payload = buildJobFormPayload(fields, values, activeTemplate, addressLocations.current);
       const job = initialData?.id
         ? await updateJobAction({ ...payload, id: initialData.id } as Job)
-        : await createJobAction(payload);
-      messageApi.success(initialData ? "Job updated successfully" : "Job created successfully");
-      onSubmit?.(Array.isArray(job) ? job[0] : job);
+        : await (createJobs ? createJobs(payload) : createJobAction(payload));
+      const saved = (Array.isArray(job) ? job : [job]) as Job[];
+      await onSubmit?.(saved[0], saved);
+      if (!createJobs) messageApi.success(initialData ? "Job updated successfully" : `${saved.length} job(s) created successfully`);
     } catch (failure: unknown) {
       const detail = (failure as { detail?: unknown; response?: { data?: { detail?: unknown } } })?.response?.data?.detail
         ?? (failure as { detail?: unknown })?.detail;
-      messageApi.error(typeof detail === "string" ? detail : "Unable to save job. Check the configured fields and try again.");
+      const validation = Array.isArray(detail) ? detail.map(item => item.msg).filter(Boolean).join("; ") : undefined;
+      messageApi.error(typeof detail === "string" ? detail : validation || (failure instanceof Error ? failure.message : "Unable to save job. Check the configured fields and try again."));
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+      onSubmittingChange?.(false);
     }
   };
 
@@ -134,7 +147,7 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
       {loading ? <div className="flex justify-center py-12"><Spin /></div>
         : error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => void reloadConfigs()}>Retry</Button>} />
         : fields.length === 0 ? <Empty description="No job fields are enabled for dispatch. Configure them in Custom Fields settings." />
-        : <Form form={form} initialValues={initialValues} layout="vertical" onFinish={onFinish} preserve={false}>
+        : <Form disabled={submitting} form={form} initialValues={initialValues} layout="vertical" onFinish={onFinish} preserve={false}>
           <Row gutter={16}>
             {fields.map(field => {
               const control = getJobFieldControl(field);
@@ -154,7 +167,7 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
           </Row>
         </Form>}
     </div>
-    <Button type="primary" block icon={<PlusCircleOutlined />} loading={isLoading}
+    <Button type="primary" block icon={<PlusCircleOutlined />} loading={isLoading || submitting}
       disabled={loading || Boolean(error) || fields.length === 0} style={{ marginTop: 12 }} onClick={() => form.submit()}>
       {initialData ? "Update" : "Add"}
     </Button>

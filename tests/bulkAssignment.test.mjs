@@ -63,3 +63,19 @@ test("API conflicts propagate without automatic individual retries", async () =>
   await assert.rejects(api.bulkAssignJobsToRoute(226, 0, [171, 173], 90), (actual) => actual === error);
   assert.equal(requests, 1);
 });
+
+test("new round-trip booking is created and attached by one retry-safe plan request", async () => {
+  const calls = [];
+  const response = { success: true, jobs: [{ id: 1, job_type: "one_way" }, { id: 2, job_type: "return_only" }],
+    job_ids: [1, 2], assigned_job_ids: [1], unassigned_job_ids: [2], result: {} };
+  const api = routesApi(async (...args) => { calls.push(args); return { data: response }; });
+  const target = { route_index: 0, expected_driver_id: 90, expected_leg: "GO" };
+  const result = await api.createJobsInPlan(226, { pickup_type: "round_trip" }, "submission-token", target);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], "optimization/requests/226/jobs");
+  assert.equal(calls[0][1].request_token, "submission-token");
+  assert.equal(calls[0][1].job.pickup_type, "round_trip");
+  assert.equal(calls[0][1].expected_leg, "GO");
+  assert.equal(result.jobs.length, 2);
+  assert.equal(result, response);
+});

@@ -324,3 +324,25 @@ export const shareOptimizationRoutes = async (
   );
   return response.data;
 };
+
+
+export interface CreatePlanJobsResponse {
+  success: boolean;
+  message: string;
+  jobs: import("@/types/job.type").Job[];
+  job_ids: number[];
+  assigned_job_ids: number[];
+  unassigned_job_ids: number[];
+  result: Route["result"];
+}
+
+/** Create and attach every booking leg in one retry-safe server transaction. */
+export const createJobsInPlan = async (
+  optimizationId: number, job: Record<string, unknown>, requestToken: string,
+  target?: { route_index: number; expected_driver_id: number; expected_leg?: string },
+): Promise<CreatePlanJobsResponse> => {
+  const response = await apiClient.post<CreatePlanJobsResponse>(`optimization/requests/${optimizationId}/jobs`, {
+    job, request_token: requestToken, ...target,
+  });
+  return response.data;
+};

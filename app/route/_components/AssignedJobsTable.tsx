@@ -42,14 +42,14 @@ export default function AssignedJobsTable({ jobs, unassignedJobs, loading, error
 
   const columns = useMemo<ColDef<Job>[]>(() => [
     ...createJobTableColumns({ templateType, jobStatus: "assigned", teamsMap, onIdClick: onOpenJob }).map(column =>
-      column.field === "status" ? { ...column, headerName: "Assignment",
+      column.field === "status" ? { ...column, headerName: "Assignment", width: 220, minWidth: 220,
         valueGetter: ({ data }: { data?: Job }) => data && unassignedIds.has(data.id) ? "Unassigned" : "Assigned",
         cellRenderer: ({ data }: { data?: Job }) => {
           const unassigned = Boolean(data && unassignedIds.has(data.id));
-          return <span className={`inline-block px-2 text-xs font-semibold border ${unassigned
+          return <span className="inline-flex items-center gap-1"><span className={`inline-block px-2 text-xs font-semibold border ${unassigned
             ? "bg-red-50 text-red-700 border-red-200" : "bg-emerald-50 text-emerald-800 border-emerald-200"}`}>
             {unassigned ? "Unassigned" : "Assigned"}
-          </span>;
+          </span>{data?.is_new && <span className="border border-emerald-300 bg-emerald-50 px-1 text-[10px] font-semibold text-emerald-800">Newly added</span>}</span>;
         },
       } : column),
     ...customFields.map(field => ({
