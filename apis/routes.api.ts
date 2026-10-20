@@ -149,11 +149,24 @@ export const removeStopFromRoute = async (
   routeIndex: number,
   jobId: number,
   stopType?: string,
+  options?: { removeBothLegs?: boolean; expectedDriverId?: number; expectedLeg?: string },
 ): Promise<RouteOperationResponse> => {
   const response = await apiClient.delete(
     `optimization/requests/${optimizationId}/routes/${routeIndex}/stops/${jobId}`,
-    { params: stopType ? { stop_type: stopType } : undefined },
+    { params: { ...(stopType ? { stop_type: stopType } : {}),
+      remove_both_legs: options?.removeBothLegs ?? false,
+      expected_driver_id: options?.expectedDriverId, expected_leg: options?.expectedLeg } },
   );
+  return response.data;
+};
+
+/** Apply a map/area selection atomically across all affected routes. */
+export const removeRouteJobs = async (
+  optimizationId: number, jobIds: number[], includeRoundTripPartners = false,
+): Promise<RouteOperationResponse> => {
+  const response = await apiClient.post(`optimization/requests/${optimizationId}/remove-jobs`, {
+    job_ids: jobIds, include_round_trip_partners: includeRoundTripPartners,
+  });
   return response.data;
 };
 

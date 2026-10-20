@@ -10,11 +10,11 @@ const compiled = ts.transpileModule(source, {
 }).outputText;
 const helpers = {};
 new Function("exports", compiled)(helpers);
-const { findRoundTripPartner, getTripRemovalTargets } = helpers;
+const { findRoundTripPartner, getTripRemovalTargets, isRoundTripBooking } = helpers;
 
 const job = (id, job_type, changes = {}) => ({
   id, job_type, template_type: "worker_shuttle", scheduled_date: "2026-09-29",
-  custom_fields: { candidate_id: "7107", candidate_name: "Passenger", client_name: "Client", start_hour: "17:00", end_hour: "04:00" },
+  custom_fields: { pickup_type: "round_trip", candidate_id: "7107", candidate_name: "Passenger", client_name: "Client", start_hour: "17:00", end_hour: "04:00" },
   ...changes,
 });
 const outbound = job(10512, "one_way");
@@ -57,4 +57,21 @@ test("another passenger or another date is never selected", () => {
 
 test("ambiguous opposite jobs are not linked automatically", () => {
   assert.equal(findRoundTripPartner(outbound, [outbound, returning, job(10516, "return_only")]), undefined);
+});
+
+test("independent one-way and return-only bookings do not trigger round-trip removal", () => {
+  const single = job(1, "one_way", { custom_fields: { candidate_name: "Passenger" } });
+  assert.equal(isRoundTripBooking(single), false);
+  assert.equal(findRoundTripPartner(single, [single, returning]), undefined);
+});
+
+test("round-trip choice is available even when the partner is not loaded", () => {
+  assert.equal(isRoundTripBooking(outbound), true);
+  assert.equal(findRoundTripPartner(outbound, [outbound]), undefined);
+});
+
+test("stable booking identity survives edited names and shift hours", () => {
+  const go = job(1, "one_way", { custom_fields: { pickup_type: "round_trip", round_trip_booking_id: "booking-1", candidate_name: "Original" } });
+  const back = job(2, "return_only", { custom_fields: { pickup_type: "round_trip", round_trip_booking_id: "booking-1", candidate_name: "Changed", start_hour: "21:00" } });
+  assert.equal(findRoundTripPartner(go, [go, back, returning]), back);
 });

@@ -29,7 +29,7 @@ interface JobsState {
   fetchAllJobs: () => Promise<void>;
   setSelectedDate: (date: string | null) => void;
   createJobAction: (job: any) => Promise<any>;
-  updateJobAction: (job: Job) => Promise<Job>;
+  updateJobAction: (job: { id: number } & Partial<Job>) => Promise<Job>;
   deleteJobAction: (jobId: number) => Promise<void>;
   deleteJobsAction: (jobIds: number[], status: JobStatus) => Promise<void>;
   refreshDraftJobs: () => Promise<void>;
@@ -234,7 +234,8 @@ export const useJobsStore = create<JobsState>()(
       },
 
       // Update job and refresh
-      updateJobAction: async (job: Job) => {
+      updateJobAction: async (job: { id: number } & Partial<Job>) => {
+        const originalDate = get().jobs.find(item => item.id === job.id)?.scheduled_date;
         set((state) => {
           state.isLoading = true;
           state.error = null;
@@ -243,8 +244,15 @@ export const useJobsStore = create<JobsState>()(
         try {
           const updatedJob = await updateJob(job);
 
-          // Refresh all jobs from server
-          await get().fetchAllJobs();
+          // The API returns every leg changed in the same booking edit. Merge
+          // them without replacing this route's job list with another date's
+          // global table filter or making an additional fetch for each leg.
+          const savedJobs = updatedJob.updated_jobs?.length ? updatedJob.updated_jobs : [updatedJob];
+          savedJobs.forEach(saved => get().patchJobLocally(saved));
+          if (originalDate && originalDate !== updatedJob.scheduled_date) {
+            await get().fetchAllJobs();
+          }
+          set((state) => { state.isLoading = false; });
 
           return updatedJob;
         } catch (error) {

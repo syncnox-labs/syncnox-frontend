@@ -74,6 +74,8 @@ export interface PickupDeliveryDetail {
 
 export interface Job {
   id: number;
+  /** All legs saved atomically when shared round-trip inputs are edited. */
+  updated_jobs?: Job[];
   tenant_id: number;
   assigned_to?: number;
   template_type?: JobTemplateType | string;
