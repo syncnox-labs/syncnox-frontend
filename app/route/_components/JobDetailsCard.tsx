@@ -28,7 +28,7 @@ import dayjs from "dayjs";
 import type { Job } from "@/types/job.type";
 import { formatTime12h } from "@/utils/app.utils";
 import { getJobPickupType } from "@/utils/jobPickupType.utils";
-import { updateJobStatus, updateJob } from "@/apis/jobs.api";
+import { updateJobStatus } from "@/apis/jobs.api";
 import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
 import { useDepotStore } from "@/store/depots.store";
@@ -139,7 +139,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   onEditJob,
   isFullscreen = false,
 }) => {
-  const { patchJobLocally, jobs } = useJobsStore();
+  const { patchJobLocally, updateJobAction, jobs } = useJobsStore();
   const { modal } = App.useApp();
   const { fetchRoutes, selectedStatus } = useRouteStore();
   const { depots } = useDepotStore();
@@ -408,8 +408,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
         setIsEditing(false);
         return;
       }
-      const updated = await updateJob(payload);
-      patchJobLocally(updated);
+      const updated = await updateJobAction(payload);
       setIsEditing(false);
       await onJobSaved?.({
         requiresReOptimization, timeChanged,

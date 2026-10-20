@@ -60,7 +60,7 @@ import { useLocationMappingStore } from "@/store/location-mapping.store";
 import { LOCATION_TYPE_OPTIONS } from "@/apis/location-mapping.api";
 import { LOCATION_TYPE_COLORS, getLocationTypeColor } from "@/utils/customMapMarker";
 import RouteInfoWindow from "./RouteInfoWindow";
-import { findRoundTripPartner, getTripRemovalTargets } from "./tripRemoval.utils";
+import { findRoundTripPartner, isRoundTripBooking } from "./tripRemoval.utils";
 import RouteExportPreview from "./RouteExportPreview";
 import {
   generateRoutePolylines,
@@ -77,6 +77,7 @@ import {
   getOptimizationHistory,
   undoOptimizationRevision,
   removeStopFromRoute,
+  removeRouteJobs,
   reorderRouteStops,
   swapRouteDriver,
   reverseRoute,
@@ -253,19 +254,19 @@ const OptimizationView = ({
   const [removeJobTarget, setRemoveJobTarget] = useState<{
     routeIndex: number;
     jobId: number;
-    partnerJobId: number;
+    partnerJobId?: number;
     tripLabel: string;
     driverName: string;
+    expectedDriverId?: number;
+    expectedLeg?: string;
   } | null>(null);
   const [isRemovingJob, setIsRemovingJob] = useState(false);
+  const [removeAreaJobIds, setRemoveAreaJobIds] = useState<number[] | null>(null);
+  const removalInFlight = useRef(false);
 
   const applyStagedRemovals = useCallback(async () => {
-    for (const jobId of pendingDeletedJobIds) {
-      for (const [routeIndex, driverRoute] of (route.result?.routes || []).entries()) {
-        if (driverRoute.stops?.some((stop) => Number(stop.job_id) === jobId)) {
-          await removeStopFromRoute(route.id, routeIndex, jobId);
-        }
-      }
+    if (pendingDeletedJobIds.size) {
+      await removeRouteJobs(route.id, [...pendingDeletedJobIds]);
     }
     await fetchOptimization(route.id);
   }, [pendingDeletedJobIds, route.id, route.result?.routes, fetchOptimization]);
@@ -1146,94 +1147,86 @@ const OptimizationView = ({
     return response.jobs;
   }, [route.id, route.result?.routes, refreshUndoHistory]);
 
+  const refreshAfterRemoval = useCallback(async (removedIds: number[]) => {
+    const results = await Promise.allSettled([
+      fetchOptimization(route.id), fetchJobsByIds(route.job_ids || removedIds), refreshUndoHistory(),
+    ]);
+    if (results[0].status === "fulfilled") {
+      setHasUnsavedJobEdits(results[0].value.result?.routes?.some(trip => trip.stops?.some(stopNeedsOptimization)) || false);
+    }
+    if (results.some(result => result.status === "rejected") || useJobsStore.getState().error) {
+      message.warning("Removal saved. Refresh the plan to load the latest details.");
+    }
+  }, [route.id, route.job_ids, fetchOptimization, fetchJobsByIds, refreshUndoHistory]);
+
   const handleRemoveJob = useCallback(
     (routeIndex: number, jobId: number, _stopType?: string, driverName?: string) => {
-      setSelectedDrawerJob(null);
+      if (removalInFlight.current) return;
       const routeData = route.result?.routes?.[routeIndex];
-      const dName = driverName || routeData?.team_member_name || "Driver";
-
-      const selectedJob = jobs.find((job) => job.id === jobId);
-      const partner = findRoundTripPartner(selectedJob, jobs);
-
-      if (partner) {
-        setRemoveJobTarget({
-          routeIndex,
-          jobId,
-          partnerJobId: partner.id,
+      if (!routeData?.stops?.some(stop => stop.job_id === jobId)) {
+        message.error("This job's route changed. Refresh the plan.");
+        return;
+      }
+      setSelectedDrawerJob(null);
+      const dName = driverName || routeData.team_member_name || "Driver";
+      const selectedJob = jobs.find(job => job.id === jobId);
+      if (!selectedJob) {
+        message.error("Job details are still loading. Please retry.");
+        return;
+      }
+      if (isRoundTripBooking(selectedJob)) {
+        setRemoveJobTarget({ routeIndex, jobId,
+          partnerJobId: findRoundTripPartner(selectedJob, jobs)?.id,
           tripLabel: selectedJob?.job_type === "return_only" ? "return" : "outbound",
-          driverName: dName,
+          driverName: dName, expectedDriverId: routeData.team_member_id, expectedLeg: routeData.leg,
         });
         return;
       }
-
       Modal.confirm({
-        title: "Remove Job",
-        content: `Remove Job #${jobId} from ${dName}'s route? It will be moved back to Unassigned.`,
-        okText: "Remove",
-        maskClosable: true,
-        okButtonProps: {
-          style: { backgroundColor: "#dc2626", borderColor: "#dc2626" },
-        },
+        title: "Remove Job from Route",
+        content: `Remove Job #${jobId} from ${dName}'s route? Both its pickup and drop-off will move to Unassigned.`,
+        okText: "Remove Job", okButtonProps: { danger: true },
         onOk: async () => {
+          if (removalInFlight.current) return;
+          removalInFlight.current = true;
           try {
-            if (!routeData) return;
-
-            const res = await removeStopFromRoute(route.id, routeIndex, jobId);
-            if (res.success) {
-              message.success(res.message || "Job removed from route");
-              setHasUnsavedJobEdits(true);
-
-              await fetchOptimization(route.id);
-            }
+            const response = await removeStopFromRoute(route.id, routeIndex, jobId, undefined, {
+              expectedDriverId: routeData.team_member_id, expectedLeg: routeData.leg,
+            });
+            if (!response.success) throw new Error(response.message || "Removal failed");
+            await refreshAfterRemoval(response.removed_job_ids || [jobId]);
+            message.success("Job moved to Unassigned");
           } catch (error: any) {
-            message.error(
-              error?.response?.data?.detail || "Failed to remove job",
-            );
+            message.error(error?.response?.data?.detail || error?.message || "Failed to remove job");
+            throw error; // Keep confirmation open so the user can retry or cancel.
+          } finally {
+            removalInFlight.current = false;
           }
         },
       });
-    },
-    [route.id, route.result?.routes, jobs, fetchOptimization],
+    }, [route.id, route.result?.routes, jobs, refreshAfterRemoval],
   );
 
-  const handleRoundTripRemoval = useCallback(
-    async (removeAllLegs: boolean) => {
-      const target = removeJobTarget;
-      if (!target || isRemovingJob) return;
-      const targets = getTripRemovalTargets(
-        route.result?.routes || [], target.routeIndex, target.jobId,
-        removeAllLegs ? target.partnerJobId : undefined,
-      );
-      setIsRemovingJob(true);
-      try {
-        const protectedTarget = targets.find((item) => {
-          const job = jobs.find((entry) => entry.id === item.jobId);
-          return job && ["in_progress", "in_transit", "completed"].includes(job.status);
-        });
-        if (protectedTarget) {
-          throw new Error(`Job #${protectedTarget.jobId} is in progress or completed and cannot be removed`);
-        }
-        let currentOptimization = route;
-        for (const item of targets) {
-          const routeData = currentOptimization.result?.routes?.[item.routeIndex];
-          if (!routeData) throw new Error("Route details are unavailable");
-          // Omitting stop_type removes both pickup and drop-off for this trip.
-          const response = await removeStopFromRoute(route.id, item.routeIndex, item.jobId);
-          if (!response.success) throw new Error(response.message || "Failed to remove trip");
-
-          currentOptimization = await fetchOptimization(route.id);
-        }
-        message.success(removeAllLegs ? "Both round-trip jobs removed from routes" : "Pickup and drop-off removed for the current trip");
-        setRemoveJobTarget(null);
-      } catch (error: any) {
-        message.error(error?.response?.data?.detail || error?.message || "Failed to remove job");
-      } finally {
-
-        setIsRemovingJob(false);
-      }
-    },
-    [removeJobTarget, isRemovingJob, route, jobs, fetchOptimization],
-  );
+  const handleRoundTripRemoval = useCallback(async (removeBothLegs: boolean) => {
+    const target = removeJobTarget;
+    if (!target || removalInFlight.current) return;
+    removalInFlight.current = true;
+    setIsRemovingJob(true);
+    try {
+      const response = await removeStopFromRoute(route.id, target.routeIndex, target.jobId, undefined, {
+        removeBothLegs, expectedDriverId: target.expectedDriverId, expectedLeg: target.expectedLeg,
+      });
+      if (!response.success) throw new Error(response.message || "Removal failed");
+      await refreshAfterRemoval(response.removed_job_ids || [target.jobId]);
+      setRemoveJobTarget(null);
+      message.success(removeBothLegs ? "Both round-trip legs moved to Unassigned" : "Current leg moved to Unassigned");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || error?.message || "Failed to remove job");
+    } finally {
+      removalInFlight.current = false;
+      setIsRemovingJob(false);
+    }
+  }, [removeJobTarget, route.id, refreshAfterRemoval]);
 
   const handleReorderStops = useCallback(
     async (
@@ -1576,80 +1569,12 @@ const OptimizationView = ({
     [route, fetchOptimization, pollUntilComplete, setOptimizationResult],
   );
 
+  // Map marker removal uses the same validated confirmation as the timeline.
   const handleStageDeleteJob = useCallback((jobId: number) => {
-    const job = jobs.find((j) => j.id === jobId);
-    const isShuttle = job?.template_type === 'worker_shuttle' || !!job?.worker_shuttle_detail;
-
-    const doDelete = (ids: number[]) => {
-      setPendingDeletedJobIds((prev) => {
-        const next = new Set(prev);
-        ids.forEach(id => next.add(id));
-        return next;
-      });
-      setHasUnsavedJobEdits(true);
-      if (ids.length > 1) {
-        message.info(`Jobs #${ids.join(', #')} staged for deletion. Click 'Reoptimize All Routes' to apply.`);
-      } else {
-        message.info(`Job #${ids[0]} staged for deletion. Click 'Reoptimize All Routes' to apply globally, or use 'Reoptimize Route' on the specific route.`);
-      }
-    };
-
-    if (isShuttle) {
-      const shuttleValue = (keys: string[]) => {
-        for (const key of keys) {
-          const val = (job as any)?.[key] || (job?.worker_shuttle_detail as any)?.[key] || (job?.custom_fields as any)?.[key];
-          if (val !== undefined && val !== null && val !== "") return String(val);
-        }
-        return undefined;
-      };
-
-      const tripType = job?.job_type || shuttleValue(["pickup_type", "job_type"]);
-
-      // If it's part of a round trip, try to find the sister job
-      if (tripType === 'round_trip' || tripType === 'one_way' || tripType === 'return_only') {
-        const candidateName = shuttleValue(["candidate_name"]);
-        const quantId = shuttleValue(["quant_id", "quart_id"]);
-        const schedDate = job?.scheduled_date || shuttleValue(["scheduled_date"]);
-
-        if (candidateName) {
-          const sisterJob = jobs.find((j) => {
-             if (j.id === jobId) return false;
-             const isAlsoShuttle = j.template_type === 'worker_shuttle' || !!j.worker_shuttle_detail;
-             if (!isAlsoShuttle) return false;
-
-             const jShuttleValue = (keys: string[]) => {
-                for (const key of keys) {
-                  const val = (j as any)?.[key] || (j?.worker_shuttle_detail as any)?.[key] || (j?.custom_fields as any)?.[key];
-                  if (val !== undefined && val !== null && val !== "") return String(val);
-                }
-                return undefined;
-             };
-
-             const jName = jShuttleValue(["candidate_name"]);
-             const jQuant = jShuttleValue(["quant_id", "quart_id"]);
-             const jDate = j.scheduled_date || jShuttleValue(["scheduled_date"]);
-
-             return (jName === candidateName && jDate === schedDate && (jQuant === quantId || (!jQuant && !quantId)));
-          });
-
-          if (sisterJob && !pendingDeletedJobIds.has(sisterJob.id)) {
-            Modal.confirm({
-              title: "Round Trip Detected",
-              content: "This job is part of a round trip. Would you like to delete the other leg's job as well?",
-              okText: "Delete Both Legs",
-              cancelText: "Delete Only This Leg",
-              okButtonProps: { style: { backgroundColor: "#dc2626", borderColor: "#dc2626" } },
-              onOk: () => doDelete([jobId, sisterJob.id]),
-              onCancel: () => doDelete([jobId])
-            });
-            return;
-          }
-        }
-      }
-    }
-
-    doDelete([jobId]);
-  }, [jobs, pendingDeletedJobIds]);
+    const index = route.result?.routes?.findIndex(trip => trip.stops?.some(stop => stop.job_id === jobId)) ?? -1;
+    if (index >= 0) handleRemoveJob(index, jobId);
+    else message.error("This job's route changed. Refresh the plan.");
+  }, [route.result?.routes, handleRemoveJob]);
 
   const handleUndoStageDeleteJob = useCallback((jobId: number) => {
     setPendingDeletedJobIds((prev) => {
@@ -1726,34 +1651,32 @@ const OptimizationView = ({
   }, [isDrawingArea, selectionArea, isMoveAreaModalOpen, clearAreaSelection]);
 
   const handleDeleteAreaJobs = useCallback(() => {
-    const ids = Array.from(new Set(areaSelectedJobs.map((j) => j.jobId)));
-    if (ids.length === 0) return;
-    const protectedJob = ids.find((id) => {
-      const job = jobs.find((j) => j.id === id);
-      return job && ["in_progress", "in_transit", "completed"].includes(job.status);
-    });
-    if (protectedJob !== undefined) {
-      message.error(`Job #${protectedJob} is in progress or completed and cannot be deleted`);
+    const ids = Array.from(new Set(areaSelectedJobs.map(job => job.jobId)));
+    if (ids.some(id => !jobs.some(job => job.id === id))) {
+      message.error("Job details are still loading. Please retry.");
       return;
     }
-    Modal.confirm({
-      title: `Delete ${ids.length} job${ids.length > 1 ? "s" : ""}`,
-      content: `Delete all ${ids.length} job(s) inside the selected area? They are staged for deletion until you click 'Reoptimize All Routes'.`,
-      okText: "Delete All",
-      maskClosable: true,
-      okButtonProps: { style: { backgroundColor: "#dc2626", borderColor: "#dc2626" } },
-      onOk: () => {
-        setPendingDeletedJobIds((prev) => {
-          const next = new Set(prev);
-          ids.forEach((id) => next.add(id));
-          return next;
-        });
-        setHasUnsavedJobEdits(true);
-        message.info(`${ids.length} job(s) staged for deletion. Click 'Reoptimize All Routes' to apply.`);
-        clearAreaSelection();
-      },
-    });
-  }, [areaSelectedJobs, jobs, clearAreaSelection]);
+    if (ids.length && !removalInFlight.current) setRemoveAreaJobIds(ids);
+  }, [areaSelectedJobs, jobs]);
+
+  const handleRemoveAreaJobs = useCallback(async (includePartners: boolean) => {
+    if (!removeAreaJobIds?.length || removalInFlight.current) return;
+    removalInFlight.current = true;
+    setIsRemovingJob(true);
+    try {
+      const response = await removeRouteJobs(route.id, removeAreaJobIds, includePartners);
+      if (!response.success) throw new Error(response.message || "Removal failed");
+      await refreshAfterRemoval(response.removed_job_ids || removeAreaJobIds);
+      setRemoveAreaJobIds(null);
+      clearAreaSelection();
+      message.success("Selected jobs moved to Unassigned");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || error?.message || "Failed to remove jobs");
+    } finally {
+      removalInFlight.current = false;
+      setIsRemovingJob(false);
+    }
+  }, [removeAreaJobIds, route.id, refreshAfterRemoval, clearAreaSelection]);
 
   const handleConfirmMoveAreaJobs = useCallback(async () => {
     if (moveAreaTargetIndex === null || isMovingAreaJobs) return;
@@ -2539,18 +2462,10 @@ const OptimizationView = ({
               }
             }}
             onEditJob={(jobToEdit) => setEditJobData(jobToEdit)}
-            // onRemoveJob={
-            //   selectedDrawerJob.routeIndex !== undefined &&
-            //   selectedDrawerJob.routeIndex >= 0 &&
-            //   selectedDrawerJob.job?.id
-            //     ? () =>
-            //         handleRemoveJob(
-            //           selectedDrawerJob.routeIndex!,
-            //           selectedDrawerJob.job!.id,
-            //           selectedDrawerJob.driverName || "Driver",
-            //         )
-            //     : undefined
-            // }
+            onRemoveJob={selectedDrawerJob.routeIndex !== undefined && selectedDrawerJob.job?.id
+              ? () => handleRemoveJob(selectedDrawerJob.routeIndex!, selectedDrawerJob.job!.id)
+              : undefined}
+
           />
         )}
       </div>
@@ -2690,8 +2605,26 @@ const OptimizationView = ({
       </Drawer>
 
       <Modal
+        open={removeAreaJobIds !== null}
+        title="Remove Selected Jobs from Routes"
+        onCancel={() => { if (!isRemovingJob) setRemoveAreaJobIds(null); }}
+        maskClosable={!isRemovingJob}
+        closable={!isRemovingJob}
+        footer={[
+          <Button key="cancel" disabled={isRemovingJob} onClick={() => setRemoveAreaJobIds(null)}>Cancel</Button>,
+          <Button key="selected" danger disabled={isRemovingJob} onClick={() => handleRemoveAreaJobs(false)}>Remove Selected Legs</Button>,
+          ...(removeAreaJobIds?.some(id => isRoundTripBooking(jobs.find(job => job.id === id))) ? [
+            <Button key="both" type="primary" danger disabled={isRemovingJob} onClick={() => handleRemoveAreaJobs(true)}>Remove Both Legs</Button>,
+          ] : []),
+        ]}
+      >
+        Remove {removeAreaJobIds?.length || 0} selected job(s), including their pickup and drop-off stops.
+        For round-trip bookings, choose whether to include the opposite legs. Jobs move to Unassigned and can be restored with Undo.
+      </Modal>
+
+      <Modal
         open={removeJobTarget !== null}
-        title="Remove Round-Trip Job"
+        title="Remove Round-Trip Job from Route"
         onCancel={() => {
           if (!isRemovingJob) setRemoveJobTarget(null);
         }}
@@ -2702,27 +2635,27 @@ const OptimizationView = ({
           <Button
             key="current-leg"
             danger
-            loading={isRemovingJob}
+            disabled={isRemovingJob}
             onClick={() => handleRoundTripRemoval(false)}
           >
-            Delete Current Leg
+            Remove Current Leg
           </Button>,
           <Button
             key="all-legs"
             type="primary"
             danger
-            loading={isRemovingJob}
+            disabled={isRemovingJob}
             onClick={() => handleRoundTripRemoval(true)}
           >
-            Delete All Jobs
+            Remove Both Legs
           </Button>,
         ]}
       >
         {removeJobTarget && (
           <p className="m-0 text-gray-700">
-            Delete both pickup and drop-off stops for the {removeJobTarget.tripLabel}{" "}
+            Remove the pickup and drop-off for the {removeJobTarget.tripLabel}{" "}
             trip (Job #{removeJobTarget.jobId}) on {removeJobTarget.driverName}&apos;s route,
-            or delete both round-trip jobs (#{removeJobTarget.jobId} and #{removeJobTarget.partnerJobId}).
+            or remove both legs of this round-trip booking{removeJobTarget.partnerJobId ? ` (Jobs #${removeJobTarget.jobId} and #${removeJobTarget.partnerJobId})` : ""}.
             Removed jobs will be moved back to Unassigned.
           </p>
         )}

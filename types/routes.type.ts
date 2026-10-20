@@ -128,6 +128,8 @@ export interface RouteOperationResponse {
   target_route?: Routes | Record<string, unknown>;
   routes?: (Routes | Record<string, unknown>)[];
   is_async?: boolean;
+  removed_job_ids?: number[];
+  affected_route_indices?: number[];
 }
 
 export interface BulkAssignJobsResponse extends RouteOperationResponse {
