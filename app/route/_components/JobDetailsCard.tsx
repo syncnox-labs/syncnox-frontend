@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Button, App, message, Input, InputNumber, TimePicker, DatePicker, Select } from "antd";
 import AddressAutocomplete, { AddressData } from "@/components/AddressAutocomplete";
 import {
@@ -34,6 +34,7 @@ import { useRouteStore } from "@/store/routes.store";
 import { useDepotStore } from "@/store/depots.store";
 import { useLocationMappingStore } from "@/store/location-mapping.store";
 import { getJobStopEstimates, type JobTimingStop } from "./jobStopEstimates.utils";
+import { buildJobEditPatch } from "./jobEditPatch.utils";
 
 interface JobDetailsCardProps {
   stopData: any | null;
@@ -45,7 +46,7 @@ interface JobDetailsCardProps {
   isUnassigned?: boolean;
   onClose: () => void;
   onRemoveJob?: () => void;
-  onJobSaved?: (info: { requiresReOptimization: boolean, timeChanged: boolean, startTime?: string, endTime?: string, oldStartTime?: string, oldEndTime?: string }) => void;
+  onJobSaved?: (info: { requiresReOptimization: boolean, timeChanged: boolean, startTime?: string, endTime?: string, oldStartTime?: string, oldEndTime?: string }) => void | Promise<void>;
   onEditJob?: (job: Job) => void;
   isFullscreen?: boolean;
 }
@@ -146,6 +147,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   const [isUpdating, setIsUpdating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const saveInFlight = useRef(false);
 
   const predefinedLocations = useMemo(() => {
     const opts: { label: string; addressData: AddressData }[] = [];
@@ -318,9 +320,10 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     candidate_name: shuttleValue("candidate_name") || "",
     candidate_phone: shuttleValue("candidate_phone") || "",
     candidate_id: shuttleValue("candidate_id") || "",
-    client_name: shuttleValue("client_name", "first_name") || "",
-    client_phone: shuttleValue("client_phone", "phone_number") || "",
+    client_name: (isShuttle ? shuttleValue("client_name", "first_name") : customerName !== "-" ? customerName : "") || "",
+    client_phone: (isShuttle ? shuttleValue("client_phone", "phone_number") : phone !== "-" ? phone : "") || "",
     client_id: shuttleValue("client_id") || "",
+    client_email: job?.pickup_delivery_detail?.client_email || job?.client_email || "",
     notes: notes !== "-" ? notes : "",
     address_formatted: job?.address_formatted || "",
     location: job?.location || undefined,
@@ -395,108 +398,31 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   };
 
   const handleSaveJob = async () => {
-    if (!job || !jobId) return;
+    if (!job || !jobId || saveInFlight.current) return;
+    saveInFlight.current = true;
+    setIsSaving(true);
     try {
-      setIsSaving(true);
-
-      const origStartHour = shuttleValue("start_hour");
-      const origEndHour = shuttleValue("end_hour");
-      const origPickUpAddress = pickUpAddress;
-      const origDropOffAddress = dropOffAddress;
-      const origAddress = job.address_formatted || stopData?.address_formatted;
-      const origTimeWindowStart = job.time_window_start;
-      const origTimeWindowEnd = job.time_window_end;
-
-      const startHourChanged = (editValues.start_hour || "") !== (origStartHour || "");
-      const endHourChanged = (editValues.end_hour || "") !== (origEndHour || "");
-      const pickUpAddrChanged = (editValues.pick_up_address || "") !== (origPickUpAddress || "");
-      const dropOffAddrChanged = (editValues.drop_off_address || "") !== (origDropOffAddress || "");
-      const addrChanged = (editValues.address_formatted || "") !== (origAddress || "");
-      const twStartChanged = (editValues.time_window_start || "") !== (origTimeWindowStart || "");
-      const twEndChanged = (editValues.time_window_end || "") !== (origTimeWindowEnd || "");
-
-      const requiresReOptimization = isShuttle
-        ? (startHourChanged || endHourChanged || pickUpAddrChanged || dropOffAddrChanged)
-        : (addrChanged || twStartChanged || twEndChanged);
-
-      const validDbJobTypes = ["pickup", "delivery", "service", "one_way", "return_only"];
-      let targetJobType = editValues.job_type || job.job_type || "one_way";
-      if (!validDbJobTypes.includes(targetJobType)) {
-        targetJobType = validDbJobTypes.includes(job.job_type)
-          ? job.job_type
-          : (isReturnTrip ? "return_only" : "one_way");
+      const initial = getInitialEditValues();
+      const { payload, requiresReOptimization, timeChanged } = buildJobEditPatch(jobId, initial, editValues, isShuttle);
+      if (Object.keys(payload).length === 1) {
+        setIsEditing(false);
+        return;
       }
-
-      const payload: any = {
-        ...job,
-        scheduled_date: editValues.scheduled_date || job.scheduled_date,
-        job_type: targetJobType,
-        additional_notes: editValues.notes,
-        notes: editValues.notes,
-      };
-
-      if (isShuttle) {
-        payload.worker_shuttle_detail = {
-          ...(job.worker_shuttle_detail ?? {}),
-          start_hour: editValues.start_hour || undefined,
-          end_hour: editValues.end_hour || undefined,
-          pickup_type: editValues.pickup_type || undefined,
-          quart_id: editValues.quart_id || undefined,
-          quant_id: editValues.quart_id || undefined,
-          reach_before_minutes: editValues.reach_before_minutes,
-          pick_up_address: editValues.pick_up_address || undefined,
-          pick_up_location: editValues.pick_up_location || undefined,
-          drop_off_address: editValues.drop_off_address || undefined,
-          drop_off_location: editValues.drop_off_location || undefined,
-          candidate_name: editValues.candidate_name || undefined,
-          candidate_phone: editValues.candidate_phone || undefined,
-          candidate_id: editValues.candidate_id || undefined,
-          client_name: editValues.client_name || undefined,
-          client_phone: editValues.client_phone || undefined,
-          client_id: editValues.client_id || undefined,
-          notes: editValues.notes || undefined,
-        };
-        payload.start_hour = editValues.start_hour || undefined;
-        payload.end_hour = editValues.end_hour || undefined;
-        payload.pickup_type = editValues.pickup_type || undefined;
-        payload.quart_id = editValues.quart_id || undefined;
-        payload.quant_id = editValues.quart_id || undefined;
-        payload.reach_before_minutes = editValues.reach_before_minutes;
-        payload.pick_up_address = editValues.pick_up_address || undefined;
-        payload.pick_up_location = editValues.pick_up_location || undefined;
-        payload.drop_off_address = editValues.drop_off_address || undefined;
-        payload.drop_off_location = editValues.drop_off_location || undefined;
-        payload.client_name = editValues.client_name || undefined;
-        payload.client_phone = editValues.client_phone || undefined;
-        payload.client_id = editValues.client_id || undefined;
-        payload.candidate_name = editValues.candidate_name || undefined;
-        payload.candidate_phone = editValues.candidate_phone || undefined;
-        payload.candidate_id = editValues.candidate_id || undefined;
-      } else {
-        payload.address_formatted = editValues.address_formatted || undefined;
-        payload.location = editValues.location || undefined;
-        payload.time_window_start = editValues.time_window_start || undefined;
-        payload.time_window_end = editValues.time_window_end || undefined;
-        payload.service_duration = editValues.service_duration;
-        payload.priority_level = editValues.priority_level;
-      }
-
       const updated = await updateJob(payload);
       patchJobLocally(updated);
       setIsEditing(false);
-
-      onJobSaved?.({ 
-        requiresReOptimization, 
-        timeChanged: startHourChanged || endHourChanged || twStartChanged || twEndChanged,
+      await onJobSaved?.({
+        requiresReOptimization, timeChanged,
         startTime: editValues.start_hour || editValues.time_window_start,
         endTime: editValues.end_hour || editValues.time_window_end,
-        oldStartTime: origStartHour || origTimeWindowStart,
-        oldEndTime: origEndHour || origTimeWindowEnd,
+        oldStartTime: initial.start_hour || initial.time_window_start,
+        oldEndTime: initial.end_hour || initial.time_window_end,
       });
-    } catch (err) {
-      console.error("Failed to save job:", err);
-      message.error("Failed to save job");
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      message.error(typeof detail === "string" ? detail : "Failed to save job. Please retry.");
     } finally {
+      saveInFlight.current = false;
       setIsSaving(false);
     }
   };
@@ -974,7 +900,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                     </label>
                     <Input
                       size="small"
-                      value={customerName}
+                      value={editValues.client_name}
                       onChange={(e) => setEditValues(v => ({ ...v, client_name: e.target.value }))}
                       className="text-xs"
                     />
@@ -986,7 +912,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                       </label>
                       <Input
                         size="small"
-                        value={editValues.client_phone || phone}
+                        value={editValues.client_phone}
                         onChange={(e) => setEditValues(v => ({ ...v, client_phone: e.target.value }))}
                         className="text-xs"
                       />
@@ -997,8 +923,8 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                       </label>
                       <Input
                         size="small"
-                        value={email}
-                        onChange={(e) => setEditValues(v => ({ ...v, email: e.target.value }))}
+                        value={editValues.client_email}
+                        onChange={(e) => setEditValues(v => ({ ...v, client_email: e.target.value }))}
                         className="text-xs"
                       />
                     </div>

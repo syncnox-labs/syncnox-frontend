@@ -26,6 +26,7 @@ const jobsUtils = load("utils/jobs.utils.tsx", {
   "@/constants/country": { COUNTRY_CODES: [] },
 });
 const Card = load("app/route/_components/JobDetailsCard.tsx", {
+  "./jobEditPatch.utils": load("app/route/_components/jobEditPatch.utils.ts"),
   "./jobStopEstimates.utils": estimatesUtils,
   "@/utils/jobPickupType.utils": pickupUtils,
   "@/utils/app.utils": appUtils,
