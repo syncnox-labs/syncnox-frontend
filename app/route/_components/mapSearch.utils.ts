@@ -1,5 +1,6 @@
 import type { Job } from "@/types/job.type";
 import type { Routes, Stop } from "@/types/routes.type";
+import { getRouteStopDisplay } from "./stopDisplay.utils";
 
 export interface MapSearchResult {
   id: string;
@@ -15,6 +16,7 @@ export interface MapSearchResult {
   routeIndex: number;
   stopIndex: number;
   displayStopNumber: number;
+  markerId: string;
   stop: Stop;
   job: Job | null;
   searchableText: string;
@@ -31,10 +33,11 @@ export function buildMapSearchIndex(routes: Routes[], jobs: Job[]): MapSearchRes
 
   routes.forEach((route, routeIndex) => {
     const driverName = route.team_member_name || `Driver ${routeIndex + 1}`;
-    let displayStopNumber = 0;
+    const { byRawIndex } = getRouteStopDisplay(route);
     route.stops?.forEach((stop, stopIndex) => {
-      if (["depot", "depot_start", "depot_end"].includes(stop.stop_type)) return;
-      displayStopNumber++;
+      const group = byRawIndex.get(stopIndex);
+      if (!group?.displayStopNumber) return;
+      const displayStopNumber = group.displayStopNumber;
 
       const embeddedJob = (stop as Stop & { job?: Job }).job;
       const jobId = stop.job_id ?? embeddedJob?.id ?? stop.id;
@@ -67,8 +70,8 @@ export function buildMapSearchIndex(routes: Routes[], jobs: Job[]): MapSearchRes
         id: `${routeIndex}-${stopIndex}-${jobId ?? stopIndex}`,
         jobId: jobId == null ? "" : String(jobId),
         candidateName, candidatePhone, candidateId, shiftRef,
-        pickupAddress, dropoffAddress, driverName, leg: route.leg,
-        routeIndex, stopIndex, displayStopNumber, stop, job,
+        pickupAddress, dropoffAddress, driverName, leg: stop.leg || route.leg,
+        routeIndex, stopIndex, displayStopNumber, markerId: `${routeIndex}-${group.firstRawIndex}`, stop, job,
         searchableText: normalizeSearchText([
           jobId ?? "", candidateName, fullName, driverName,
           ...values(

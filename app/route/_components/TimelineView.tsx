@@ -42,6 +42,7 @@ import TimelineTravelSegment from "./TimelineTravelSegment";
 import TimelineTooltip, { TimelineTooltipProvider } from "./TimelineTooltip";
 import { getTimelineSegment } from "./timelineSegment.utils";
 import { isRedundantLeaderClientStart } from "./leaderRoute.utils";
+import { getRouteStopDisplay, type GroupedStop as DisplayStopGroup } from "./stopDisplay.utils";
 import {
   calculateTimeRange,
   generateTimeMarkers,
@@ -52,72 +53,7 @@ import {
   getRouteColor,
 } from "@/utils/timeline.utils";
 
-// ─── Grouped stop type ────────────────────────────────────────────────────────
-/** A stop as rendered on the timeline — may represent 1 or more raw stops at
- * the same location / stop_type. `rawStops` keeps the original items so the
- * click handler can still target individual jobs. */
-interface GroupedStop {
-  /** Representative stop used for position / colour / tooltip. */
-  representative: any;
-  /** All raw stops collapsed into this group. */
-  rawStops: any[];
-  /** How many individual candidates share this location + type. */
-  candidateCount: number;
-  /** Index of the FIRST raw stop in the original stops array (used for click). */
-  firstRawIndex: number;
-}
-
-/**
- * Collapse consecutive stops that share the same location and stop_type into
- * a single GroupedStop.  This reduces visual clutter for shuttle routes where
- * multiple workers are picked up / dropped off at the same coordinates.
- *
- * Two stops are merged when ALL of the following match:
- *   • stop_type
- *   • latitude  (rounded to 4 dp ≈ 11 m)
- *   • longitude (rounded to 4 dp ≈ 11 m)
- *   • arrival_time and leg (the same physical visit)
- */
-function groupStopsByLocation(stops: any[]): GroupedStop[] {
-  if (!stops || stops.length === 0) return [];
-
-  const grouped: GroupedStop[] = [];
-
-  for (let i = 0; i < stops.length; i++) {
-    const stop = stops[i];
-    const lat  = typeof stop.latitude  === "number" ? stop.latitude.toFixed(4)  : null;
-    const lon  = typeof stop.longitude === "number" ? stop.longitude.toFixed(4) : null;
-    const type = stop.stop_type;
-
-    // Check if this stop can be merged with the previous group
-    const prev = grouped[grouped.length - 1];
-    if (
-      prev &&
-      lat !== null &&
-      lon !== null &&
-      lat === (typeof prev.representative.latitude  === "number" ? prev.representative.latitude.toFixed(4)  : null) &&
-      lon === (typeof prev.representative.longitude === "number" ? prev.representative.longitude.toFixed(4) : null) &&
-      type === prev.representative.stop_type
-      && stop.leg === prev.representative.leg
-      && Boolean(stop.arrival_time)
-      && stop.arrival_time === prev.representative.arrival_time
-    ) {
-      // Merge into the existing group
-      prev.rawStops.push(stop);
-      prev.candidateCount++;
-    } else {
-      // Start a new group
-      grouped.push({
-        representative: stop,
-        rawStops: [stop],
-        candidateCount: 1,
-        firstRawIndex: i,
-      });
-    }
-  }
-
-  return grouped;
-}
+type GroupedStop = DisplayStopGroup<any>;
 
 interface TimelineViewProps {
   routes: any[];
@@ -1056,9 +992,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     >();
 
     routes.forEach((route, routeIndex) => {
-      const grouped = groupStopsByLocation(route.stops || []).filter(
-        group => !isRedundantLeaderClientStart(route, group.firstRawIndex),
-      );
+      const grouped = getRouteStopDisplay(route).groups;
       const occMap = new Map<number, number>();
       let runningLoad = 0;
       (route.stops || []).forEach((s: any, idx: number) => {
@@ -2512,8 +2446,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                             {/* Stops — rendered from grouped stops */}
                             {(() => {
-                              let jobStopCounter = 1;
-
                               return groupedStops.map((group, groupIndex) => {
                                 const stop = group.representative;
                                 const count = group.candidateCount;
@@ -2571,10 +2503,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       : "Depot"
                                   : null;
 
-                                let displayIndex = 0;
-                                if (!isDepot) {
-                                  displayIndex = jobStopCounter++;
-                                }
+                                const displayIndex = group.displayStopNumber;
 
                                 const isPickup = stop.stop_type === "pickup";
                                 const isDropoff =
@@ -2981,7 +2910,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   if (!isWorkerShuttle && isJob && serviceDuration > 0) {
                                     return (
                                       <TimelineTooltip
-                                        key={`stop-${routeIndex}-${groupIndex}`}
+                                        popupScope="viewport"
+                                      key={`stop-${routeIndex}-${groupIndex}`}
                                         title={tooltipContent}
                                         color="#ffffff"
                                         open={openStopTooltipKey === stopTooltipKey}
@@ -3104,7 +3034,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                                     return (
                                       <TimelineTooltip
-                                        key={`stop-${routeIndex}-${groupIndex}`}
+                                        popupScope="viewport"
+                                      key={`stop-${routeIndex}-${groupIndex}`}
                                         title={tooltipContent}
                                         color="#ffffff"
                                         open={openStopTooltipKey === stopTooltipKey}
@@ -3156,6 +3087,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                                   return (
                                     <TimelineTooltip
+                                      popupScope="viewport"
                                       key={`stop-${routeIndex}-${groupIndex}`}
                                       title={tooltipContent}
                                       color="#ffffff"

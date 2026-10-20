@@ -147,7 +147,7 @@ test("the configured delivery window remains one field and supplies the API's ro
   assert.equal(cleared.time_window_end, null);
 });
 
-function renderJobForm(fields, config = {}) {
+function renderJobForm(fields, config = {}, props = {}) {
   const { default: JobForm } = loadSource("components/Jobs/JobForm.tsx", {
     "./jobForm.schema": schema,
     "@/hooks/useFieldConfig": { useFieldConfig: () => ({ customFields: fields, loading: false, error: null, reloadConfigs() {}, ...config }) },
@@ -156,9 +156,9 @@ function renderJobForm(fields, config = {}) {
     "@/store/depots.store": { useDepotStore: () => ({ depots: [] }) },
     "@/store/location-mapping.store": { useLocationMappingStore: () => ({ locationMappings: [] }) },
     "@/store/index.store": { useIndexStore: select => select({ activeJobTemplate: "worker_shuttle" }) },
-    "@/components/AddressAutocomplete": { default: () => React.createElement("input", { "data-address": true }), __esModule: true },
+    "@/components/AddressAutocomplete": { default: ({ value, onChange }) => React.createElement("input", { "data-address": true, value: value ?? "", onChange }), __esModule: true },
   });
-  return renderToStaticMarkup(React.createElement(JobForm));
+  return renderToStaticMarkup(React.createElement(JobForm, props));
 }
 
 test("actual form renders exactly the configured optimization, additional and POD fields, each once", () => {
@@ -169,6 +169,26 @@ test("actual form renders exactly the configured optimization, additional and PO
   assert.match(html, /My shift/);
   assert.match(html, /ant-form-item-required/);
   assert.doesNotMatch(html, /Should be hidden|Assign Driver|Trip Type|Scheduled Date/);
+});
+
+test("the mounted edit form initializes saved values without waiting for an effect", () => {
+  const fields = [field("quart_id", { id: 1 }), field("scheduled_date", { id: 2, data_type: "date" }),
+    field("start_hour", { id: 3 }), field("end_hour", { id: 4 }),
+    field("pickup_type", { id: 5, data_type: "select", options: ["one_way", "return_only", "round_trip"] }),
+    field("candidate_name", { id: 6 }), field("candidate_phone", { id: 7 }),
+    field("pick_up_address", { id: 8 }), field("drop_off_address", { id: 9 }),
+    field("count", { id: 10, data_type: "number" }), field("approved", { id: 11, data_type: "boolean" })];
+  const html = renderJobForm(fields, {}, { initialData: { id: 12450, template_type: "worker_shuttle",
+    scheduled_date: "2026-09-29", job_type: "return_only", worker_shuttle_detail: {
+      quant_id: "88991", start_hour: "08:00:00", end_hour: "16:30:00", candidate_name: "X SHAMMA",
+      candidate_phone: "+1 (438) 357-2245", pick_up_address: "Station", drop_off_address: "Office",
+    }, custom_fields: { pickup_type: "round_trip", count: 0, approved: true } } });
+  for (const value of ["88991", "29-09-2026", "08:00", "16:30", "X SHAMMA", "+1 (438) 357-2245", "Station", "Office", "0"]) {
+    assert.ok(html.includes(`value="${value}"`), `missing saved value: ${value}`);
+  }
+  assert.match(html, /title="Round Trip"/);
+  assert.match(html, /id="approved"[^>]*checked/);
+  assert.match(html, /Update/);
 });
 
 test("empty and failed schemas do not fall back to hardcoded fields and disable submission", () => {
@@ -217,4 +237,16 @@ test("candidate controls render once and preserve values through editing and sub
   assert.deepEqual(payload.candidate_location, { lat: 19.1, lng: 72.9 });
   assert.equal(Object.hasOwn(payload, "client_id"), false);
   assert.equal(Object.hasOwn(payload, "client_phone"), false);
+});
+
+test("pickup type select labels are readable while submitted values keep their API keys", () => {
+  const fields = [field("pickup_type", { data_type: "select", options: ["one_way", "round_trip", "return_only"] })];
+  for (const [value, label] of [["one_way", "One Way"], ["round_trip", "Round Trip"], ["return_only", "Return Only"]]) {
+    const initialData = { id: 42, template_type: "worker_shuttle", pickup_type: value };
+    const html = renderJobForm(fields, {}, { initialData });
+    assert.ok(html.includes(`title="${label}"`));
+    assert.ok(!html.includes(`title="${value}"`));
+    const payload = buildJobFormPayload(fields, getJobInitialValues(fields, initialData), "worker_shuttle");
+    assert.equal(payload.pickup_type, value);
+  }
 });

@@ -4,18 +4,16 @@ const fs = require("node:fs");
 const path = require("node:path");
 const ts = require("typescript");
 
-// Load the production helper without loading React, browser hooks or map SDKs.
-const source = ts.createSourceFile("TimelineView.tsx", fs.readFileSync(
-  path.join(__dirname, "../app/route/_components/TimelineView.tsx"), "utf8"),
-  ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const declaration = source.statements.find(node => ts.isFunctionDeclaration(node)
-  && node.name?.text === "groupStopsByLocation");
-assert.ok(declaration);
-const compiled = ts.transpileModule(`export ${declaration.getText(source)}`, {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
-}).outputText;
-const helpers = {};
-new Function("exports", compiled)(helpers);
+function load(name, imports = {}) {
+  const source = fs.readFileSync(path.join(__dirname, "../app/route/_components", name), "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  const exports = {};
+  new Function("exports", "require", compiled)(exports, name => imports[name]);
+  return exports;
+}
+const helpers = load("stopDisplay.utils.ts", { "./leaderRoute.utils": load("leaderRoute.utils.ts") });
 const { groupStopsByLocation } = helpers;
 
 const stop = { leg: "GO", stop_type: "pickup", latitude: 45.5, longitude: -73.5,

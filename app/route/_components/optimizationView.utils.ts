@@ -3,7 +3,7 @@ import { Route, Stop } from "@/types/routes.type";
 import { decodePolyline } from "@/utils/googleMaps.utils";
 import { getRouteColor } from "@/utils/timeline.utils";
 import { Job } from "@/types/job.type";
-import { isRedundantLeaderClientStart } from "./leaderRoute.utils";
+import { getRouteStopDisplay } from "./stopDisplay.utils";
 
 /** Stroke colour used for routes that are not the focused one. */
 const DIMMED_ROUTE_COLOR = "#9ca3af";
@@ -35,36 +35,7 @@ export const isDriverMatch = (
 };
 
 export const getGroupedStopsCount = (stops?: any[]): number => {
-  if (!stops || stops.length === 0) return 0;
-  const grouped: { lat: string | null; lon: string | null; type: string }[] = [];
-
-  for (const stop of stops) {
-    const isDepot =
-      stop.stop_type === "depot" ||
-      stop.stop_type === "depot_start" ||
-      stop.stop_type === "depot_end";
-    if (isDepot) continue;
-
-    const lat = typeof stop.latitude === "number" ? stop.latitude.toFixed(4) : null;
-    const lon = typeof stop.longitude === "number" ? stop.longitude.toFixed(4) : null;
-    const type = stop.stop_type;
-
-    const prev = grouped[grouped.length - 1];
-    if (
-      prev &&
-      lat !== null &&
-      lon !== null &&
-      lat === prev.lat &&
-      lon === prev.lon &&
-      type === prev.type
-    ) {
-      // merged
-    } else {
-      grouped.push({ lat, lon, type });
-    }
-  }
-
-  return grouped.length;
+  return getRouteStopDisplay({ stops }).groups.filter(group => group.displayStopNumber > 0).length;
 };
 
 export const generateRoutePolylines = (
@@ -131,54 +102,15 @@ export const generateMapMarkers = (
     }
     const color = getRouteColor(index);
 
-    // Group stops by (lat.toFixed(4), lng.toFixed(4), stop_type)
-    const validStops = routeItem.stops
-      .map((stop: any, rawIndex: number) => ({ stop, rawIndex }))
-      .filter(
-        ({ stop, rawIndex }) =>
-          !isRedundantLeaderClientStart(routeItem, rawIndex) &&
-          typeof stop.latitude === "number" &&
-          typeof stop.longitude === "number",
-      );
-
-    const groupedStops: { representative: any; rawStops: any[]; firstRawIndex: number }[] = [];
-    for (const item of validStops) {
-      const { stop, rawIndex } = item;
-      const latStr = stop.latitude.toFixed(4);
-      const lngStr = stop.longitude.toFixed(4);
-      const type = stop.stop_type;
-
-      const prev = groupedStops[groupedStops.length - 1];
-      if (
-        prev &&
-        prev.representative.latitude.toFixed(4) === latStr &&
-        prev.representative.longitude.toFixed(4) === lngStr &&
-        prev.representative.stop_type === type
-      ) {
-        prev.rawStops.push(stop);
-      } else {
-        groupedStops.push({
-          representative: stop,
-          rawStops: [stop],
-          firstRawIndex: rawIndex,
-        });
-      }
-    }
-
-    let jobStopCounter = 1;
-
-    return groupedStops.map((group) => {
+    // Number every timeline visit before skipping stops without map coordinates.
+    const { groups } = getRouteStopDisplay(routeItem);
+    return groups.filter(({ representative: stop }) =>
+      typeof stop.latitude === "number" && typeof stop.longitude === "number",
+    ).map((group) => {
       const stop = group.representative;
-      const count = group.rawStops.length;
-      const isDepot =
-        stop.stop_type === "depot" ||
-        stop.stop_type === "depot_start" ||
-        stop.stop_type === "depot_end";
-
-      let displayIndex = 0;
-      if (!isDepot) {
-        displayIndex = jobStopCounter++;
-      }
+      const count = group.candidateCount;
+      const isDepot = group.displayStopNumber === 0;
+      const displayIndex = group.displayStopNumber;
 
       let job: Job | MarkerJobData | undefined = stop.job_id
         ? jobsMap.get(Number(stop.job_id))
@@ -209,7 +141,7 @@ export const generateMapMarkers = (
       const isNew = Boolean(stop.is_new || group.rawStops.some((s: any) => s.is_new));
       const isTimeEdited = Boolean(
         stop.time_edited ||
-        stop.is_edited ||
+        ("is_edited" in stop && stop.is_edited) ||
         group.rawStops.some((s: any) => s.time_edited || s.is_edited)
       );
 

@@ -27,13 +27,19 @@ export function TimelineTooltipProvider({ children, leftInset, topInset }: {
 }
 
 /** Align to the visible timeline viewport, including partially visible long bars. */
-export default function TimelineTooltip({ styles, overlayStyle, overlayInnerStyle, align, ...props }: TooltipProps) {
+type TimelineTooltipProps = TooltipProps & { popupScope?: "timeline" | "viewport" };
+
+export default function TimelineTooltip({ styles, overlayStyle, overlayInnerStyle, align, popupScope = "timeline", ...props }: TimelineTooltipProps) {
   const getPopupContainer = useContext(PopupContainerContext);
-  if (!getPopupContainer) {
+  const inTimeline = popupScope === "timeline";
+  if (inTimeline && !getPopupContainer) {
     return <Tooltip {...props} styles={styles} overlayStyle={overlayStyle} overlayInnerStyle={overlayInnerStyle} align={align} />;
   }
 
-  return <Tooltip {...props} getPopupContainer={getPopupContainer} autoAdjustOverflow
+  return <Tooltip {...props}
+    getPopupContainer={inTimeline ? getPopupContainer : trigger => trigger.ownerDocument.body}
+    placement={props.placement ?? (inTimeline ? undefined : "top")}
+    zIndex={props.zIndex ?? (inTimeline ? undefined : 1000)} autoAdjustOverflow
     // A placement gap can defeat the final edge shift in a short viewport.
     align={{ ...align, offset: [0, 0], htmlRegion: "visible", overflow: {
       ...align?.overflow, adjustX: true, adjustY: true, shiftX: true, shiftY: true,
@@ -43,9 +49,11 @@ export default function TimelineTooltip({ styles, overlayStyle, overlayInnerStyl
       return {
         ...supplied,
         root: { ...overlayStyle, ...supplied?.root, pointerEvents: "auto",
-          maxWidth: "min(350px, calc(100cqw - 16px))", maxHeight: "calc(100cqh - 16px)" },
+          maxWidth: inTimeline ? "min(350px, calc(100cqw - 16px))" : "min(400px, calc(100vw - 16px))",
+          maxHeight: inTimeline ? "calc(100cqh - 16px)" : "calc(100dvh - 16px)" },
         container: { ...overlayInnerStyle, ...supplied?.container, boxSizing: "border-box",
-          maxWidth: "100%", maxHeight: "calc(100cqh - 32px)", overflow: "auto" },
+          maxWidth: "100%",
+          maxHeight: inTimeline ? "calc(100cqh - 32px)" : "calc(100dvh - 32px)", overflow: "auto" },
       };
     }}
   />;
