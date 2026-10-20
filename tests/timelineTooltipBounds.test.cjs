@@ -129,3 +129,18 @@ test("a short timeline still keeps a popup inside its vertical bounds", async ()
   const popup = await alignPopup({ x: 1000, y: 490, width: 32, height: 10 }, bounds, align);
   assert.ok(popup.top >= bounds.top && popup.bottom <= bounds.bottom, JSON.stringify(popup));
 });
+
+test("stop cards escape the timeline layer and use browser bounds above map and timeline", () => {
+  const props = render({ popupScope: "viewport", open: true, overlayInnerStyle: { padding: 10 } });
+  const body = {};
+  assert.equal(props.getPopupContainer({ ownerDocument: { body } }), body);
+  assert.equal(props.placement, "top");
+  assert.equal(props.zIndex, 1000);
+  assert.equal(props.open, true);
+  const styles = props.styles({});
+  assert.equal(styles.root.maxWidth, "min(400px, calc(100vw - 16px))");
+  assert.equal(styles.container.maxHeight, "calc(100dvh - 32px)");
+  assert.equal(styles.container.overflow, "auto");
+  assert.equal(styles.container.padding, 10);
+  assert.equal(styles.root.pointerEvents, "auto");
+});

@@ -38,9 +38,10 @@ import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as M
 import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
 import { buildMapSearchIndex } from "./mapSearch.utils";
+import { getRouteStopDisplay } from "./stopDisplay.utils";
 import TimelineView from "./TimelineView";
 import AssignedJobsTable from "./AssignedJobsTable";
-import { getAssignedRouteJobs } from "./assignedRouteJobs.utils";
+import { getAssignedRouteJobs, getUnassignedRouteJobs } from "./assignedRouteJobs.utils";
 import AddJobsModal from "@/app/plan/AddJobsModal";
 import JobForm from "@/components/Jobs/JobForm";
 import SwapDriverDrawer from "./SwapDriverDrawer";
@@ -711,7 +712,7 @@ const OptimizationView = ({
     if (typeof item.stop.latitude === "number" && typeof item.stop.longitude === "number") {
       setCenter({ lat: item.stop.latitude, lng: item.stop.longitude });
     }
-    const markerId = `${item.routeIndex}-${item.stopIndex}`;
+    const markerId = item.markerId;
     setSelectedMarkerId(markerId);
     setSelectedDrawerJob({
       stopData: item.stop,
@@ -970,6 +971,7 @@ const OptimizationView = ({
     () => getAssignedRouteJobs(route, jobs, focusedRouteIndex, allowedRouteIndices),
     [route, jobs, focusedRouteIndex, allowedRouteIndices],
   );
+  const unassignedTableJobs = useMemo(() => getUnassignedRouteJobs(route, jobs), [route, jobs]);
   const tableTeamsMap = useMemo(() => ({
     ...Object.fromEntries(teams.map(team => [team.id, team.name])),
     ...Object.fromEntries((route.result?.routes || []).map(trip => [trip.team_member_id, trip.team_member_name])),
@@ -977,11 +979,16 @@ const OptimizationView = ({
   const isWorkerShuttle = route.result?.routes?.some(trip => trip.leg !== undefined)
     || jobs.some(job => job.template_type === "worker_shuttle" || Boolean(job.worker_shuttle_detail));
   const handleOpenTableJob = useCallback((job: Job) => {
+    if (unassignedTableJobs.some(item => item.id === job.id)) {
+      setSelectedMarkerId(null);
+      setSelectedDrawerJob({ stopData: { ...job, job_id: job.id, stop_type: "unassigned" }, job, isUnassigned: true });
+      return;
+    }
     const match = candidateIndex.find(item => Number(item.jobId) === job.id
       && (focusedRouteIndex === null || item.routeIndex === focusedRouteIndex)
       && (allowedRouteIndices === null || allowedRouteIndices.has(item.routeIndex)));
     if (match) handleSelectCandidate(match);
-  }, [candidateIndex, focusedRouteIndex, allowedRouteIndices, handleSelectCandidate]);
+  }, [candidateIndex, focusedRouteIndex, allowedRouteIndices, handleSelectCandidate, unassignedTableJobs]);
 
   // Focusing from the timeline recenters the map on that route, otherwise the
   // dispatcher can end up staring at an empty area with everything else gray.
@@ -1094,7 +1101,7 @@ const OptimizationView = ({
       null;
 
     const displayStopNumber =
-      foundMarker?.sequenceNumber ?? (stopIndex + 1);
+      getRouteStopDisplay(routeItem).byRawIndex.get(stopIndex)?.displayStopNumber ?? 0;
 
     setSelectedDrawerJob({
       stopData: stop,
@@ -2462,6 +2469,7 @@ const OptimizationView = ({
                   <div className="h-full" hidden={detailView !== "table"}>
                     <AssignedJobsTable
                       jobs={assignedTableJobs}
+                      unassignedJobs={unassignedTableJobs}
                       loading={isJobsLoading}
                       error={jobsError}
                       templateType={isWorkerShuttle ? "worker_shuttle" : "pickup_delivery_job"}
@@ -2482,6 +2490,9 @@ const OptimizationView = ({
           <JobDetailsCard
             stopData={selectedDrawerJob.stopData}
             job={selectedDrawerJob.job}
+            routeStops={selectedDrawerJob.routeIndex !== undefined
+              ? route.result?.routes?.[selectedDrawerJob.routeIndex]?.stops || []
+              : undefined}
             stopIndex={selectedDrawerJob.stopIndex}
             driverName={selectedDrawerJob.driverName}
             leg={selectedDrawerJob.leg}

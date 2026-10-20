@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Tag, Button, App, message, Input, InputNumber, TimePicker, DatePicker, Select } from "antd";
+import { Button, App, message, Input, InputNumber, TimePicker, DatePicker, Select } from "antd";
 import AddressAutocomplete, { AddressData } from "@/components/AddressAutocomplete";
 import {
   CloseOutlined,
@@ -11,7 +11,6 @@ import {
 } from "@ant-design/icons";
 import {
   User,
-  Users,
   MapPin,
   Clock,
   Building2,
@@ -21,18 +20,12 @@ import {
   Calendar,
   Timer,
   FileText,
-  Activity,
   Repeat,
-  Hash,
   Navigation,
-  Fingerprint,
-  ArrowRightLeft,
-  Tag as TagIcon,
   Sparkles,
 } from "lucide-react";
 import dayjs from "dayjs";
-import type { Job, JobStatus } from "@/types/job.type";
-import { STATUS_COLORS, formatJobTypeLabel } from "@/utils/jobs.utils";
+import type { Job } from "@/types/job.type";
 import { formatTime12h } from "@/utils/app.utils";
 import { getJobPickupType } from "@/utils/jobPickupType.utils";
 import { updateJobStatus, updateJob } from "@/apis/jobs.api";
@@ -40,6 +33,7 @@ import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
 import { useDepotStore } from "@/store/depots.store";
 import { useLocationMappingStore } from "@/store/location-mapping.store";
+import { getJobStopEstimates, type JobTimingStop } from "./jobStopEstimates.utils";
 
 interface JobDetailsCardProps {
   stopData: any | null;
@@ -47,6 +41,7 @@ interface JobDetailsCardProps {
   stopIndex?: number;
   driverName?: string;
   leg?: string;
+  routeStops?: readonly JobTimingStop[];
   isUnassigned?: boolean;
   onClose: () => void;
   onRemoveJob?: () => void;
@@ -91,11 +86,6 @@ const STOP_TYPE_BADGES: Record<string, { label: string; className: string }> = {
   },
 };
 
-const LEG_LABELS: Record<string, string> = {
-  GO: "Go",
-  RETURN: "Return",
-};
-
 const Field: React.FC<{
   icon: React.ReactNode;
   label: string;
@@ -117,12 +107,30 @@ const Field: React.FC<{
   </div>
 );
 
+const DetailSection = ({ title, children, compact = false }: { title: string; children: React.ReactNode; compact?: boolean }) => (
+  <section className={`${compact ? "space-y-2 pb-3" : "space-y-3 pb-4"} border-b border-gray-100 last:border-0 last:pb-0`} aria-label={title}>
+    <h3 className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{title}</h3>
+    {children}
+  </section>
+);
+
+const EstimatedTime = ({ value }: { value?: string }) => (
+  <div className="flex items-center gap-1.5 flex-wrap">
+    <span>{value ? formatTime12h(value) : "Not scheduled"}</span>
+    {value && dayjs(value).isValid() && (
+      <time dateTime={value} className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+        {dayjs(value).format("ddd, MMM D")}
+      </time>
+    )}
+  </div>
+);
+
 const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   stopData,
   job,
   stopIndex = 0,
   driverName,
-  leg,
+  routeStops,
   isUnassigned = false,
   onClose,
   onRemoveJob,
@@ -227,31 +235,22 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   const dash = (value?: string | number | null) =>
     value === undefined || value === null || value === "" ? "-" : String(value);
 
-  const tripType = job?.job_type || shuttleValue("pickup_type");
-  const isReturnTrip = String(tripType || "").toLowerCase() === "return_only";
-
   const candidateName = shuttleValue("candidate_name");
   const candidatePhone = shuttleValue("candidate_phone");
-  const candidateId = shuttleValue("candidate_id");
   const passengerName = shuttleValue("client_name", "first_name");
-  const passengerPhone = shuttleValue("client_phone", "phone_number");
-  const clientId = shuttleValue("client_id");
-  const quantId = shuttleValue("quant_id", "quart_id");
   const pickUpAddress = shuttleValue(
     "pick_up_address",
     "go_pickup_point",
     "candidate_address",
-  );
+  ) || (isPickupStop ? stopData?.address_formatted : undefined);
   const dropOffAddress = shuttleValue(
     "drop_off_address",
     "return_dropoff_point",
     "client_address",
-  );
+  ) || (isDropoffStop ? stopData?.address_formatted : undefined);
 
-  const clientPickUpTimeRaw = isReturnTrip
-    ? shuttleValue("end_hour", "client_pick_up_time", "start_hour")
-    : shuttleValue("client_pick_up_time", "start_hour", "end_hour");
-  const clientPickUpTime = formatTime12h(clientPickUpTimeRaw);
+  const isReturnTrip = job?.job_type === "return_only";
+  const estimates = getJobStopEstimates(job, stopData, routeStops, isUnassigned);
   const startHour = formatTime12h(shuttleValue("start_hour"));
   const endHour = formatTime12h(shuttleValue("end_hour"));
   const pickupType = getJobPickupType(job);
@@ -268,20 +267,10 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
       .join(" ");
   };
 
-  const candidatePickupEtaRaw = shuttleValue(
-    "candidate_pickup_eta",
-    "go_pickup_time_output",
-    "return_pickup_time_output",
-  );
-  const candidatePickupEta = formatTime12h(candidatePickupEtaRaw);
   const reachBeforeMinutes =
     job?.reach_before_minutes ??
     (job?.worker_shuttle_detail as any)?.reach_before_minutes ??
     (job?.custom_fields as any)?.reach_before_minutes;
-  const reachWindow =
-    reachBeforeMinutes === undefined || reachBeforeMinutes === null
-      ? "-"
-      : `${Number(reachBeforeMinutes) > 0 ? "+" : ""}${reachBeforeMinutes}m`;
 
   const notes = isShuttle
     ? dash(
@@ -299,12 +288,6 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     job?.address_formatted ||
     stopData?.address_formatted ||
     "Address not specified";
-
-  const stopAddressLabel = isPickupStop
-    ? "Pickup Address"
-    : isDropoffStop
-      ? "Drop-off Address"
-      : "Address";
 
   const getPriorityBadgeClass = (p: string) => {
     switch (p) {
@@ -518,21 +501,6 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     }
   };
 
-  const statusField = (
-    <Field
-      icon={<Activity size={13} className="text-gray-400 shrink-0" />}
-      label="Status"
-      valueClassName="pl-4.5 pt-0.5"
-    >
-      <Tag
-        color={STATUS_COLORS[status as JobStatus] || "blue"}
-        className="capitalize font-semibold border-none text-[10.5px] px-2 py-0.5 m-0 rounded"
-      >
-        {(status || "assigned").replace("_", " ")}
-      </Tag>
-    </Field>
-  );
-
   const arrivalField = (
     <Field
       icon={<Clock size={13} className="text-gray-400 shrink-0" />}
@@ -541,7 +509,8 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
           ? "Start Time"
           : stopType === "depot_end"
             ? "End Time"
-            : "ETA / Arrival"
+            : isDropoffStop ? "Estimated dropoff time"
+              : isPickupStop ? "Estimated pickup time" : "Estimated arrival time"
       }
       valueClassName="text-xs text-gray-900 font-bold pl-4.5"
     >
@@ -572,7 +541,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     <div
       className={`fixed ${
         isFullscreen ? "top-3 right-3 z-50" : "top-16 right-3 z-50"
-      } w-88 h-[calc(100vh-100px)] max-h-[620px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col overflow-hidden text-xs transition-all animate-in fade-in slide-in-from-right-4 duration-200`}
+      } w-[calc(100vw-24px)] sm:w-[400px] h-[calc(100dvh-100px)] max-h-[720px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col overflow-hidden text-xs transition-all animate-in fade-in slide-in-from-right-4 duration-200`}
     >
       {/* Header */}
       <div className="p-3.5 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
@@ -694,21 +663,6 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                         className="w-full text-xs"
                         value={editValues.scheduled_date ? dayjs(editValues.scheduled_date) : null}
                         onChange={(d) => setEditValues(v => ({ ...v, scheduled_date: d ? d.format("YYYY-MM-DD") : "" }))}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-gray-600 font-semibold mb-0.5 block">
-                        Trip Type
-                      </label>
-                      <Select
-                        size="small"
-                        className="w-full text-xs"
-                        value={editValues.job_type}
-                        onChange={(val) => setEditValues(v => ({ ...v, job_type: val }))}
-                        options={[
-                          { value: "one_way", label: "One Way" },
-                          { value: "return_only", label: "Return Only" },
-                        ]}
                       />
                     </div>
                   </div>
@@ -885,17 +839,6 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                         className="text-xs"
                       />
                     </div>
-                    <div>
-                      <label className="text-[10px] text-gray-600 font-semibold mb-0.5 block">
-                        Client / Worker ID
-                      </label>
-                      <Input
-                        size="small"
-                        value={editValues.client_id}
-                        onChange={(e) => setEditValues(v => ({ ...v, client_id: e.target.value }))}
-                        className="text-xs"
-                      />
-                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
@@ -907,17 +850,6 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                         size="small"
                         value={editValues.client_name}
                         onChange={(e) => setEditValues(v => ({ ...v, client_name: e.target.value }))}
-                        className="text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-gray-600 font-semibold mb-0.5 block">
-                        Client Phone
-                      </label>
-                      <Input
-                        size="small"
-                        value={editValues.client_phone}
-                        onChange={(e) => setEditValues(v => ({ ...v, client_phone: e.target.value }))}
                         className="text-xs"
                       />
                     </div>
@@ -1087,198 +1019,78 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
               </>
             )}
           </div>
-        ) : isShuttle ? (
+        ) : isShuttle && !isDepotStop ? (
           <>
-            {/* Row 1: Candidate Name & Status */}
-            <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
-              <Field
-                icon={<User size={13} className="text-gray-400 shrink-0" />}
-                label="Candidate Name"
-              >
-                {dash(candidateName)}
-              </Field>
-              {statusField}
-            </div>
+            <DetailSection title="Passenger" compact>
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-2">
+                <Field icon={<User size={13} className="text-gray-400" />} label="Candidate Name"
+                  valueClassName="text-sm font-semibold text-gray-900 pl-4.5 break-words">
+                  {dash(candidateName)}
+                </Field>
+                <Field icon={<Phone size={13} className="text-gray-400" />} label="Candidate Phone"
+                  valueClassName="text-xs text-gray-600 font-medium break-words pl-4.5">
+                  {candidatePhone ? <a href={`tel:${candidatePhone}`} className="hover:underline">{candidatePhone}</a> : "-"}
+                </Field>
+              </div>
+            </DetailSection>
 
-            {/* Row 2: This stop's address & ETA / Arrival */}
-            <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
-              <Field
-                icon={
-                  isDropoffStop ? (
-                    <Flag size={13} className="text-gray-400 shrink-0" />
-                  ) : (
-                    <Navigation size={13} className="text-gray-400 shrink-0" />
-                  )
-                }
-                label={stopAddressLabel}
-                valueClassName="text-xs text-gray-600 font-medium leading-snug line-clamp-2 pl-4.5"
-              >
-                {address}
-              </Field>
-              {arrivalField}
-            </div>
+            <DetailSection title="Journey" compact>
+              {([
+                { key: "pickup", title: "Pickup", selected: isPickupStop, address: pickUpAddress,
+                  estimate: estimates.pickup, Icon: Navigation },
+                { key: "dropoff", title: "Dropoff", selected: isDropoffStop, address: dropOffAddress,
+                  estimate: estimates.dropoff, Icon: Flag },
+              ] as const).map(({ key, title, selected, address: journeyAddress, estimate, Icon }) => (
+                <div key={key} aria-current={selected ? "step" : undefined}
+                  className={`space-y-1.5 rounded-md border p-2.5 ${selected
+                    ? "border-emerald-200 bg-emerald-50/50" : "border-gray-200 bg-gray-50/40"}`}>
+                  <div className="flex items-center justify-between">
+                    <h4 className="flex items-center gap-1.5 font-semibold text-gray-900"><Icon size={14} />{title}</h4>
+                    {selected && <span className="text-[10px] font-semibold text-emerald-800">Selected stop</span>}
+                  </div>
+                  <Field icon={<MapPin size={13} className="text-gray-400" />} label={`${title} address`}
+                    valueClassName="text-xs text-gray-700 leading-snug break-words pl-4.5">
+                    {dash(journeyAddress)}
+                  </Field>
+                  <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px]">
+                    <span className="flex items-center gap-1.5 font-bold text-gray-900">
+                      <Clock size={13} className="text-gray-400" />
+                      Estimated {key} time
+                    </span>
+                    <div className="text-xs font-semibold text-gray-900 pl-4.5">
+                      <EstimatedTime value={estimate} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </DetailSection>
 
-            {/* Row 3: Candidate Phone & Candidate ID */}
-            <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
-              <Field
-                icon={<Phone size={13} className="text-gray-400 shrink-0" />}
-                label="Candidate Phone"
-              >
-                {dash(candidatePhone)}
-              </Field>
-              <Field
-                icon={
-                  <Fingerprint size={13} className="text-gray-400 shrink-0" />
-                }
-                label="Candidate ID"
-              >
-                {dash(candidateId)}
-              </Field>
-            </div>
+            <DetailSection title="Shift & schedule">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+                <Field icon={<Calendar size={13} className="text-gray-400" />} label="Scheduled Date">{dash(scheduledDate)}</Field>
+                <Field icon={<Repeat size={13} className="text-gray-400" />} label="Pickup Type">
+                  {pickupType ? <span className="inline-flex border border-emerald-400 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-emerald-900">
+                    {formatPickupType(pickupType)}
+                  </span> : "-"}
+                </Field>
+                <Field icon={<Clock size={13} className="text-gray-400" />} label="Shift Start Time">{dash(startHour)}</Field>
+                <Field icon={<Clock size={13} className="text-gray-400" />} label="Shift End Time">{dash(endHour)}</Field>
+              </div>
+            </DetailSection>
 
-            {/* Row 4: Passenger Name & Passenger Phone */}
-            <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
-              <Field
-                icon={<Users size={13} className="text-gray-400 shrink-0" />}
-                label="Client Name"
-              >
-                {dash(passengerName)}
-              </Field>
-              <Field
-                icon={<Phone size={13} className="text-gray-400 shrink-0" />}
-                label="Client Phone"
-              >
-                {dash(passengerPhone)}
-              </Field>
-            </div>
-
-            {/* Row 5: Trip Type & Quant / Shift Ref */}
-            <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
-              <Field
-                icon={<Repeat size={13} className="text-gray-400 shrink-0" />}
-                label="Trip Type"
-              >
-                {tripType ? formatJobTypeLabel(tripType) : "-"}
-              </Field>
-              <Field
-                icon={<Hash size={13} className="text-gray-400 shrink-0" />}
-                label="Quant / Shift Ref"
-              >
-                {dash(quantId)}
-              </Field>
-            </div>
-
-            {/* Shift Start Time & Shift End Time */}
-            <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
-              <Field
-                icon={<Clock size={13} className="text-gray-400 shrink-0" />}
-                label="Shift Start Time"
-              >
-                {dash(startHour)}
-              </Field>
-              <Field
-                icon={<Clock size={13} className="text-gray-400 shrink-0" />}
-                label="Shift End Time"
-              >
-                {dash(endHour)}
-              </Field>
-            </div>
-
-            {/* Pickup Type & Scheduled Date */}
-            <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
-              <Field
-                icon={<Repeat size={13} className="text-gray-400 shrink-0" />}
-                label="Pickup Type"
-              >
-                {pickupType ? formatPickupType(pickupType) : "-"}
-              </Field>
-              <Field
-                icon={<Calendar size={13} className="text-gray-400 shrink-0" />}
-                label="Scheduled Date"
-              >
-                {dash(scheduledDate)}
-              </Field>
-            </div>
-
-            {/* Row 6: Client Pick Up Time & Candidate Pickup ETA */}
-            <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
-              <Field
-                icon={<Calendar size={13} className="text-gray-400 shrink-0" />}
-                label="Client Pick Up Time"
-              >
-                {dash(clientPickUpTime)}
-              </Field>
-              <Field
-                icon={<Clock size={13} className="text-gray-400 shrink-0" />}
-                label="Candidate Pickup ETA"
-              >
-                {dash(candidatePickupEta)}
-              </Field>
-            </div>
-
-            {/* Row 7: Reach Window & Client / Worker ID */}
-            <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
-              <Field
-                icon={<Timer size={13} className="text-gray-400 shrink-0" />}
-                label="Reach Window"
-              >
-                {reachWindow}
-              </Field>
-              <Field
-                icon={<TagIcon size={13} className="text-gray-400 shrink-0" />}
-                label="Client / Worker ID"
-              >
-                {dash(clientId)}
-              </Field>
-            </div>
-
-            {/* Row 8: Full journey — Pick Up & Drop Off addresses */}
-            <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
-              <Field
-                icon={
-                  <Navigation size={13} className="text-gray-400 shrink-0" />
-                }
-                label="Pick Up Address"
-                valueClassName="text-xs text-gray-600 font-medium leading-snug line-clamp-2 pl-4.5"
-              >
-                {dash(pickUpAddress)}
-              </Field>
-              <Field
-                icon={<Flag size={13} className="text-gray-400 shrink-0" />}
-                label="Drop Off Address"
-                valueClassName="text-xs text-gray-600 font-medium leading-snug line-clamp-2 pl-4.5"
-              >
-                {dash(dropOffAddress)}
-              </Field>
-            </div>
-
-            {/* Row 9: Driver & Trip Leg */}
-            <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
-              <Field
-                icon={<User size={13} className="text-gray-400 shrink-0" />}
-                label="Driver"
-              >
-                {dash(driverName)}
-              </Field>
-              <Field
-                icon={
-                  <ArrowRightLeft
-                    size={13}
-                    className="text-gray-400 shrink-0"
-                  />
-                }
-                label="Trip Leg"
-              >
-                {leg ? LEG_LABELS[leg.toUpperCase()] || leg : "-"}
-              </Field>
-            </div>
-
-            {/* Row 10: Notes */}
-            {notesField}
+            <DetailSection title="Assignment">
+              <div className="grid grid-cols-2 gap-3">
+                <Field icon={<User size={13} className="text-gray-400" />} label="Driver"
+                  valueClassName="text-xs text-gray-700 break-words pl-4.5">{dash(driverName)}</Field>
+                <Field icon={<Building2 size={13} className="text-gray-400" />} label="Client Name"
+                  valueClassName="text-xs text-gray-700 break-words pl-4.5">{dash(passengerName)}</Field>
+              </div>
+            </DetailSection>
+            {notes !== "-" && <DetailSection title="Notes"><div className="text-xs leading-relaxed text-gray-700 whitespace-pre-wrap break-words">{notes}</div></DetailSection>}
           </>
         ) : (
           <>
-            {/* Row 1: Contact Name & Status */}
+            {/* Contact */}
             <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
               <Field
                 icon={<User size={13} className="text-gray-400 shrink-0" />}
@@ -1286,10 +1098,9 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
               >
                 {customerName}
               </Field>
-              {statusField}
             </div>
 
-            {/* Row 2: Address & ETA / Arrival */}
+            {/* Address and arrival time */}
             <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
               <Field
                 icon={<MapPin size={13} className="text-gray-400 shrink-0" />}

@@ -41,3 +41,14 @@ export function getAssignedRouteJobs(
   }
   return [...assigned.values()];
 }
+
+/** Unassigned membership comes from this plan's result, never from job status alone. */
+export function getUnassignedRouteJobs(route: Route, jobs: Job[]): Job[] {
+  const assignedIds = new Set((route.result?.routes || []).flatMap(trip =>
+    (trip.stops || []).flatMap(stop => stop.job_id == null ? [] : [Number(stop.job_id)]),
+  ));
+  const unassignedIds = new Set((route.result?.unassigned_jobs || []).map(job => Number(job.job_id)));
+  return jobs.filter(job => unassignedIds.has(Number(job.id)) && !assignedIds.has(Number(job.id)))
+    .map(job => ({ ...job, assigned_to: undefined, vehicle_id: undefined, vehicle_name: undefined,
+      route_name: route.route_name, optimization_id: route.id, pickup_eta: undefined, dropoff_eta: undefined }));
+}

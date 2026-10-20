@@ -77,3 +77,19 @@ test("delivery job stops and empty results work without shuttle-specific data", 
   assert.deepEqual(getAssignedRouteJobs({ id: 21 }, [job(1)]), []);
   assert.deepEqual(getAssignedRouteJobs(route, []), []);
 });
+
+test("unassigned table rows use explicit current-plan membership and clear stale assignments", () => {
+  const { getUnassignedRouteJobs } = helpers;
+  const route = plan();
+  route.result.unassigned_jobs = [{ job_id: 4 }, { job_id: 4 }, { job_id: 1 }];
+  const stored = { ...job(4, "draft"), pickup_eta: "old", dropoff_eta: "old", vehicle_id: 99 };
+  const before = structuredClone(stored);
+  const rows = getUnassignedRouteJobs(route, [job(1), stored, job(5, "draft"), job(99, "draft")]);
+  assert.deepEqual(rows.map(row => row.id), [4]);
+  assert.equal(rows[0].status, "draft", "assignment presentation must not change persisted lifecycle status");
+  for (const key of ["assigned_to", "vehicle_id", "vehicle_name", "pickup_eta", "dropoff_eta"]) {
+    assert.equal(rows[0][key], undefined, key);
+  }
+  assert.equal(rows[0].optimization_id, route.id);
+  assert.deepEqual(stored, before);
+});

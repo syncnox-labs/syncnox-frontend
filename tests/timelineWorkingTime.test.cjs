@@ -56,6 +56,9 @@ const TimelineView = load("app/route/_components/TimelineView.tsx", {
   "./TimelineTooltip": timelineTooltip,
   "./TimelineTravelSegment": load("app/route/_components/TimelineTravelSegment.tsx", { "./TimelineTooltip": timelineTooltip }),
   "./leaderRoute.utils": load("app/route/_components/leaderRoute.utils.ts"),
+  "./stopDisplay.utils": load("app/route/_components/stopDisplay.utils.ts", {
+    "./leaderRoute.utils": load("app/route/_components/leaderRoute.utils.ts"),
+  }),
   "@/utils/timeline.utils": load("utils/timeline.utils.ts", { "./app.utils": load("utils/app.utils.ts") }),
 }).default;
 
@@ -230,4 +233,45 @@ test("working time preference survives reloads and preserves other map settings"
   assert.equal(settings().getStoredMapOverlays().driverWorkingTime, true);
   stored = null;
   assert.equal(settings().getStoredMapOverlays().driverWorkingTime, true);
+});
+
+test("rendered timeline numbers and clicks match search and map for shared passenger stops", () => {
+  const stopDisplay = load("app/route/_components/stopDisplay.utils.ts", {
+    "./leaderRoute.utils": load("app/route/_components/leaderRoute.utils.ts"),
+  });
+  const { buildMapSearchIndex, filterMapSearchResults } = load("app/route/_components/mapSearch.utils.ts", {
+    "./stopDisplay.utils": stopDisplay,
+  });
+  const { generateMapMarkers } = load("app/route/_components/optimizationView.utils.ts", {
+    "./stopDisplay.utils": stopDisplay,
+    "@/utils/app.utils": { formatTime12h: value => value },
+    "@/utils/googleMaps.utils": { decodePolyline: () => [] },
+    "@/utils/timeline.utils": { getRouteColor: () => "#123456" },
+  });
+  const shared = { ...route.stops[0], arrival_time: "2026-09-29T15:00:00" };
+  const selectedRoute = { ...route, stops: [
+    { ...shared, stop_type: "depot_start" },
+    ...[1, 2, 3].map(job_id => ({ ...shared, job_id })),
+    ...Array.from({ length: 19 }, (_, i) => ({ ...shared, job_id: i + 10, latitude: 45.6 + i / 100,
+      arrival_time: `2026-09-29T16:${String(i).padStart(2, "0")}:00` })),
+    { ...shared, stop_type: "dropoff", job_id: 42, arrival_time: "2026-09-29T16:37:00" },
+  ] };
+  const [result] = filterMapSearchResults(buildMapSearchIndex([selectedRoute], [
+    { id: 42, candidate_name: "Paula Plata" },
+  ]), "Paula");
+  renderedStops = [];
+  const clicked = [];
+  renderToStaticMarkup(React.createElement(TimelineView, {
+    routes: [selectedRoute], scheduledDate: "2026-09-29", showDriverWorkingTime: false,
+    selectedMarkerId: result.markerId, onStopClick: (...args) => clicked.push(args),
+  }));
+  const arrow = renderedStops.find(stop => stop.displayIndex === result.displayStopNumber);
+  assert.ok(arrow, "search number must exist on a rendered timeline arrow");
+  assert.equal(arrow.displayIndex, 21);
+  assert.equal(arrow.isPickup, false);
+  arrow.onClick({ stopPropagation() {} });
+  assert.equal(clicked[0][0], result.stop);
+  assert.equal(clicked[0][2], result.displayStopNumber, "the details card gets the visible arrow number");
+  const marker = generateMapMarkers({ result: { routes: [selectedRoute] } }, []).find(marker => marker.id === result.markerId);
+  assert.equal(marker.sequenceNumber, arrow.displayIndex);
 });

@@ -43,6 +43,10 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
   const fields = useMemo(() => getJobFormFields(customFields), [customFields]);
   const addressLocations = useRef<Record<string, unknown>>({});
   const date = dayjs.isDayjs(defaultDate) ? defaultDate.format("YYYY-MM-DD") : defaultDate;
+  const initialValues = useMemo(
+    () => getJobInitialValues(fields, initialData, { date, jobType: defaultJobType }),
+    [fields, initialData, date, defaultJobType],
+  );
 
   const predefinedLocations = useMemo(() => [
     ...depots.filter(depot => typeof depot.location?.lat === "number" && typeof depot.location?.lng === "number").map(depot => ({
@@ -57,13 +61,14 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
 
   useEffect(() => {
     if (loading) return;
+    // Use Form's initial values so field remounts (including Strict Mode)
+    // restore the job data when preserve=false clears unregistered fields.
     form.resetFields();
-    form.setFieldsValue(getJobInitialValues(fields, initialData, { date, jobType: defaultJobType }));
     const detail = initialData?.worker_shuttle_detail || initialData?.pickup_delivery_detail;
     addressLocations.current = Object.fromEntries(Object.entries(ADDRESS_LOCATION_KEYS).map(([key, locationKey]) => [
       key, (initialData as unknown as Record<string, unknown> | null)?.[locationKey] ?? detail?.[locationKey] ?? initialData?.custom_fields?.[locationKey],
     ]));
-  }, [form, fields, initialData, date, defaultJobType, loading]);
+  }, [form, initialValues, initialData, loading]);
 
   const onFinish = async (values: Record<string, unknown>) => {
     if (loading || error || !fields.length) return;
@@ -96,7 +101,9 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
         return <Select allowClear placeholder={`Select ${field.label}`} options={
           key === "assigned_to" && field.options == null
             ? teams.map(team => ({ value: team.id, label: team.name }))
-            : (field.options || []).map(value => ({ value, label: String(value) }))
+            : (field.options || []).map(value => ({ value, label: key === "pickup_type"
+              ? String(value).replace(/_/g, " ").replace(/\b\w/g, character => character.toUpperCase())
+              : String(value) }))
         } />;
       case "boolean":
         return <Checkbox>{field.description || field.label}</Checkbox>;
@@ -127,7 +134,7 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
       {loading ? <div className="flex justify-center py-12"><Spin /></div>
         : error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => void reloadConfigs()}>Retry</Button>} />
         : fields.length === 0 ? <Empty description="No job fields are enabled for dispatch. Configure them in Custom Fields settings." />
-        : <Form form={form} layout="vertical" onFinish={onFinish} preserve={false}>
+        : <Form form={form} initialValues={initialValues} layout="vertical" onFinish={onFinish} preserve={false}>
           <Row gutter={16}>
             {fields.map(field => {
               const control = getJobFieldControl(field);

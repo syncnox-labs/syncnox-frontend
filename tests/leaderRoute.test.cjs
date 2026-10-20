@@ -20,7 +20,7 @@ function load(name, imports = {}) {
 const helpers = load("leaderRoute.utils.ts");
 const { isRedundantLeaderClientStart } = helpers;
 const { generateMapMarkers } = load("optimizationView.utils.ts", {
-  "./leaderRoute.utils": helpers,
+  "./stopDisplay.utils": load("stopDisplay.utils.ts", { "./leaderRoute.utils": helpers }),
   "@/utils/app.utils": { formatTime12h: value => value },
   "@/utils/googleMaps.utils": { decodePolyline: () => [] },
   "@/utils/timeline.utils": { getRouteColor: () => "#123456" },

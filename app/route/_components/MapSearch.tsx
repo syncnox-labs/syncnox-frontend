@@ -3,9 +3,11 @@ import React, {
   useState,
   useRef,
   useEffect,
+  useLayoutEffect,
   useCallback,
   useMemo,
 } from "react";
+import { createPortal } from "react-dom";
 import { Search, X, MapPin, Phone, User, ChevronRight, Plus } from "lucide-react";
 import { Tooltip } from "antd";
 import { filterMapSearchResults, type MapSearchResult } from "./mapSearch.utils";
@@ -53,6 +55,7 @@ const MapSearch: React.FC<MapSearchProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>();
 
   // ── Filter results ────────────────────────────────────────────────────────
   const searchResults = useMemo(
@@ -93,7 +96,8 @@ const MapSearch: React.FC<MapSearchProps> = ({
     const handler = (e: MouseEvent) => {
       if (
         containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
+        !containerRef.current.contains(e.target as Node) &&
+        !listRef.current?.contains(e.target as Node)
       ) {
         close();
       }
@@ -156,6 +160,35 @@ const MapSearch: React.FC<MapSearchProps> = ({
 
   const showDropdown =
     isOpen && (query.trim() !== "" || recentSearches.length > 0);
+
+  // Portal beyond the resizable map panel, which clips its children.
+  useLayoutEffect(() => {
+    if (!showDropdown) return;
+    const updatePosition = () => {
+      const anchor = containerRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const width = Math.min(300, window.innerWidth - 16);
+      const top = rect.bottom + 6;
+      setDropdownStyle({
+        position: "fixed", zIndex: 1000, top,
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+        width, maxHeight: Math.max(0, Math.min(340, window.innerHeight - top - 8)),
+        overflowY: "auto",
+      });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    const observer = new ResizeObserver(updatePosition);
+    if (containerRef.current) observer.observe(containerRef.current);
+    if (containerRef.current?.parentElement) observer.observe(containerRef.current.parentElement);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      observer.disconnect();
+    };
+  }, [showDropdown]);
 
   return (
     <div
@@ -230,11 +263,11 @@ const MapSearch: React.FC<MapSearchProps> = ({
       </div>
 
       {/* ── Dropdown ── */}
-      {showDropdown && (
+      {showDropdown && dropdownStyle && createPortal(
         <div
           ref={listRef}
-          className="mt-1.5 bg-white border border-gray-200 rounded-none shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
-          style={{ maxHeight: 340, overflowY: "auto", width: 300 }}
+          className="bg-white border border-gray-200 rounded-none shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+          style={dropdownStyle}
         >
           {/* ── No results ── */}
           {query.trim() !== "" && searchResults.length === 0 && (
@@ -408,7 +441,8 @@ const MapSearch: React.FC<MapSearchProps> = ({
               </p>
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
