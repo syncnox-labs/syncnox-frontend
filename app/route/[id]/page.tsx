@@ -45,6 +45,19 @@ type ReasonMeta = {
 };
 
 const REASON_META: Record<string, ReasonMeta> = {
+  JOB_TIME_CONFLICT: {
+    label: "Conflicting Job Times",
+    shortSummary: "One driver cannot reach both stops within their required time windows.",
+    Icon: Clock,
+    color: "text-amber-700",
+    bgColor: "bg-amber-50/80",
+    borderColor: "border-amber-200",
+    badgeBg: "bg-amber-100/80",
+    fixSteps: [
+      "Assign the conflicting jobs to separate drivers.",
+      "Change a job time only if the client's shift permits it.",
+    ],
+  },
   NO_FEASIBLE_ROUTE_FOUND: {
     label: "No Route Found",
     shortSummary: "Could not fit within driver, vehicle, or time constraints.",
@@ -153,6 +166,46 @@ const REASON_META: Record<string, ReasonMeta> = {
       "Adjust working-hour schedules for booked drivers to open a slot.",
       "Consider splitting existing routes to free up a driver.",
     ],
+  },
+  VEHICLE_BOOKED: {
+    label: "Vehicle Already Booked",
+    shortSummary: "The selected vehicle has a conflicting confirmed booking.",
+    Icon: CalendarX,
+    color: "text-blue-700",
+    bgColor: "bg-blue-50/80",
+    borderColor: "border-blue-200",
+    badgeBg: "bg-blue-100/80",
+    fixSteps: ["Select an available vehicle or reschedule the conflicting booking."],
+  },
+  DRIVER_BOOKED: {
+    label: "Driver Already Booked",
+    shortSummary: "The driver has a conflicting confirmed booking.",
+    Icon: CalendarX,
+    color: "text-blue-700",
+    bgColor: "bg-blue-50/80",
+    borderColor: "border-blue-200",
+    badgeBg: "bg-blue-100/80",
+    fixSteps: ["Select an available driver or reschedule the conflicting booking."],
+  },
+  RESOURCE_BOOKED: {
+    label: "Drivers and Vehicles Booked",
+    shortSummary: "Confirmed bookings block every eligible driver and vehicle pairing.",
+    Icon: CalendarX,
+    color: "text-blue-700",
+    bgColor: "bg-blue-50/80",
+    borderColor: "border-blue-200",
+    badgeBg: "bg-blue-100/80",
+    fixSteps: ["Select available drivers and vehicles or reschedule conflicting bookings."],
+  },
+  CAPACITY_PRESSURE: {
+    label: "Review Seat Availability",
+    shortSummary: "Estimated passenger overlap exceeds seats; capacity is not a confirmed cause.",
+    Icon: Gauge,
+    color: "text-amber-700",
+    bgColor: "bg-amber-50/80",
+    borderColor: "border-amber-200",
+    badgeBg: "bg-amber-100/80",
+    fixSteps: ["Review actual passenger overlap and trip sequencing before changing vehicle capacity."],
   },
   CAPACITY_EXCEEDED: {
     label: "Vehicle Capacity Exceeded",

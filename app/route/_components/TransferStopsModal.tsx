@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Modal,
   Button,
@@ -27,6 +27,7 @@ import dayjs from "dayjs";
 import type { Job } from "@/types/job.type";
 import { formatTime12h } from "@/utils/app.utils";
 import { getRouteColor } from "@/utils/timeline.utils";
+import { legJobIds, type TransferSelection } from "./transferStops.utils";
 
 export interface TransferStopItem {
   key: string;
@@ -54,6 +55,7 @@ interface TransferStopsModalProps {
     jobIds: number[],
     targetPosition?: number,
     reoptimize?: boolean,
+    selection?: TransferSelection,
   ) => Promise<void> | void;
   initialSelectedJobIds?: number[];
 }
@@ -68,12 +70,17 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
   initialSelectedJobIds = [],
 }) => {
   const [targetRouteIndex, setTargetRouteIndex] = useState<number | null>(null);
+  const [selectedSourceIndex, setSelectedSourceIndex] = useState<number | null>(null);
+  const activeSourceIndex = selectedSourceIndex ?? sourceRouteIndex;
   const [selectedJobIds, setSelectedJobIds] = useState<Set<number>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<"all" | "pickup" | "dropoff">("all");
   const [autoSelectLinkedStops, setAutoSelectLinkedStops] = useState(true);
   const [reoptimize, setReoptimize] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const transferInFlight = useRef(false);
+  const [scope, setScope] = useState<"jobs" | "leg">("jobs");
+  const [transferLeg, setTransferLeg] = useState<"GO" | "RETURN">("GO");
 
   const jobsByIdMap = useMemo(() => {
     const map = new Map<number, Job>();
@@ -82,9 +89,10 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
   }, [jobs]);
 
   const sourceRoute = useMemo(() => {
-    if (sourceRouteIndex === null || !routes || !routes[sourceRouteIndex]) return null;
-    return routes[sourceRouteIndex];
-  }, [sourceRouteIndex, routes]);
+    if (activeSourceIndex === null || !routes || !routes[activeSourceIndex]) return null;
+    return routes[activeSourceIndex];
+  }, [activeSourceIndex, routes]);
+  useEffect(() => { setSelectedSourceIndex(sourceRouteIndex); }, [open, sourceRouteIndex]);
 
   // Extract non-depot stops from source route
   const stopsList = useMemo<TransferStopItem[]>(() => {
@@ -134,31 +142,39 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
   }, [sourceRoute, jobsByIdMap]);
 
   // Initialize selected jobs & default target route
+  const initialJobIdsKey = initialSelectedJobIds.join(",");
   useEffect(() => {
     if (open) {
       setSearchTerm("");
       setFilterType("all");
+      setScope("jobs");
+      setReoptimize(false);
+      setTransferLeg(routes[activeSourceIndex ?? -1]?.leg === "RETURN" ? "RETURN" : "GO");
 
       if (initialSelectedJobIds && initialSelectedJobIds.length > 0) {
-        setSelectedJobIds(new Set(initialSelectedJobIds));
+        const available = new Set((routes[activeSourceIndex ?? -1]?.stops || []).map((stop: any) => Number(stop.job_id)));
+        setSelectedJobIds(new Set(initialSelectedJobIds.filter(id => available.has(id))));
       } else {
         setSelectedJobIds(new Set());
       }
 
       // Default target driver to the first available other driver
-      if (routes && routes.length > 1 && sourceRouteIndex !== null) {
-        const firstOtherIdx = routes.findIndex((_, idx) => idx !== sourceRouteIndex);
+      if (routes && routes.length > 1 && activeSourceIndex !== null) {
+        const firstOtherIdx = routes.findIndex((item, idx) => idx !== activeSourceIndex && item.team_member_id !== routes[activeSourceIndex]?.team_member_id);
         setTargetRouteIndex(firstOtherIdx >= 0 ? firstOtherIdx : null);
       } else {
         setTargetRouteIndex(null);
       }
     }
-  }, [open, sourceRouteIndex, routes, initialSelectedJobIds]);
+  }, [open, activeSourceIndex, routes, initialJobIdsKey]);
 
   const targetRoute = useMemo(() => {
     if (targetRouteIndex === null || !routes || !routes[targetRouteIndex]) return null;
     return routes[targetRouteIndex];
   }, [targetRouteIndex, routes]);
+  const effectiveJobIds = useMemo(() => scope === "leg"
+    ? new Set(legJobIds(sourceRoute, jobs, transferLeg)) : selectedJobIds,
+  [scope, sourceRoute, jobs, transferLeg, selectedJobIds]);
 
   // Filtered stops
   const filteredStops = useMemo(() => {
@@ -177,8 +193,10 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
 
   // Toggle selection for a stop
   const toggleJobSelection = (jobId: number) => {
-    setSelectedJobIds((prev) => {
-      const next = new Set(prev);
+    if (transferInFlight.current) return;
+    setScope("jobs");
+    setSelectedJobIds(() => {
+      const next = new Set(effectiveJobIds);
       if (next.has(jobId)) {
         next.delete(jobId);
       } else {
@@ -189,6 +207,7 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
   };
 
   const handleSelectAllFiltered = () => {
+    setScope("jobs");
     setSelectedJobIds((prev) => {
       const next = new Set(prev);
       filteredStops.forEach((s) => next.add(s.job_id));
@@ -197,48 +216,53 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
   };
 
   const handleDeselectAll = () => {
+    setScope("jobs");
     setSelectedJobIds(new Set());
   };
 
   const handleConfirmTransfer = async () => {
-    if (sourceRouteIndex === null || targetRouteIndex === null) {
+    if (transferInFlight.current) return;
+    if (activeSourceIndex === null || targetRouteIndex === null) {
       message.error("Please choose a destination driver.");
       return;
     }
-    if (sourceRouteIndex === targetRouteIndex) {
+    if (activeSourceIndex === targetRouteIndex) {
       message.error("Destination driver must be different from source driver.");
       return;
     }
-    if (selectedJobIds.size === 0) {
+    if (effectiveJobIds.size === 0) {
       message.error("Please select at least one stop to transfer.");
       return;
     }
 
     try {
+      transferInFlight.current = true;
       setIsSubmitting(true);
       await onTransfer(
-        sourceRouteIndex,
+        activeSourceIndex,
         targetRouteIndex,
-        Array.from(selectedJobIds),
+        Array.from(effectiveJobIds),
         undefined,
         reoptimize,
+        { scope, leg: scope === "leg" ? transferLeg : undefined },
       );
       onClose();
     } catch (err: any) {
       console.error("Transfer error:", err);
     } finally {
+      transferInFlight.current = false;
       setIsSubmitting(false);
     }
   };
 
-  const sourceColor = sourceRouteIndex !== null ? getRouteColor(sourceRouteIndex) : "#003220";
+  const sourceColor = activeSourceIndex !== null ? getRouteColor(activeSourceIndex) : "#003220";
   const targetColor = targetRouteIndex !== null ? getRouteColor(targetRouteIndex) : "#3b82f6";
 
   const allFilteredSelected =
     filteredStops.length > 0 && filteredStops.every((s) => selectedJobIds.has(s.job_id));
 
   // Count total selected stops (including linked pickups and dropoffs)
-  const selectedStopsCount = stopsList.filter((s) => selectedJobIds.has(s.job_id)).length;
+  const selectedStopsCount = stopsList.filter((s) => effectiveJobIds.has(s.job_id)).length;
 
   return (
     <Modal
@@ -302,7 +326,7 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
                 Transfer Stops to Another Driver
               </h2>
               <p className="text-xs text-emerald-100/75 m-0 mt-0.5">
-                Move candidates/stops from one driver&apos;s route to another driver with instant ETA recalculation.
+                Move jobs or a complete leg. Planned times stay the same until re-optimization.
               </p>
             </div>
           </div>
@@ -332,6 +356,10 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
                 <div className="text-sm font-bold text-slate-900 truncate">
                   {sourceRoute?.team_member_name || `Driver #${(sourceRouteIndex ?? 0) + 1}`}
                 </div>
+                <Select aria-label="Source trip" size="small" className="w-full mt-1" value={activeSourceIndex}
+                  disabled={isSubmitting} onChange={setSelectedSourceIndex}
+                  options={routes.map((trip, index) => ({ trip, index })).filter(({trip}) => trip.team_member_id === sourceRoute?.team_member_id)
+                    .map(({trip,index}) => ({ value: index, label: `${trip.leg || "Route"} · ${new Set((trip.stops || []).filter((stop: any) => stop.job_id).map((stop: any) => stop.job_id)).size} jobs` }))} />
                 <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
                   <span>{stopsList.length} stops</span>
                   {sourceRoute?.vehicle_name && (
@@ -364,6 +392,7 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
                   Destination Driver
                 </div>
                 <Select
+                  disabled={isSubmitting}
                   value={targetRouteIndex}
                   onChange={(val) => setTargetRouteIndex(val)}
                   placeholder="Select destination driver..."
@@ -373,11 +402,12 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
                   options={routes
                     .map((r, idx) => ({
                       value: idx,
-                      disabled: idx === sourceRouteIndex,
+                      disabled: idx === sourceRouteIndex || r.team_member_id === sourceRoute?.team_member_id,
                       label: (
                         <div className="flex items-center justify-between text-xs py-0.5">
                           <span className={`font-semibold ${idx === sourceRouteIndex ? "text-slate-400" : "text-slate-800"}`}>
                             {r.team_member_name || `Driver #${idx + 1}`}
+                            {r.leg ? ` · ${r.leg}` : ""}
                             {idx === sourceRouteIndex && " (Source)"}
                           </span>
                           <span className="text-[10px] text-slate-400 ml-2">
@@ -390,6 +420,21 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="px-5 py-3 border-b border-slate-200 flex flex-wrap items-center gap-3">
+          <div className="inline-flex border border-slate-300">
+            {(["jobs", "leg"] as const).map(value => (
+              <button key={value} type="button" onClick={() => setScope(value)} disabled={isSubmitting}
+                className={`px-3 py-1.5 text-xs border-none cursor-pointer ${scope === value ? "bg-[#003220] text-white" : "bg-white text-slate-700"}`}>
+                {value === "jobs" ? "Selected jobs" : "Complete leg"}
+              </button>
+            ))}
+          </div>
+          {scope === "leg" && <Select value={transferLeg} onChange={setTransferLeg} size="small" disabled={isSubmitting}
+            options={(["GO", "RETURN"] as const).map(leg => ({ value: leg, label: `${leg === "GO" ? "GO" : "RETURN"} (${legJobIds(sourceRoute, jobs, leg).length} jobs)`,
+              disabled: legJobIds(sourceRoute, jobs, leg).length === 0 }))} />}
+          <span className="text-xs text-slate-500">Pickup and drop-off always move together.</span>
         </div>
 
         {/* Search, Filter & Quick-action Toolbar */}
@@ -446,14 +491,15 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
             <Button
               size="small"
               onClick={allFilteredSelected ? handleDeselectAll : handleSelectAllFiltered}
+              disabled={isSubmitting}
               className="text-xs rounded-none border border-slate-300 hover:border-[#003220] hover:text-[#003220]"
               style={{ borderRadius: 0 }}
             >
               {allFilteredSelected ? "Clear Selection" : "Select All Filtered"}
             </Button>
-            {selectedJobIds.size > 0 && (
+            {effectiveJobIds.size > 0 && (
               <span className="m-0 text-xs font-semibold px-2 py-0.5 rounded-none bg-emerald-50 text-[#003220] border border-emerald-300">
-                {selectedJobIds.size} jobs ({selectedStopsCount} stops) selected
+                {effectiveJobIds.size} jobs ({selectedStopsCount} stops) selected
               </span>
             )}
           </div>
@@ -471,7 +517,7 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
             </div>
           ) : (
             filteredStops.map((item) => {
-              const isSelected = selectedJobIds.has(item.job_id);
+              const isSelected = effectiveJobIds.has(item.job_id);
               const isPickup = item.stop_type === "pickup";
               const isDropoff = item.stop_type === "dropoff";
 
@@ -617,17 +663,17 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
               onClick={handleConfirmTransfer}
               loading={isSubmitting}
               disabled={
-                selectedJobIds.size === 0 ||
+                effectiveJobIds.size === 0 ||
                 targetRouteIndex === null ||
-                targetRouteIndex === sourceRouteIndex
+                targetRouteIndex === activeSourceIndex
               }
               style={{
                 backgroundColor:
-                  selectedJobIds.size > 0 && targetRouteIndex !== null && targetRouteIndex !== sourceRouteIndex
+                  effectiveJobIds.size > 0 && targetRouteIndex !== null && targetRouteIndex !== activeSourceIndex
                     ? "#003220"
                     : undefined,
                 borderColor:
-                  selectedJobIds.size > 0 && targetRouteIndex !== null && targetRouteIndex !== sourceRouteIndex
+                  effectiveJobIds.size > 0 && targetRouteIndex !== null && targetRouteIndex !== activeSourceIndex
                     ? "#003220"
                     : undefined,
                 borderRadius: 0,
@@ -635,7 +681,7 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
               className="rounded-none font-semibold text-xs shadow-none"
               icon={<SwapOutlined />}
             >
-              Transfer {selectedJobIds.size > 0 ? `${selectedJobIds.size} Job(s)` : "Stops"}
+              Transfer {effectiveJobIds.size > 0 ? `${effectiveJobIds.size} Job(s)` : "Stops"}
               {targetRoute ? ` to ${targetRoute.team_member_name || `Driver #${targetRouteIndex! + 1}`}` : ""}
             </Button>
           </div>
