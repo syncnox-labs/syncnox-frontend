@@ -42,8 +42,9 @@ import { getRouteStopDisplay } from "./stopDisplay.utils";
 import TimelineView from "./TimelineView";
 import AssignedJobsTable from "./AssignedJobsTable";
 import OptimizationIssueBanner from "./OptimizationIssueBanner";
+import PendingOptimizationIndicator from "./PendingOptimizationIndicator";
 import { getAssignedRouteJobs, getUnassignedRouteJobs } from "./assignedRouteJobs.utils";
-import { getAddedJobIds, stopNeedsOptimization } from "./jobAddition.utils";
+import { getAddedJobIds, getPendingDriverRoutes } from "./jobAddition.utils";
 import AddJobsModal from "@/app/plan/AddJobsModal";
 import JobForm from "@/components/Jobs/JobForm";
 import SwapDriverDrawer from "./SwapDriverDrawer";
@@ -246,8 +247,6 @@ const OptimizationView = ({
   const [shareResult, setShareResult] = useState<ShareRouteResponse | null>(
     null,
   );
-  // Tracks whether any job edits have been saved but re-optimization not yet run
-  const [hasUnsavedJobEdits, setHasUnsavedJobEdits] = useState(false);
   const [editJobData, setEditJobData] = useState<Job | null>(null);
   const [pendingDeletedJobIds, setPendingDeletedJobIds] = useState<Set<number>>(new Set());
   const [isAddJobOpen, setIsAddJobOpen] = useState(false);
@@ -308,11 +307,8 @@ const OptimizationView = ({
     try {
       message.loading({ content: `Undoing: ${undoStep.label}...`, key: "undo", duration: 0 });
       await undoOptimizationRevision(route.id, undoStep.id);
-      const restored = await fetchOptimization(route.id);
+      await fetchOptimization(route.id);
       await fetchJobsByDate(route.scheduled_date);
-      setHasUnsavedJobEdits(restored.result?.routes?.some((driverRoute) =>
-        driverRoute.stops?.some(stopNeedsOptimization)
-      ) || false);
       message.success({ content: `Undone: ${undoStep.label}`, key: "undo" });
     } catch (err: unknown) {
       const detail = isAxiosError<{ detail?: string }>(err) ? err.response?.data?.detail : undefined;
@@ -1142,7 +1138,6 @@ const OptimizationView = ({
       setDriverSearch(trip.team_member_name || "");
       setExactMatch(true);
     }
-    setHasUnsavedJobEdits(true);
     void refreshUndoHistory();
     message.success(response.message);
     return response.jobs;
@@ -1152,9 +1147,6 @@ const OptimizationView = ({
     const results = await Promise.allSettled([
       fetchOptimization(route.id), fetchJobsByIds(route.job_ids || removedIds), refreshUndoHistory(),
     ]);
-    if (results[0].status === "fulfilled") {
-      setHasUnsavedJobEdits(results[0].value.result?.routes?.some(trip => trip.stops?.some(stopNeedsOptimization)) || false);
-    }
     if (results.some(result => result.status === "rejected") || useJobsStore.getState().error) {
       message.warning("Removal saved. Refresh the plan to load the latest details.");
     }
@@ -1294,7 +1286,6 @@ const OptimizationView = ({
         );
         if (res.success) {
           message.success(res.message || "Stops reordered successfully!");
-          setHasUnsavedJobEdits(true);
 
           await fetchOptimization(route.id);
         }
@@ -1345,7 +1336,6 @@ const OptimizationView = ({
           if (reoptRes.success) {
             message.loading({ content: `Re-optimizing ${driverName}'s route…`, key: "save_reopt", duration: 0 });
             setPendingDeletedJobIds(new Set());
-            setHasUnsavedJobEdits(false);
 
             await pollUntilComplete(route.id);
             message.success({ content: `${driverName}'s route re-optimized successfully!`, key: "save_reopt" });
@@ -1415,7 +1405,6 @@ const OptimizationView = ({
             if (res.success) {
               message.loading({ content: `Re-optimizing ${driverName}'s route…`, key: "reopt", duration: 0 });
               setPendingDeletedJobIds(new Set());
-              setHasUnsavedJobEdits(false);
               // Poll until the async worker finishes
 
               await pollUntilComplete(route.id);
@@ -1448,7 +1437,6 @@ const OptimizationView = ({
         await addStopToRoute(route.id, targetRouteIndex, jobId, position);
         message.success({ content: "Job assigned successfully!", key: "add-unassigned" });
 
-        setHasUnsavedJobEdits(true);
         await fetchOptimization(route.id);
       } catch (err: any) {
         message.error({
@@ -1504,7 +1492,6 @@ const OptimizationView = ({
             content: res.message || `Transferred ${jobIds.length} stop(s) to ${targetDriverName}!`,
             key: "transfer_stops",
           });
-          setHasUnsavedJobEdits(true);
 
           if (reoptimize && res.is_async) {
             setOptimizationResult("processing");
@@ -1544,9 +1531,6 @@ const OptimizationView = ({
     setPendingDeletedJobIds((prev) => {
       const next = new Set(prev);
       next.delete(jobId);
-      if (next.size === 0) {
-        setHasUnsavedJobEdits(false);
-      }
       return next;
     });
     message.info(`Job #${jobId} deletion undone.`);
@@ -1698,7 +1682,6 @@ const OptimizationView = ({
           message.loading({ content: "Re-optimization queued. Waiting for result…", key: "reopt_all", duration: 0 });
           await reOptimize(route.id);
           setPendingDeletedJobIds(new Set());
-          setHasUnsavedJobEdits(false);
           // Poll until the global re-optimize worker finishes
 
           await pollUntilComplete(route.id);
@@ -1734,13 +1717,11 @@ const OptimizationView = ({
     route?.status === "success" ||
     Boolean(route?.result?.routes && route.result.routes.length > 0);
 
-  const hasPendingOptimization = useMemo(() => {
-    if (hasUnsavedJobEdits) return true;
-    if (!route.result?.routes) return false;
-    return route.result.routes.some((r) =>
-      r.stops?.some(stopNeedsOptimization)
-    );
-  }, [hasUnsavedJobEdits, route.result?.routes]);
+  const pendingDrivers = useMemo(() => getPendingDriverRoutes(
+    route.result?.routes, pendingDeletedJobIds,
+  ), [route.result?.routes, pendingDeletedJobIds]);
+  const pendingRouteIndices = useMemo(() => new Set(pendingDrivers.flatMap(driver => driver.routeIndices)), [pendingDrivers]);
+  const hasPendingOptimization = pendingDrivers.length > 0;
 
   const handleBackToPlanRoutes = () => {
     setCurrentTab("routes");
@@ -1825,15 +1806,9 @@ const OptimizationView = ({
                 {hasPendingOptimization ? (
                   <>
                     <span className="mx-1 text-gray-400">·</span>
-                    <Tooltip title="Changes were made (jobs added, edited, reordered, or transferred). Click to re-optimize routes.">
-                      <span
-                        onClick={handleReOptimizeAll}
-                        className="inline-flex items-center gap-1 text-amber-600 hover:text-amber-700 font-semibold cursor-pointer transition-colors"
-                      >
-                        <span className="w-1.5 h-1.5 rounded-none bg-amber-500 animate-pulse" />
-                        Optimization Pending
-                      </span>
-                    </Tooltip>
+                    <PendingOptimizationIndicator drivers={pendingDrivers}
+                      disabled={isOptimizing || route.status === "processing" || route.status === "queued"}
+                      onOptimize={handleReOptimize} onOptimizeAll={handleReOptimizeAll} />
                   </>
                 ) : isRouteOptimized ? (
                   <>
@@ -2335,6 +2310,7 @@ const OptimizationView = ({
                       ? setChangeVehicleRouteIndex : undefined}
                     onReverseRoute={handleReverseRoute}
                     onReOptimize={handleReOptimize}
+                    pendingRouteIndices={pendingRouteIndices}
                     onReorderStops={handleReorderStops}
                     onSaveAndReOptimize={handleSaveAndReOptimize}
                     onRemoveStop={(rIdx, jId, stopType) => handleRemoveJob(rIdx, jId, stopType)}
@@ -2399,14 +2375,12 @@ const OptimizationView = ({
 
                     await fetchOptimization(route.id);
                     message.success("Stop time updated in route successfully");
-                    setHasUnsavedJobEdits(true);
                   } catch (err: any) {
                     message.error(err?.message || "Failed to update stop time in route");
                   }
                 } else if (requiresReOptimization) {
                   await fetchOptimization(route.id);
                   message.info("Job updated. Route parameters changed, please re-optimize when ready.");
-                  setHasUnsavedJobEdits(true);
                 } else {
                   await fetchOptimization(route.id);
                   message.success("Job updated successfully");

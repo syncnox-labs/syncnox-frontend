@@ -32,6 +32,7 @@ export interface Stop {
 
 export interface Routes {
   stops: Stop[];
+  needs_optimization?: boolean;
   vehicle_id: number;
   /** Real vehicle name resolved backend-side (avoids stale driver.vehicle labels). */
   vehicle_name?: string | null;

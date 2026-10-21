@@ -8,6 +8,7 @@ import { Avatar, Tooltip, Select, Dropdown, Input, message, Modal } from "antd";
 import type { MenuProps } from "antd";
 import { useIndexStore } from "@/store/index.store";
 import { getJobLeg } from "@/utils/jobPickupType.utils";
+import { routeNeedsOptimization } from "./jobAddition.utils";
 import { isDriverMatch } from "./optimizationView.utils";
 import {
   UserOutlined,
@@ -81,6 +82,7 @@ interface TimelineViewProps {
   onChangeVehicle?: (routeIndex: number) => void;
   onReverseRoute?: (routeIndex: number) => void;
   onReOptimize?: (routeIndex: number) => void;
+  pendingRouteIndices?: ReadonlySet<number>;
   onReorderStops?: (
     routeIndex: number,
     orderedJobIds: number[],
@@ -396,6 +398,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   onChangeVehicle,
   onReverseRoute,
   onReOptimize,
+  pendingRouteIndices,
   onReorderStops,
   onSaveAndReOptimize,
   onRemoveStop,
@@ -1716,6 +1719,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               driverGroups.map((driverGroup) => {
                 const primaryRoute = driverGroup.routes[0].route;
                 const primaryIndex = driverGroup.routes[0].originalIndex;
+                const pendingDriverRoute = driverGroup.routes.find(({ route, originalIndex }) =>
+                  pendingRouteIndices?.has(originalIndex) || routeNeedsOptimization(route)
+                );
 
                 const isGroupFocused =
                   focusedRouteIndex !== null &&
@@ -1874,6 +1880,17 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               totalGroupedStopsCount !== 1 ? "s" : ""
                             }`}
                           </span>
+                          {pendingDriverRoute && onReOptimize && (
+                            <button type="button"
+                              className="mt-0.5 inline-flex w-fit items-center gap-1 text-[10px] font-semibold text-amber-700 hover:text-amber-900"
+                              aria-label={`Optimize pending route for ${driverGroup.driverName}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onReOptimize(pendingDriverRoute.originalIndex);
+                              }}>
+                              <ThunderboltOutlined /> Pending · Optimize
+                            </button>
+                          )}
                         </div>
 
                         {/* Quick Transfer Button */}
