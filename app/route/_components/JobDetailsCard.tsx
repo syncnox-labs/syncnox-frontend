@@ -27,7 +27,7 @@ import {
 import dayjs from "dayjs";
 import type { Job } from "@/types/job.type";
 import { formatTime12h } from "@/utils/app.utils";
-import { getJobPickupType } from "@/utils/jobPickupType.utils";
+import { getJobLeg, getJobPickupType } from "@/utils/jobPickupType.utils";
 import { updateJobStatus } from "@/apis/jobs.api";
 import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
@@ -131,6 +131,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   job,
   stopIndex = 0,
   driverName,
+  leg,
   routeStops,
   isUnassigned = false,
   onClose,
@@ -251,7 +252,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     "client_address",
   ) || (isDropoffStop ? stopData?.address_formatted : undefined);
 
-  const isReturnTrip = job?.job_type === "return_only";
+  const jobLeg = getJobLeg(job, stopData?.leg || stopData?.extra?.leg, leg);
   const estimates = getJobStopEstimates(job, stopData, routeStops, isUnassigned);
   const startHour = formatTime12h(shuttleValue("start_hour"));
   const endHour = formatTime12h(shuttleValue("end_hour"));
@@ -426,6 +427,16 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     }
   };
 
+  const legField = (
+    <Field icon={<Navigation size={13} className="text-gray-400" />} label="Leg">
+      {jobLeg ? (
+        <span className="inline-flex border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[10px] font-extrabold text-slate-800">
+          {jobLeg}
+        </span>
+      ) : "-"}
+    </Field>
+  );
+
   const arrivalField = (
     <Field
       icon={<Clock size={13} className="text-gray-400 shrink-0" />}
@@ -590,6 +601,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                         onChange={(d) => setEditValues(v => ({ ...v, scheduled_date: d ? d.format("YYYY-MM-DD") : "" }))}
                       />
                     </div>
+                    {legField}
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
@@ -1000,6 +1012,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                 </Field>
                 <Field icon={<Clock size={13} className="text-gray-400" />} label="Shift Start Time">{dash(startHour)}</Field>
                 <Field icon={<Clock size={13} className="text-gray-400" />} label="Shift End Time">{dash(endHour)}</Field>
+                {legField}
               </div>
             </DetailSection>
 

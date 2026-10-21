@@ -14,6 +14,7 @@ import { useTeamStore } from "@/store/team.store";
 import { useIndexStore } from "@/store/index.store";
 import { useDepotStore } from "@/store/depots.store";
 import { useLocationMappingStore } from "@/store/location-mapping.store";
+import { getJobLeg } from "@/utils/jobPickupType.utils";
 import { ADDRESS_LOCATION_KEYS, buildJobFormPayload, getJobFieldControl, getJobFormFields, getJobInitialValues, parseCoordinates } from "./jobForm.schema";
 
 interface JobFormProps {
@@ -43,6 +44,7 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
   const { locationMappings } = useLocationMappingStore();
   const activeJobTemplate = useIndexStore(state => state.activeJobTemplate);
   const activeTemplate = initialData?.template_type || defaultTemplate || activeJobTemplate || "pickup_delivery_job";
+  const jobLeg = activeTemplate === "worker_shuttle" ? getJobLeg(initialData) : undefined;
   const { customFields, loading, error, reloadConfigs } = useFieldConfig("job");
   const fields = useMemo(() => getJobFormFields(customFields), [customFields]);
   const addressLocations = useRef<Record<string, unknown>>({});
@@ -148,6 +150,10 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
         : error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => void reloadConfigs()}>Retry</Button>} />
         : fields.length === 0 ? <Empty description="No job fields are enabled for dispatch. Configure them in Custom Fields settings." />
         : <Form disabled={submitting} form={form} initialValues={initialValues} layout="vertical" onFinish={onFinish} preserve={false}>
+          {jobLeg && <div className="mb-4 flex items-center gap-2 text-sm">
+            <span className="text-slate-500">Leg</span>
+            <span className="rounded bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">{jobLeg}</span>
+          </div>}
           <Row gutter={16}>
             {fields.map(field => {
               const control = getJobFieldControl(field);

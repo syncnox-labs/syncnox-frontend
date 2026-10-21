@@ -159,6 +159,7 @@ function renderJobForm(fields, config = {}, props = {}) {
       message: { useMessage: () => [{ success() {}, error: value => config.errors?.push(value) }, null] },
     } : antd,
     "./jobForm.schema": schema,
+    "@/utils/jobPickupType.utils": loadSource("utils/jobPickupType.utils.ts"),
     "@/hooks/useFieldConfig": { useFieldConfig: () => ({ customFields: fields, loading: false, error: null, reloadConfigs() {}, ...config }) },
     "@/store/jobs.store": { useJobsStore: () => ({ isLoading: false }) },
     "@/store/team.store": { useTeamStore: () => ({ teams: [] }) },
@@ -198,6 +199,17 @@ test("the mounted edit form initializes saved values without waiting for an effe
   assert.match(html, /title="Round Trip"/);
   assert.match(html, /id="approved"[^>]*checked/);
   assert.match(html, /Update/);
+});
+
+test("shuttle edit forms show the operational leg as read-only metadata", () => {
+  for (const [job_type, leg] of [["one_way", "GO"], ["return_only", "RETURN"]]) {
+    const html = renderJobForm([field("candidate_name", { id: 1 })], {}, {
+      initialData: { id: 12450, template_type: "worker_shuttle", job_type,
+        custom_fields: { pickup_type: "round_trip" } },
+    });
+    assert.match(html.replace(/<[^>]*>/g, " "), new RegExp(`Leg\\s+${leg}`));
+    assert.deepEqual([...html.matchAll(/<label[^>]*for="([^"]+)"/g)].map(match => match[1]), ["candidate_name"]);
+  }
 });
 
 test("empty and failed schemas do not fall back to hardcoded fields and disable submission", () => {

@@ -41,6 +41,7 @@ import { buildMapSearchIndex } from "./mapSearch.utils";
 import { getRouteStopDisplay } from "./stopDisplay.utils";
 import TimelineView from "./TimelineView";
 import AssignedJobsTable from "./AssignedJobsTable";
+import OptimizationIssueBanner from "./OptimizationIssueBanner";
 import { getAssignedRouteJobs, getUnassignedRouteJobs } from "./assignedRouteJobs.utils";
 import { getAddedJobIds, stopNeedsOptimization } from "./jobAddition.utils";
 import AddJobsModal from "@/app/plan/AddJobsModal";
@@ -1915,14 +1916,7 @@ const OptimizationView = ({
 
       {/* Error Banner */}
       {error && (
-        <div className="p-3 bg-red-50 shrink-0 border-b border-red-100">
-          <Alert
-            message="Optimization Issue"
-            description={error}
-            type="error"
-            showIcon
-          />
-        </div>
+        <OptimizationIssueBanner key={`${route.id}:${error}`} error={error} />
       )}
 
       {/* Main Content Area */}

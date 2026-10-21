@@ -7,6 +7,7 @@ import type { Team } from "@/types/team.type";
 import { Avatar, Tooltip, Select, Dropdown, Input, message, Modal } from "antd";
 import type { MenuProps } from "antd";
 import { useIndexStore } from "@/store/index.store";
+import { getJobLeg } from "@/utils/jobPickupType.utils";
 import { isDriverMatch } from "./optimizationView.utils";
 import {
   UserOutlined,
@@ -2520,6 +2521,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   : isDropoff
                                     ? "Drop-off"
                                     : null;
+                                const stopLeg = isJob && isWorkerShuttle
+                                  ? getJobLeg(
+                                      jobsByIdMap.get(Number(stop.job_id || stop.job?.id)) || stop.job,
+                                      stop.leg || stop.extra?.leg,
+                                      route.leg,
+                                    )
+                                  : undefined;
 
                                 let jobStatus = "assigned";
                                 if (isJob) {
@@ -2627,9 +2635,18 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         </span>
                                       ) : null}
 
+                                      {stopLeg && (
+                                        <span
+                                          className="inline-flex shrink-0 items-center border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-700"
+                                          aria-label={`Leg: ${stopLeg}`}
+                                        >
+                                          {stopLeg}
+                                        </span>
+                                      )}
+
                                       {stopVehicleName && (
                                         <span
-                                          className="inline-flex items-center gap-1 text-[10.5px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 border border-slate-300 rounded shrink-0"
+                                          className="ml-auto inline-flex min-w-0 items-center gap-1 text-[10.5px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 border border-slate-300 rounded"
                                           title={`Vehicle: ${stopVehicleName}${vehicleCapacity ? ` (${vehicleCapacity} seats)` : ""}`}
                                         >
                                           <Truck size={12} className="text-slate-600 shrink-0" />

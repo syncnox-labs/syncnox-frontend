@@ -54,6 +54,7 @@ test("optimization details show Round Trip and both actual estimates on either d
     }));
     const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
     assert.match(text, /Pickup Type Round Trip/);
+    assert.match(text, job_type === "return_only" ? /Leg RETURN/ : /Leg GO/);
     assert.match(html, /class="[^"]*border-emerald-400[^"]*uppercase[^"]*">\s*Round Trip/);
     assert.ok(text.includes(`Estimated pickup time ${appUtils.formatTime12h(pickup)}`));
     assert.ok(text.includes(`Estimated dropoff time ${appUtils.formatTime12h(dropoff)}`));
@@ -162,4 +163,26 @@ test("pickup type handles existing response shapes without mutating routing dire
   }
   assert.equal(pickupUtils.getJobPickupType({ job_type: "return_only" }), "return_only");
   assert.equal(pickupUtils.getJobPickupType(null), undefined);
+});
+
+test("leg follows the selected stop, operational job direction, then booking metadata and route", () => {
+  const { getJobLeg } = pickupUtils;
+  assert.equal(getJobLeg({ job_type: "one_way", pickup_type: "round_trip" }, "RETURN", "COMBINED"), "RETURN");
+  assert.equal(getJobLeg({ job_type: "return_only", pickup_type: "round_trip" }, undefined, "COMBINED"), "RETURN");
+  assert.equal(getJobLeg({ job_type: "one_way", custom_fields: { round_trip_leg: "RETURN" } }), "GO");
+  assert.equal(getJobLeg({ job_type: "round_trip", custom_fields: { round_trip_leg: "RETURN" } }), "RETURN");
+  assert.equal(getJobLeg(null, undefined, "GO"), "GO");
+  assert.equal(getJobLeg({ job_type: "round_trip" }, undefined, "COMBINED"), undefined);
+});
+
+test("a legacy combined booking displays the selected return leg on both stop types", () => {
+  for (const stop_type of ["pickup", "dropoff"]) {
+    const text = renderToStaticMarkup(React.createElement(Card, {
+      job: { id: 42, job_type: "one_way", template_type: "worker_shuttle", status: "assigned",
+        custom_fields: { pickup_type: "round_trip" } },
+      stopData: { job_id: 42, stop_type, leg: "RETURN" }, leg: "COMBINED", onClose() {},
+    })).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    assert.match(text, /Pickup Type Round Trip/);
+    assert.match(text, /Leg RETURN/);
+  }
 });
