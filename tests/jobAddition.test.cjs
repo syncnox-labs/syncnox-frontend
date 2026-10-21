@@ -23,3 +23,41 @@ test("booking provenance covers both legs and unassigned jobs after a reload", (
   assert.deepEqual([...ids].sort(), [1, 2, 3, 4]);
   assert.deepEqual([...helpers.getAddedJobIds(null)], []);
 });
+
+test("pending drivers include additions, edits, reordered routes and staged removals with original indices", () => {
+  const trip = (driver, stops, extra = {}) => ({ team_member_id: driver, team_member_name: `Driver ${driver}`, stops, ...extra });
+  const routes = [
+    trip(1, [{ job_id: 10, is_new: true, needs_optimization: false }]),
+    trip(2, [{ job_id: 20, needs_optimization: true }], { leg: "RETURN" }),
+    trip(3, [{ job_id: 30 }], { needs_optimization: true }),
+    trip(2, [{ job_id: 21, time_edited: true }], { leg: "GO" }),
+    trip(4, [{ job_id: 40 }]),
+    trip(5, [], { needs_optimization: true }),
+  ];
+  assert.deepEqual(helpers.getPendingDriverRoutes(routes, new Set([40])), [
+    { key: "driver-id-2", driverName: "Driver 2", routeIndices: [1, 3] },
+    { key: "driver-id-3", driverName: "Driver 3", routeIndices: [2] },
+    { key: "driver-id-4", driverName: "Driver 4", routeIndices: [4] },
+  ]);
+  assert.deepEqual(helpers.getPendingDriverRoutes(), []);
+});
+
+test("optimizing one driver keeps other drivers pending across fresh server snapshots and changed indices", () => {
+  const routes = [
+    { team_member_id: 1, stops: [{ job_id: 10, needs_optimization: true }] },
+    { team_member_id: 2, stops: [{ job_id: 20, is_edited: true }] },
+  ];
+  assert.equal(helpers.getPendingDriverRoutes(routes).length, 2);
+  const refreshed = [{ ...routes[1] }, { ...routes[0], stops: [{ job_id: 10, is_new: true, needs_optimization: false }] }];
+  assert.deepEqual(helpers.getPendingDriverRoutes(refreshed), [
+    { key: "driver-id-2", driverName: "Driver 2", routeIndices: [0] },
+  ]);
+  assert.equal(helpers.routeNeedsOptimization(refreshed[1]), false);
+});
+
+test("drivers sharing a display name are kept separate and old plans without IDs still have stable fallbacks", () => {
+  const route = { team_member_name: "Alliance Driver", stops: [{ job_id: 10, is_new: true }] };
+  const pending = helpers.getPendingDriverRoutes([{ ...route, team_member_id: 1 }, { ...route, team_member_id: 2 }, route, { stops: route.stops }]);
+  assert.deepEqual(pending.map(driver => driver.routeIndices), [[0], [1], [2], [3]]);
+  assert.equal(pending[3].driverName, "Driver 4");
+});
