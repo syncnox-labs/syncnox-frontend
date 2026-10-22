@@ -9,6 +9,7 @@ import {
   ClockCircleOutlined,
 } from "@ant-design/icons";
 import { swapRouteDriver } from "@/apis/routes.api";
+import { useOptimizationStore } from "@/store/optimization.store";
 import type { Team } from "@/types/team.type";
 import { getRouteColor } from "@/utils/timeline.utils";
 
@@ -23,7 +24,7 @@ interface SwapDriverDrawerProps {
   allDrivers: Team[];
   /** Drivers already used in the current optimization */
   optimizationDriverIds: number[];
-  /** Called after successful swap — parent should start polling */
+  /** Called after successful swap — parent awaits the WebSocket result */
   onSuccess: () => void;
 }
 
@@ -69,6 +70,7 @@ const SwapDriverDrawer: React.FC<SwapDriverDrawerProps> = ({
     if (!selectedDriverId) return;
     setIsSubmitting(true);
     try {
+      useOptimizationStore.getState().setOptimizationResult("processing");
       const res = await swapRouteDriver(
         optimizationId,
         routeIndex,
@@ -82,6 +84,7 @@ const SwapDriverDrawer: React.FC<SwapDriverDrawerProps> = ({
         message.error("Failed to swap driver");
       }
     } catch (error: any) {
+      await useOptimizationStore.getState().fetchOptimization(optimizationId).catch(() => {});
       message.error(error?.response?.data?.detail || "Failed to swap driver");
     } finally {
       setIsSubmitting(false);

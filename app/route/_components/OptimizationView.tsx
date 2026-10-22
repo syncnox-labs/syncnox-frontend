@@ -180,7 +180,7 @@ const OptimizationView = ({
     isOptimizing,
     error,
     reOptimize,
-    pollUntilComplete,
+    waitUntilComplete,
   } = useOptimizationStore();
   const { jobs, fetchJobsByDate, fetchJobsByIds, isLoading: isJobsLoading, error: jobsError } = useJobsStore();
   const { updateRoute } = useRouteStore();
@@ -1337,7 +1337,7 @@ const OptimizationView = ({
             message.loading({ content: `Re-optimizing ${driverName}'s route…`, key: "save_reopt", duration: 0 });
             setPendingDeletedJobIds(new Set());
 
-            await pollUntilComplete(route.id);
+            await waitUntilComplete(route.id);
             message.success({ content: `${driverName}'s route re-optimized successfully!`, key: "save_reopt" });
           } else {
             await fetchOptimization(route.id);
@@ -1352,7 +1352,7 @@ const OptimizationView = ({
         setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to reoptimize route");
       }
     },
-    [route.id, route.result, fetchOptimization, setOptimizationResult, pendingDeletedJobIds, applyStagedRemovals, pollUntilComplete],
+    [route.id, route.result, fetchOptimization, setOptimizationResult, pendingDeletedJobIds, applyStagedRemovals, waitUntilComplete],
   );
 
   const handleReverseRoute = useCallback(
@@ -1405,9 +1405,9 @@ const OptimizationView = ({
             if (res.success) {
               message.loading({ content: `Re-optimizing ${driverName}'s route…`, key: "reopt", duration: 0 });
               setPendingDeletedJobIds(new Set());
-              // Poll until the async worker finishes
+              // Wait for the dispatch WebSocket completion event
 
-              await pollUntilComplete(route.id);
+              await waitUntilComplete(route.id);
               message.success({ content: `${driverName}'s route re-optimized!`, key: "reopt" });
             }
           } catch (error: any) {
@@ -1417,18 +1417,18 @@ const OptimizationView = ({
         },
       });
     },
-    [route.id, route.result?.routes, setOptimizationResult, pendingDeletedJobIds, applyStagedRemovals, pollUntilComplete],
+    [route.id, route.result?.routes, setOptimizationResult, pendingDeletedJobIds, applyStagedRemovals, waitUntilComplete],
   );
 
   const handleSwapSuccess = useCallback(() => {
-    setOptimizationResult("processing");
-    // Poll until the async swap-driver worker finishes
+    // The drawer marks processing before enqueueing to avoid a fast-worker race.
+    // Wait for the dispatch WebSocket completion event
 
-    pollUntilComplete(route.id)
+    waitUntilComplete(route.id)
       .catch(() => {
         // Error already set in store
       });
-  }, [setOptimizationResult, pollUntilComplete, route.id]);
+  }, [waitUntilComplete, route.id]);
 
   const handleAddUnassignedJob = useCallback(
     async (targetRouteIndex: number, jobId: number, position?: number) => {
@@ -1471,6 +1471,7 @@ const OptimizationView = ({
           duration: 0,
         });
 
+        if (reoptimize) setOptimizationResult("processing");
         const res = await transferRouteStops(
           route.id,
           sourceRouteIndex,
@@ -1494,9 +1495,7 @@ const OptimizationView = ({
           });
 
           if (reoptimize && res.is_async) {
-            setOptimizationResult("processing");
-
-            await pollUntilComplete(route.id);
+            await waitUntilComplete(route.id);
           }
           const refresh = await Promise.allSettled([
             fetchOptimization(route.id), fetchJobsByIds(route.job_ids || jobIds), refreshUndoHistory(),
@@ -1510,6 +1509,7 @@ const OptimizationView = ({
           message.warning({ content: "Transfer saved. Re-optimization or refresh failed; refresh the plan before continuing.", key: "transfer_stops" });
           return;
         }
+        if (reoptimize) await fetchOptimization(route.id).catch(() => {});
         message.error({
           content: error?.response?.data?.detail || error?.message || "Failed to transfer stops",
           key: "transfer_stops",
@@ -1517,7 +1517,7 @@ const OptimizationView = ({
         throw error;
       }
     },
-    [route, fetchOptimization, fetchJobsByIds, refreshUndoHistory, pollUntilComplete, setOptimizationResult],
+    [route, fetchOptimization, fetchJobsByIds, refreshUndoHistory, waitUntilComplete, setOptimizationResult],
   );
 
   // Map marker removal uses the same validated confirmation as the timeline.
@@ -1682,9 +1682,9 @@ const OptimizationView = ({
           message.loading({ content: "Re-optimization queued. Waiting for result…", key: "reopt_all", duration: 0 });
           await reOptimize(route.id);
           setPendingDeletedJobIds(new Set());
-          // Poll until the global re-optimize worker finishes
+          // Wait for the dispatch WebSocket completion event
 
-          await pollUntilComplete(route.id);
+          await waitUntilComplete(route.id);
           message.success({ content: "All routes re-optimized!", key: "reopt_all" });
 
           console.log(
@@ -1696,7 +1696,7 @@ const OptimizationView = ({
         }
       },
     });
-  }, [reOptimize, route.id, route.result?.routes, pendingDeletedJobIds, applyStagedRemovals, pollUntilComplete]);
+  }, [reOptimize, route.id, route.result?.routes, pendingDeletedJobIds, applyStagedRemovals, waitUntilComplete]);
 
   const getRouteData = (index: number | null) =>
     index !== null ? route.result?.routes?.[index] : null;
