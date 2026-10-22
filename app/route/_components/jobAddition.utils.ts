@@ -2,7 +2,7 @@ import type { Route, Routes, Stop } from "@/types/routes.type";
 
 /** Origin and scheduling state are independent: a new job can be optimized. */
 export function stopNeedsOptimization(stop: Partial<Stop> & { is_edited?: boolean }): boolean {
-  return Boolean((stop.needs_optimization ?? stop.is_new) || stop.time_edited || stop.is_edited);
+  return Boolean(stop.needs_optimization ?? (stop.is_new || stop.time_edited || stop.is_edited));
 }
 
 export function routeNeedsOptimization(route: Partial<Routes>, pendingDeletedJobIds?: ReadonlySet<number>): boolean {

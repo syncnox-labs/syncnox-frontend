@@ -12,7 +12,7 @@ test("newly added survives optimization without leaving the plan Optimization Pe
   assert.equal(helpers.stopNeedsOptimization({ is_new: true }), true, "legacy pending additions");
   assert.equal(helpers.stopNeedsOptimization({ is_new: true, needs_optimization: true }), true);
   assert.equal(helpers.stopNeedsOptimization({ is_new: true, needs_optimization: false }), false);
-  assert.equal(helpers.stopNeedsOptimization({ is_new: true, needs_optimization: false, time_edited: true }), true);
+  assert.equal(helpers.stopNeedsOptimization({ is_new: true, needs_optimization: false, time_edited: true }), false);
   assert.equal(helpers.stopNeedsOptimization({ is_new: false, is_edited: true }), true);
 });
 
@@ -60,4 +60,13 @@ test("drivers sharing a display name are kept separate and old plans without IDs
   const pending = helpers.getPendingDriverRoutes([{ ...route, team_member_id: 1 }, { ...route, team_member_id: 2 }, route, { stops: route.stops }]);
   assert.deepEqual(pending.map(driver => driver.routeIndices), [[0], [1], [2], [3]]);
   assert.equal(pending[3].driverName, "Driver 4");
+});
+
+
+test("edited highlights survive optimization without keeping drivers pending", () => {
+  const stop = { job_id: 7, is_edited: true, time_edited: true, needs_optimization: false };
+  assert.equal(helpers.stopNeedsOptimization(stop), false);
+  assert.equal(helpers.routeNeedsOptimization({ stops: [stop] }), false);
+  assert.deepEqual(helpers.getPendingDriverRoutes([{ team_member_id: 1, stops: [stop] }]), []);
+  assert.equal(helpers.stopNeedsOptimization({ ...stop, needs_optimization: true }), true, "editing again must mark pending");
 });
