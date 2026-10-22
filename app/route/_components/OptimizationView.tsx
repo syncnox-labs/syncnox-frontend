@@ -34,7 +34,7 @@ import {
 import dayjs from "dayjs";
 
 import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
-import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil } from "lucide-react";
+import { CircleX, X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil } from "lucide-react";
 import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
 import { buildMapSearchIndex } from "./mapSearch.utils";
@@ -187,6 +187,9 @@ const OptimizationView = ({
   const { teams, initializeTeams, updateTeamAction } = useTeamStore();
   const { vehicles, initializeVehicles } = useVehicleStore();
 
+  const [minimizedIssue, setMinimizedIssue] = useState<string | null>(null);
+  const issueKey = `${route.id}:${error}`;
+  const isIssueMinimized = Boolean(error && minimizedIssue === issueKey);
   const [detailView, setDetailView] = useState<"timeline" | "table">("timeline");
   const [hasOpenedTable, setHasOpenedTable] = useState(false);
   const planJobIds = useMemo(() => [...new Set([
@@ -1808,6 +1811,22 @@ const OptimizationView = ({
                 <span>
                   {totalVehicles} {totalVehicles === 1 ? "route" : "routes"}
                 </span>
+                {isIssueMinimized && (
+                  <>
+                    <span className="mx-1 text-gray-400">·</span>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-red-700 font-medium hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-red-600 cursor-pointer"
+                      aria-label="Show optimization issue details"
+                      aria-expanded={false}
+                      onClick={() => setMinimizedIssue(null)}
+                    >
+                      <CircleX size={12} aria-hidden="true" />
+                      Optimization Issue
+                      <ChevronDown size={12} aria-hidden="true" />
+                    </button>
+                  </>
+                )}
                 {hasPendingOptimization ? (
                   <>
                     <span className="mx-1 text-gray-400">·</span>
@@ -1895,8 +1914,8 @@ const OptimizationView = ({
       </nav>
 
       {/* Error Banner */}
-      {error && (
-        <OptimizationIssueBanner key={`${route.id}:${error}`} error={error} />
+      {error && !isIssueMinimized && (
+        <OptimizationIssueBanner error={error} onMinimize={() => setMinimizedIssue(issueKey)} />
       )}
 
       {/* Main Content Area */}

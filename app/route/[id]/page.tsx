@@ -26,6 +26,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import FloatingUnassignedPanel from "../_components/FloatingUnassignedPanel";
 import OptimizationView from "../_components/OptimizationView";
 import { addStopToRoute, bulkAssignJobsToRoute, BULK_ASSIGNMENT_LIMIT } from "@/apis/routes.api";
 import { useOptimizationStore } from "@/store/optimization.store";
@@ -652,15 +653,29 @@ const RoutePage = () => {
         />
       </div>
 
-      {/* Unassigned Jobs Panel - Floating Bottom Right */}
+      {/* Floating panel moves by its pill or expanded header. */}
       {unassignedJobs.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-40 w-[410px] max-w-[calc(100vw-32px)] transition-all duration-300">
+        <FloatingUnassignedPanel expanded={isUnassignedExpanded}>
           {isUnassignedExpanded ? (
             /* ── Expanded Panel ──────────────────────────────────────── */
             <div className="bg-white rounded-2xl shadow-2xl shadow-slate-900/15 border border-slate-200/90 overflow-hidden flex flex-col max-h-[calc(100vh-88px)]">
 
               {/* ── 1. Header ─────────────────────────────────────────── */}
               <div
+                data-panel-drag-handle
+                style={{ touchAction: "none" }}
+                title="Drag to move; click to minimize. Alt + arrow keys to move with keyboard."
+                role="button"
+                tabIndex={0}
+                aria-label="Minimize or move unassigned jobs panel"
+                aria-expanded={true}
+                onKeyDown={event => {
+                  if (event.target !== event.currentTarget || event.altKey) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setIsUnassignedExpanded(false);
+                  }
+                }}
                 onClick={() => setIsUnassignedExpanded(false)}
                 className="px-4 py-3 bg-gradient-to-r from-rose-50/90 via-white to-amber-50/60 border-b border-slate-200/80 flex items-center justify-between cursor-pointer select-none hover:from-rose-100/60 transition-colors shrink-0"
               >
@@ -1175,12 +1190,18 @@ const RoutePage = () => {
             /* ── Minimised Pill ──────────────────────────────────────── */
             <div className="flex justify-end">
               <button
+                type="button"
+                aria-expanded={false}
+                data-panel-drag-handle
+                style={{ touchAction: "none" }}
+                title="Drag to move; click to open. Alt + arrow keys to move with keyboard."
                 onClick={() => setIsUnassignedExpanded(true)}
                 className="flex items-center gap-2.5 px-3.5 py-2 bg-white rounded-full shadow-lg border border-rose-200 text-slate-800 hover:border-rose-300 hover:shadow-xl transition-all cursor-pointer select-none group"
               >
                 <div className="w-5 h-5 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
                   <AlertTriangle size={12} />
                 </div>
+                <GripVertical size={14} className="text-slate-400 cursor-grab active:cursor-grabbing" aria-hidden="true" />
                 <span className="font-bold text-xs text-slate-900">
                   Unassigned Jobs
                 </span>
@@ -1194,7 +1215,7 @@ const RoutePage = () => {
               </button>
             </div>
           )}
-        </div>
+        </FloatingUnassignedPanel>
       )}
 
       {/* Hidden drag image container */}
