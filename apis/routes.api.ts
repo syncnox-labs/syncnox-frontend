@@ -1,5 +1,5 @@
 import apiClient from "@/config/apiClient.config";
-import { AllRoutes, Route, Routes } from "@/types/routes.type";
+import { AllRoutes, Route, Routes, TripStopSnapshot } from "@/types/routes.type";
 
 export const fetchRoutes = async (status?: string, date?: string): Promise<AllRoutes[]> => {
   if (status === "all") status = "";
@@ -363,5 +363,43 @@ export const createJobsInPlan = async (
   const response = await apiClient.post<CreatePlanJobsResponse>(`optimization/requests/${optimizationId}/jobs`, {
     job, request_token: requestToken, ...target,
   });
+  return response.data;
+};
+
+export interface MoveTripPayload {
+  start_stop_index: number;
+  target_route_index: number;
+  expected_source_driver_id: number;
+  expected_target_driver_id: number;
+  expected_target_vehicle_id: number;
+  expected_source_leg: string | null;
+  expected_target_leg: string | null;
+  expected_stops: TripStopSnapshot[];
+}
+
+export const moveRouteTrip = async (id: number, routeIndex: number, payload: MoveTripPayload): Promise<{
+  success: boolean; message: string; result: Route["result"]; affected_route_indices: number[];
+}> => {
+  const response = await apiClient.post(`optimization/requests/${id}/routes/${routeIndex}/move-trip`, payload);
+  return response.data;
+};
+
+
+export interface MoveStopsPayload {
+  job_ids: number[];
+  target_route_index: number;
+  expected_source_driver_id: number;
+  expected_target_driver_id: number;
+  expected_target_vehicle_id: number;
+  expected_source_leg: string | null;
+  expected_target_leg: string | null;
+  expected_source_stops: import("@/types/routes.type").StopMoveSnapshot[];
+  expected_target_stops: import("@/types/routes.type").StopMoveSnapshot[];
+}
+
+export const moveRouteStops = async (id: number, routeIndex: number, payload: MoveStopsPayload): Promise<{
+  success: boolean; message: string; result: Route["result"]; affected_route_indices: number[];
+}> => {
+  const response = await apiClient.post(`optimization/requests/${id}/routes/${routeIndex}/move-stops`, payload);
   return response.data;
 };
