@@ -32,7 +32,7 @@ interface OptimizationStore {
     payload: UpdateOptimizationRequestPayload
   ) => Promise<Route>;
   reOptimize: (id: number) => Promise<Route>;
-  pollUntilComplete: (id: number, intervalMs?: number, maxAttempts?: number) => Promise<Route>;
+  waitUntilComplete: (id: number, timeoutMs?: number) => Promise<Route>;
 }
 
 export const useOptimizationStore = create<OptimizationStore>((set, get) => ({
@@ -59,31 +59,34 @@ export const useOptimizationStore = create<OptimizationStore>((set, get) => ({
   setOptimizationResult: (status: string, result?: any, errorMessage?: string) => {
     const { currentOptimization } = get();
     if (currentOptimization) {
+      const formattedError = errorMessage ? formatOptimizationError(errorMessage) : null;
       if (status === "completed" || status === "success") {
         set({
           currentOptimization: {
             ...currentOptimization,
             status: "completed",
+            error_message: formattedError,
             result: result || currentOptimization.result,
           },
           isOptimizing: false,
-          error: null,
+          error: formattedError,
         });
       } else if (status === "failed") {
         set({
           currentOptimization: {
             ...currentOptimization,
             status: "failed",
-            error_message: errorMessage || "Optimization failed",
+            error_message: formattedError || "Optimization failed",
           },
           isOptimizing: false,
-          error: errorMessage || "Optimization failed",
+          error: formattedError || "Optimization failed",
         });
       } else if (status === "processing" || status === "queued") {
         set({
           currentOptimization: {
             ...currentOptimization,
             status: status as any,
+            error_message: null,
           },
           isOptimizing: true,
           error: null,
@@ -102,9 +105,16 @@ export const useOptimizationStore = create<OptimizationStore>((set, get) => ({
 
   fetchOptimization: async (id: number) => {
     try {
-      set({ error: null });
+      // Keep the current issue visible until the refreshed state replaces it.
+      const snapshot = get().currentOptimization;
       const optimization = await getOptimizationRequest(id);
-      set({ currentOptimization: optimization, error: optimization.error_message ? formatOptimizationError(optimization.error_message) : null });
+      // A WebSocket update or navigation may have overtaken this request.
+      if (get().currentOptimization !== snapshot) return optimization;
+      set({
+        currentOptimization: optimization,
+        isOptimizing: optimization.status === "processing" || optimization.status === "queued",
+        error: optimization.error_message ? formatOptimizationError(optimization.error_message) : null,
+      });
       return optimization;
     } catch (error: any) {
       const errorMessage =
@@ -137,47 +147,56 @@ export const useOptimizationStore = create<OptimizationStore>((set, get) => ({
 
   reOptimize: async (id: number) => {
     try {
-      set({ error: null, isOptimizing: true });
+      get().setOptimizationResult("processing");
       const optimization = await reOptimizeRequest(id);
-      set({ currentOptimization: optimization });
+      if (get().isOptimizing && get().currentOptimization?.id === id) {
+        set({ currentOptimization: optimization });
+      }
       return optimization;
     } catch (error: any) {
       const errorMessage =
         error.response?.data?.detail ||
         error.message ||
         "Failed to re-optimize";
+      // Enqueue failures leave the previous plan intact on the server.
+      if (get().currentOptimization?.id === id) {
+        await get().fetchOptimization(id).catch(() => {});
+      }
       set({ error: errorMessage, isOptimizing: false });
       throw new Error(errorMessage);
     }
   },
 
-  pollUntilComplete: async (id: number, intervalMs = 2000, maxAttempts = 90) => {
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
-      let optimization: Route;
-      try {
-        optimization = await getOptimizationRequest(id);
-      } catch (err: any) {
-        // Network hiccup — keep polling
-        console.warn("[pollUntilComplete] fetch error, retrying:", err?.message);
-        continue;
-      }
-      set({ currentOptimization: optimization });
-      const status = optimization.status;
-      if (status === "completed" || status === "failed") {
-        const rawError = optimization.error_message || (status === "failed" ? "Re-optimization failed" : null);
-        const errMsg = rawError ? formatOptimizationError(rawError) : null;
-        set({ isOptimizing: false, error: errMsg });
-        // A rejected route operation restores completed + error_message.
-        // Surface that rejection instead of displaying a success notification.
-        if (errMsg) throw new Error(errMsg);
-        return optimization;
-      }
-    }
-    // Timed out
-    set({ isOptimizing: false, error: "Re-optimization timed out. Please refresh." });
-    throw new Error("Polling timed out after max attempts");
-  },
+  // Completion comes from the shared dispatch WebSocket, with no recurring GETs.
+  waitUntilComplete: (id: number, timeoutMs = 10 * 60 * 1000) =>
+    new Promise<Route>((resolve, reject) => {
+      let unsubscribe = () => {};
+      const timer = setTimeout(() => {
+        unsubscribe();
+        const error = "Re-optimization timed out. Please refresh.";
+        if (get().currentOptimization?.id === id) set({ isOptimizing: false, error });
+        reject(new Error(error));
+      }, timeoutMs);
+      const check = (state: OptimizationStore) => {
+        const optimization = state.currentOptimization;
+        if (!optimization || optimization.id !== id) {
+          clearTimeout(timer);
+          unsubscribe();
+          reject(new Error("Optimization view changed"));
+          return;
+        }
+        if (optimization.status !== "completed" && optimization.status !== "failed") return;
+        clearTimeout(timer);
+        unsubscribe();
+        const rawError = optimization.error_message ||
+          (optimization.status === "failed" ? "Re-optimization failed" : null);
+        if (rawError) reject(new Error(formatOptimizationError(rawError)));
+        else resolve(optimization);
+      };
+      unsubscribe = useOptimizationStore.subscribe(check);
+      // Also catches events that arrived while the enqueue request was in flight.
+      check(get());
+    }),
 }));
 
 export const useOptimizationCleanup = () => {

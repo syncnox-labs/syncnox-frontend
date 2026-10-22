@@ -138,3 +138,29 @@ export interface BulkAssignJobsResponse extends RouteOperationResponse {
   already_assigned_job_ids: number[];
   result: Route["result"];
 }
+
+export interface TripStopSnapshot {
+  job_id: number | null;
+  stop_type: string;
+  arrival_time: string;
+}
+export interface TripMoveSelection {
+  sourceRouteIndex: number;
+  startStopIndex: number;
+  sourceDriverId: number;
+  sourceLeg: string | null;
+  stops: TripStopSnapshot[];
+}
+
+export interface StopMoveSelection {
+  sourceRouteIndex: number;
+  sourceDriverId: number;
+  sourceLeg: string | null;
+  jobIds: number[];
+  sourceStops: StopMoveSnapshot[];
+}
+export interface StopMoveSnapshot {
+  job_id: number | null;
+  stop_type: string;
+  arrival_time: string | null;
+}

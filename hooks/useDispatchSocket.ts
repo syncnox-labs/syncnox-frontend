@@ -15,18 +15,16 @@ function getWsUrl(tenantId: string | number, token: string): string {
 
 export function useDispatchSocket() {
   const { data: session } = useSession();
+  const tenantId = session?.user?.tenant_id;
+  const token = session?.access_token;
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
 
   const updateJobStatusLocally = useJobsStore((s) => s.updateJobStatusLocally);
   const updateStopStatusLocally = useRouteStore((s) => s.updateStopStatusLocally);
   const fetchRoutes = useRouteStore((s) => s.fetchRoutes);
-  const selectedStatus = useRouteStore((s) => s.selectedStatus);
 
   useEffect(() => {
-    const tenantId = session?.user?.tenant_id;
-    const token = (session as any)?.access_token;
-
     if (!tenantId || !token) return;
 
     let isMounted = true;
@@ -36,7 +34,7 @@ export function useDispatchSocket() {
       if (!isMounted) return;
       const url = getWsUrl(tenantId!, token!);
 
-      console.log(`[WS Dispatch] Connecting to ${url}`);
+      console.log("[WS Dispatch] Connecting to dispatch channel");
 
       try {
         const ws = new WebSocket(url);
@@ -45,6 +43,9 @@ export function useDispatchSocket() {
         ws.onopen = () => {
           console.log("[WS Dispatch] Connected to dispatch channel ✓");
           delay = 1000;
+          // One reconciliation on connection/reconnection covers missed worker events.
+          const { currentOptimization, fetchOptimization } = useOptimizationStore.getState();
+          if (currentOptimization) void fetchOptimization(currentOptimization.id).catch(() => {});
         };
 
         ws.onmessage = (event) => {
@@ -65,12 +66,13 @@ export function useDispatchSocket() {
 
               // 3. Silently refetch routes to sync progress bars and server state
               if (fetchRoutes) {
+                const { selectedStatus } = useRouteStore.getState();
                 fetchRoutes(selectedStatus === "all" ? undefined : selectedStatus);
               }
             } else if (data.event === "optimization_updated") {
               console.log("[WS Dispatch] Real-time optimization_updated received:", data);
-              const { setOptimizationResult } = useOptimizationStore.getState();
-              if (setOptimizationResult) {
+              const { currentOptimization, setOptimizationResult } = useOptimizationStore.getState();
+              if (currentOptimization?.id === data.optimization_request_id) {
                 setOptimizationResult(data.status, data.result, data.error_message);
               }
             }
@@ -103,5 +105,6 @@ export function useDispatchSocket() {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       wsRef.current?.close();
     };
-  }, [session, updateJobStatusLocally, updateStopStatusLocally, fetchRoutes, selectedStatus]);
+  // Session refreshes create new objects; reconnect only when credentials change.
+  }, [tenantId, token, updateJobStatusLocally, updateStopStatusLocally, fetchRoutes]);
 }

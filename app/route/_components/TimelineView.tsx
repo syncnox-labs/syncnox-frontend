@@ -39,6 +39,8 @@ import {
 } from "lucide-react";
 import ReorderStopsModal from "./ReorderStopsModal";
 import TransferStopsModal from "./TransferStopsModal";
+import type { StopMoveSelection } from "@/types/routes.type";
+import { selectTripToMove, snapshotMoveStops, type TripMoveSelection } from "./tripMove.utils";
 import type { TransferSelection } from "./transferStops.utils";
 import TimelineStopArrow from "./TimelineStopArrow";
 import TimelineTravelSegment from "./TimelineTravelSegment";
@@ -112,6 +114,8 @@ interface TimelineViewProps {
   onUndoDeleteJob?: (jobId: number) => void;
   reorderingRouteIndex?: number | null;
   onAddUnassignedJob?: (routeIndex: number, jobId: number, position?: number) => Promise<void> | void;
+  onMoveStops?: (selection: StopMoveSelection, targetRouteIndex: number) => void;
+  onMoveTrip?: (selection: TripMoveSelection, targetRouteIndex: number) => void;
   onTransferStops?: (
     sourceRouteIndex: number,
     targetRouteIndex: number,
@@ -414,6 +418,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   reorderingRouteIndex = null,
   onAddUnassignedJob,
   onTransferStops,
+  onMoveTrip,
+  onMoveStops,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [intervalMinutes, setIntervalMinutes] = useState(30);
@@ -457,12 +463,15 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   const [selectionSourceRouteIndex, setSelectionSourceRouteIndex] = useState<number | null>(null);
 
   // Direct Timeline Drag and Drop state
+  const [draggedTrip, setDraggedTrip] = useState<TripMoveSelection | null>(null);
+  const [tripDropRouteIndex, setTripDropRouteIndex] = useState<number | null>(null);
   const [draggedStopInfo, setDraggedStopInfo] = useState<{
     routeIndex: number;
     rawIndex: number;
     rawIndices: number[];
     jobId: number | null;
     displayIndex: number;
+    moveSelection?: StopMoveSelection;
   } | null>(null);
 
   const [dragOverStopInfo, setDragOverStopInfo] = useState<{
@@ -487,6 +496,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   // Global cleanup for drag and drop
   useEffect(() => {
     const handleGlobalDragEnd = () => {
+      setDraggedTrip(null);
+      setTripDropRouteIndex(null);
       setDragOverStopInfo(null);
     };
     document.addEventListener("dragend", handleGlobalDragEnd);
@@ -504,7 +515,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   ) => {
     e.stopPropagation();
     dragOverSlotRef.current = null;
-    setDraggedStopInfo({ routeIndex, rawIndex, rawIndices, jobId, displayIndex });
+    const jobIds = jobId && selectedStopJobIds.has(jobId) && selectionSourceRouteIndex === routeIndex
+      ? [...selectedStopJobIds] : jobId ? [jobId] : [];
+    const moveSelection: StopMoveSelection | undefined = onMoveStops && jobIds.length ? {
+      sourceRouteIndex: routeIndex, sourceDriverId: routes[routeIndex].team_member_id,
+      sourceLeg: routes[routeIndex].leg ?? null, jobIds, sourceStops: snapshotMoveStops(routes[routeIndex]),
+    } : undefined;
+    setDraggedStopInfo({ routeIndex, rawIndex, rawIndices, jobId, displayIndex, moveSelection });
+    if (moveSelection) e.dataTransfer.setData("application/x-syncnox-booking", JSON.stringify(moveSelection));
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("application/json", JSON.stringify({ routeIndex, rawIndex, jobId }));
   };
@@ -1055,10 +1073,43 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     return closestIndex;
   };
 
+  const handleTripDragStart = (event: React.DragEvent, routeIndex: number, startIndex: number) => {
+    event.stopPropagation();
+    const selected = selectTripToMove(routes[routeIndex], routeIndex, startIndex);
+    if (!onMoveTrip || !selected) {
+      event.preventDefault();
+      message.warning("Choose a complete optimized trip. Trips with pending changes or team-leader work must be optimized first.");
+      return;
+    }
+    setOpenStopTooltipKey(null);
+    setDraggedStopInfo(null);
+    setDragOverStopInfo(null);
+    dragOverSlotRef.current = null;
+    setDraggedTrip(selected);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-syncnox-trip", JSON.stringify(selected));
+  };
+
   const handleTimelineTrackDragOver = (
     e: React.DragEvent,
     routeIndex: number
   ) => {
+    if (draggedTrip || e.dataTransfer.types.includes("application/x-syncnox-trip")) {
+      e.preventDefault();
+      e.stopPropagation();
+      const allowed = Boolean(onMoveTrip && draggedTrip && routes[routeIndex]?.team_member_id !== draggedTrip.sourceDriverId);
+      e.dataTransfer.dropEffect = allowed ? "move" : "none";
+      setTripDropRouteIndex(allowed ? routeIndex : null);
+      return;
+    }
+    if (e.dataTransfer.types.includes("application/x-syncnox-booking")) {
+      e.preventDefault();
+      e.stopPropagation();
+      const allowed = Boolean(onMoveStops && draggedStopInfo?.moveSelection && routes[routeIndex]?.team_member_id !== draggedStopInfo.moveSelection.sourceDriverId);
+      e.dataTransfer.dropEffect = allowed ? "move" : "none";
+      setTripDropRouteIndex(allowed ? routeIndex : null);
+      return;
+    }
     if (!draggedStopInfo && !e.dataTransfer.types.includes("application/json")) {
       return;
     }
@@ -1182,6 +1233,36 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   ) => {
     e.preventDefault();
     e.stopPropagation();
+
+    if (e.dataTransfer.types.includes("application/x-syncnox-trip")) {
+      try {
+        const selection: TripMoveSelection = JSON.parse(e.dataTransfer.getData("application/x-syncnox-trip"));
+        if (onMoveTrip && selection.sourceDriverId !== routes[routeIndex]?.team_member_id) onMoveTrip(selection, routeIndex);
+      } catch {
+        message.error("Could not read the selected trip. Please drag it again.");
+      } finally {
+        setDraggedTrip(null);
+        setTripDropRouteIndex(null);
+      }
+      return;
+    }
+
+    if (e.dataTransfer.types.includes("application/x-syncnox-booking")) {
+      try {
+        const selection: StopMoveSelection = JSON.parse(e.dataTransfer.getData("application/x-syncnox-booking"));
+        if (onMoveStops && selection.sourceDriverId !== routes[routeIndex]?.team_member_id) onMoveStops(selection, routeIndex);
+      } catch {
+        message.error("Could not read the selected booking. Drag it again.");
+      } finally {
+        setDraggedStopInfo(null);
+        setTripDropRouteIndex(null);
+        setDragOverStopInfo(null);
+        dragOverSlotRef.current = null;
+        setSelectedStopJobIds(new Set());
+        setSelectionSourceRouteIndex(null);
+      }
+      return;
+    }
 
     try {
       const dataStr = e.dataTransfer.getData("application/json");
@@ -1352,6 +1433,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   };
 
   const handleTimelineStopDragEnd = () => {
+    setDraggedTrip(null);
+    setTripDropRouteIndex(null);
     dragOverSlotRef.current = null;
     setDraggedStopInfo(null);
     setDragOverStopInfo(null);
@@ -1483,11 +1566,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         // Since tracks stop propagation, this only fires when dragging over non-track areas
         e.preventDefault();
         setDragOverStopInfo(null);
+        setTripDropRouteIndex(null);
       }}
       onDragLeave={(e) => {
         const relatedTarget = e.relatedTarget as Node | null;
         if (relatedTarget === null || !e.currentTarget.contains(relatedTarget)) {
           setDragOverStopInfo(null);
+          setTripDropRouteIndex(null);
         }
       }}
     >
@@ -1835,7 +1920,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                     data-driver-key={driverGroup.driverKey}
                     data-route-indices={routeIndicesStr}
                     data-route-index={primaryIndex}
-                    className="flex border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                    onDragOver={event => {
+                      if (event.dataTransfer.types.includes("application/x-syncnox-trip") || event.dataTransfer.types.includes("application/x-syncnox-booking")) handleTimelineTrackDragOver(event, primaryIndex);
+                    }}
+                    onDrop={event => {
+                      if (event.dataTransfer.types.includes("application/x-syncnox-trip") || event.dataTransfer.types.includes("application/x-syncnox-booking")) void handleTimelineDrop(event, primaryIndex);
+                    }}
+                    className={`flex border-b border-gray-100 hover:bg-gray-50 transition-colors ${tripDropRouteIndex != null && routes[tripDropRouteIndex]?.team_member_id === routes[primaryIndex]?.team_member_id ? "bg-emerald-50 ring-2 ring-inset ring-emerald-500" : ""}`}
                     style={{ height: ROW_HEIGHT }}
                   >
                     {/* Sticky Driver Info */}
@@ -1950,6 +2041,16 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                         void handleTimelineDrop(e, routeIndex);
                       }}
                     >
+                      {tripDropRouteIndex != null && routes[tripDropRouteIndex]?.team_member_id === routes[primaryIndex]?.team_member_id && (
+                        <div className="absolute left-3 top-1 z-40 pointer-events-none rounded bg-emerald-800 px-2 py-1 text-[10px] font-semibold text-white shadow">
+                          Move {draggedTrip ? "complete trip" : "booking"} to {driverGroup.driverName} · passenger times kept
+                        </div>
+                      )}
+                      {draggedTrip && driverGroup.routes.some(item => item.originalIndex === draggedTrip.sourceRouteIndex) && (
+                        <div className="absolute top-2 bottom-2 z-30 border-2 border-dashed border-emerald-600 bg-emerald-100/30 pointer-events-none rounded"
+                          style={{ left: getPosition(draggedTrip.stops[0].arrival_time, startTime, pixelsPerMinute),
+                            width: Math.max(32, getPosition(draggedTrip.stops.at(-1)!.arrival_time, startTime, pixelsPerMinute) - getPosition(draggedTrip.stops[0].arrival_time, startTime, pixelsPerMinute)) }} />
+                      )}
                       {showDriverWorkingTime && Number.isFinite(teamId) &&
                         (displayedAvailabilityWindows.length > 0 || activeShift) && (
                         <div className="absolute inset-0 pointer-events-none">
@@ -2995,7 +3096,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             opacity: isDimmed ? 0.4 : isDraggingThis ? 0.3 : 1,
                                           }}
                                           onClick={handleStopItemClick}
-                                          title={!isDepot ? "Drag to reorder stop / Shift+Click to select" : undefined}
+                                          title={!isDepot ? "Drag to move booking to another driver / Shift+Click to select" : undefined}
                                         >
 
                                           {/* Selected Check Badge */}
@@ -3116,6 +3217,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             )
                                           }
                                           onDragEnd={handleTimelineStopDragEnd}
+                                          title="Drag to move this booking's pickup and drop-off together at their scheduled times"
                                         />
                                       </TimelineTooltip>
                                     );
@@ -3142,11 +3244,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       }}
                                     >
                                       <div
-                                        draggable={!isDepot && Boolean(firstJobId)}
-                                        onDragStart={(e) => firstJobId && handleTimelineStopDragStart(e, routeIndex, group.firstRawIndex, groupRawIndices, firstJobId, displayIndex)}
+                                        draggable={Boolean((stop.stop_type === "depot_start" && onMoveTrip) || (!isDepot && firstJobId))}
+                                        onDragStart={(e) => stop.stop_type === "depot_start"
+                                          ? handleTripDragStart(e, routeIndex, group.firstRawIndex)
+                                          : firstJobId && handleTimelineStopDragStart(e, routeIndex, group.firstRawIndex, groupRawIndices, firstJobId, displayIndex)}
                                         onDragEnd={handleTimelineStopDragEnd}
                                         className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md z-10 transition-[transform,box-shadow,opacity] duration-150 ${
-                                          !isDepot ? "cursor-grab active:cursor-grabbing hover:scale-110 hover:shadow-lg" : "cursor-pointer"
+                                          !isDepot || (stop.stop_type === "depot_start" && onMoveTrip) ? "cursor-grab active:cursor-grabbing hover:scale-110 hover:shadow-lg" : "cursor-pointer"
                                         } ${
                                           isDraggingThis ? "w-8 h-8 opacity-30 border-2 border-dashed border-emerald-500 bg-emerald-50/50 scale-95 shadow-inner" : "w-8 h-8 bg-white"
                                         } ${
@@ -3179,7 +3283,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           opacity: isDimmed ? 0.4 : isDraggingThis ? 0.3 : 1,
                                         }}
                                         onClick={handleStopItemClick}
-                                        title={!isDepot ? "Drag to reorder stop / Shift+Click to select" : undefined}
+                                        title={stop.stop_type === "depot_start" && onMoveTrip ? "Drag home to move this complete trip to another driver" : !isDepot ? "Drag to move booking to another driver / Shift+Click to select" : undefined}
                                       >
 
                                         {/* Selected Check Badge */}

@@ -34,7 +34,7 @@ import {
 import dayjs from "dayjs";
 
 import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
-import { X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil } from "lucide-react";
+import { CircleX, X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil } from "lucide-react";
 import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
 import { buildMapSearchIndex } from "./mapSearch.utils";
@@ -42,6 +42,9 @@ import { getRouteStopDisplay } from "./stopDisplay.utils";
 import TimelineView from "./TimelineView";
 import AssignedJobsTable from "./AssignedJobsTable";
 import OptimizationIssueBanner from "./OptimizationIssueBanner";
+import { snapshotMoveStops } from "./tripMove.utils";
+import type { StopMoveSelection } from "@/types/routes.type";
+import type { TripMoveSelection } from "./tripMove.utils";
 import PendingOptimizationIndicator from "./PendingOptimizationIndicator";
 import { getAssignedRouteJobs, getUnassignedRouteJobs } from "./assignedRouteJobs.utils";
 import { getAddedJobIds, getPendingDriverRoutes } from "./jobAddition.utils";
@@ -84,6 +87,8 @@ import {
   swapRouteDriver,
   reverseRoute,
   reOptimizeRoute,
+  moveRouteTrip,
+  moveRouteStops,
   transferRouteStops,
   shareOptimizationRoutes,
   type ShareRouteResponse,
@@ -180,13 +185,16 @@ const OptimizationView = ({
     isOptimizing,
     error,
     reOptimize,
-    pollUntilComplete,
+    waitUntilComplete,
   } = useOptimizationStore();
   const { jobs, fetchJobsByDate, fetchJobsByIds, isLoading: isJobsLoading, error: jobsError } = useJobsStore();
   const { updateRoute } = useRouteStore();
   const { teams, initializeTeams, updateTeamAction } = useTeamStore();
   const { vehicles, initializeVehicles } = useVehicleStore();
 
+  const [minimizedIssue, setMinimizedIssue] = useState<string | null>(null);
+  const issueKey = `${route.id}:${error}`;
+  const isIssueMinimized = Boolean(error && minimizedIssue === issueKey);
   const [detailView, setDetailView] = useState<"timeline" | "table">("timeline");
   const [hasOpenedTable, setHasOpenedTable] = useState(false);
   const planJobIds = useMemo(() => [...new Set([
@@ -1337,7 +1345,7 @@ const OptimizationView = ({
             message.loading({ content: `Re-optimizing ${driverName}'s route…`, key: "save_reopt", duration: 0 });
             setPendingDeletedJobIds(new Set());
 
-            await pollUntilComplete(route.id);
+            await waitUntilComplete(route.id);
             message.success({ content: `${driverName}'s route re-optimized successfully!`, key: "save_reopt" });
           } else {
             await fetchOptimization(route.id);
@@ -1345,14 +1353,15 @@ const OptimizationView = ({
           }
         }
       } catch (error: any) {
-        message.error({
-          content: error?.response?.data?.detail || error?.message || "Failed to save & reoptimize route",
-          key: "save_reopt",
-        });
-        setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to reoptimize route");
+        const errorMessage = error?.response?.data?.detail || error?.detail || error?.message || "Failed to save & reoptimize route";
+        message.error({ content: errorMessage, key: "save_reopt" });
+        const current = useOptimizationStore.getState().currentOptimization;
+        if (current?.id === route.id) {
+          setOptimizationResult(current.status === "completed" ? "completed" : "failed", undefined, errorMessage);
+        }
       }
     },
-    [route.id, route.result, fetchOptimization, setOptimizationResult, pendingDeletedJobIds, applyStagedRemovals, pollUntilComplete],
+    [route.id, route.result, fetchOptimization, setOptimizationResult, pendingDeletedJobIds, applyStagedRemovals, waitUntilComplete],
   );
 
   const handleReverseRoute = useCallback(
@@ -1405,30 +1414,34 @@ const OptimizationView = ({
             if (res.success) {
               message.loading({ content: `Re-optimizing ${driverName}'s route…`, key: "reopt", duration: 0 });
               setPendingDeletedJobIds(new Set());
-              // Poll until the async worker finishes
+              // Wait for the dispatch WebSocket completion event
 
-              await pollUntilComplete(route.id);
+              await waitUntilComplete(route.id);
               message.success({ content: `${driverName}'s route re-optimized!`, key: "reopt" });
             }
           } catch (error: any) {
-            message.error({ content: error?.response?.data?.detail || error?.message || "Failed to reoptimize route", key: "reopt" });
-            setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to reoptimize route");
+            const errorMessage = error?.response?.data?.detail || error?.detail || error?.message || "Failed to reoptimize route";
+            message.error({ content: errorMessage, key: "reopt" });
+            const current = useOptimizationStore.getState().currentOptimization;
+            if (current?.id === route.id) {
+              setOptimizationResult(current.status === "completed" ? "completed" : "failed", undefined, errorMessage);
+            }
           }
         },
       });
     },
-    [route.id, route.result?.routes, setOptimizationResult, pendingDeletedJobIds, applyStagedRemovals, pollUntilComplete],
+    [route.id, route.result?.routes, setOptimizationResult, pendingDeletedJobIds, applyStagedRemovals, waitUntilComplete],
   );
 
   const handleSwapSuccess = useCallback(() => {
-    setOptimizationResult("processing");
-    // Poll until the async swap-driver worker finishes
+    // The drawer marks processing before enqueueing to avoid a fast-worker race.
+    // Wait for the dispatch WebSocket completion event
 
-    pollUntilComplete(route.id)
+    waitUntilComplete(route.id)
       .catch(() => {
         // Error already set in store
       });
-  }, [setOptimizationResult, pollUntilComplete, route.id]);
+  }, [waitUntilComplete, route.id]);
 
   const handleAddUnassignedJob = useCallback(
     async (targetRouteIndex: number, jobId: number, position?: number) => {
@@ -1447,6 +1460,133 @@ const OptimizationView = ({
     },
     [route.id, fetchOptimization]
   );
+
+  const tripMoveInProgress = useRef(false);
+  const [isMovingTrip, setIsMovingTrip] = useState(false);
+  const handleMoveTrip = useCallback((selection: TripMoveSelection, targetIndex: number) => {
+    if (tripMoveInProgress.current) return;
+    const source = route.result?.routes[selection.sourceRouteIndex];
+    const target = route.result?.routes[targetIndex];
+    if (!source || !target || target.team_member_id === selection.sourceDriverId) return;
+    if (!target.vehicle_id) {
+      message.error("The destination driver needs a configured vehicle.");
+      return;
+    }
+    const vehicleName = target.vehicle_name || vehicles.find(vehicle => vehicle.id === target.vehicle_id)?.name || "the destination route's vehicle";
+    const first = dayjs(selection.stops[0]?.arrival_time);
+    const last = dayjs(selection.stops.at(-1)?.arrival_time);
+    tripMoveInProgress.current = true;
+    Modal.confirm({
+      title: "Move complete trip",
+      content: `Move ${source.team_member_name}'s ${first.format("ddd, h:mm A")}–${last.format("ddd, h:mm A")} trip to ${target.team_member_name}? The trip will use ${vehicleName}. Passenger times and stop order stay unchanged. Home travel will be recalculated and the driver's availability checked.`,
+      okText: "Move trip",
+      okButtonProps: { style: { backgroundColor: "#003220", borderColor: "#003220" } },
+      onCancel: () => { tripMoveInProgress.current = false; },
+      afterClose: () => { tripMoveInProgress.current = false; },
+      onOk: async () => {
+        if (useOptimizationStore.getState().currentOptimization?.id !== route.id) {
+          message.error("The route plan changed. Open the plan again before moving this trip.");
+          return;
+        }
+        setIsMovingTrip(true);
+        message.loading({ content: "Checking availability and moving trip…", key: "move_trip", duration: 0 });
+        try {
+          const response = await moveRouteTrip(route.id, selection.sourceRouteIndex, {
+            start_stop_index: selection.startStopIndex,
+            target_route_index: targetIndex,
+            expected_source_driver_id: selection.sourceDriverId,
+            expected_source_leg: selection.sourceLeg,
+            expected_target_driver_id: target.team_member_id,
+            expected_target_vehicle_id: target.vehicle_id,
+            expected_target_leg: target.leg ?? null,
+            expected_stops: selection.stops,
+          });
+          if (!response.success) throw new Error(response.message);
+          if (useOptimizationStore.getState().currentOptimization?.id === route.id) {
+            setOptimizationResult("completed", response.result);
+            setFocusedRouteIndex(null);
+            setSelectedMarkerId(null);
+            const refreshed = await Promise.allSettled([fetchJobsByIds(route.job_ids || []), refreshUndoHistory()]);
+            if (refreshed.some(item => item.status === "rejected")) message.warning("Trip moved. Refresh to update job details and undo history.");
+          }
+          message.success({ content: response.message, key: "move_trip" });
+        } catch (error: unknown) {
+          const detail = isAxiosError<{ detail?: string }>(error) ? error.response?.data?.detail
+            : (error as { detail?: string })?.detail;
+          const errorMessage = typeof detail === "string" ? detail
+            : error instanceof Error ? error.message : "Could not move the trip";
+          message.destroy("move_trip");
+          Modal.error({
+            title: "Trip could not be moved",
+            content: <div className="whitespace-pre-line break-words">{errorMessage}</div>,
+            width: 640,
+            okText: "Got it",
+            okButtonProps: { style: { backgroundColor: "#003220", borderColor: "#003220" } },
+          });
+        } finally {
+          setIsMovingTrip(false);
+        }
+      },
+    });
+  }, [route, vehicles, setOptimizationResult, fetchJobsByIds, refreshUndoHistory]);
+
+  const handleMoveStops = useCallback((selection: StopMoveSelection, targetIndex: number) => {
+    if (tripMoveInProgress.current) return;
+    const target = route.result?.routes[targetIndex];
+    if (!target || target.team_member_id === selection.sourceDriverId) return;
+    if (!target.vehicle_id) {
+      message.error("The destination driver needs a configured vehicle.");
+      return;
+    }
+    const targetStops = snapshotMoveStops(target);
+    const vehicleName = target.vehicle_name || vehicles.find(vehicle => vehicle.id === target.vehicle_id)?.name || "the destination route's vehicle";
+    const labels = selection.jobIds.slice(0, 3).map(id => `#${id}`).join(", ");
+    tripMoveInProgress.current = true;
+    Modal.confirm({
+      title: selection.jobIds.length === 1 ? "Move booking" : "Move selected bookings",
+      content: `Move Job${selection.jobIds.length === 1 ? "" : "s"} ${labels}${selection.jobIds.length > 3 ? ` and ${selection.jobIds.length - 3} more` : ""} to ${target.team_member_name} using ${vehicleName}? Pickup and drop-off move together at their existing scheduled times. Travel, seat capacity, and availability will be checked without running optimization.`,
+      okText: "Move booking",
+      okButtonProps: { style: { backgroundColor: "#003220", borderColor: "#003220" } },
+      onCancel: () => { tripMoveInProgress.current = false; },
+      afterClose: () => { tripMoveInProgress.current = false; },
+      onOk: async () => {
+        if (useOptimizationStore.getState().currentOptimization?.id !== route.id) {
+          message.error("The plan changed. Open it again before moving this booking.");
+          return;
+        }
+        setIsMovingTrip(true);
+        message.loading({ content: "Checking travel and moving booking…", key: "move_stops", duration: 0 });
+        try {
+          const response = await moveRouteStops(route.id, selection.sourceRouteIndex, {
+            job_ids: selection.jobIds, target_route_index: targetIndex,
+            expected_source_driver_id: selection.sourceDriverId, expected_source_leg: selection.sourceLeg,
+            expected_target_driver_id: target.team_member_id, expected_target_leg: target.leg ?? null,
+            expected_target_vehicle_id: target.vehicle_id,
+            expected_source_stops: selection.sourceStops, expected_target_stops: targetStops,
+          });
+          if (!response.success) throw new Error(response.message);
+          if (useOptimizationStore.getState().currentOptimization?.id === route.id) {
+            setOptimizationResult("completed", response.result);
+            setFocusedRouteIndex(null);
+            setSelectedMarkerId(null);
+            const refreshed = await Promise.allSettled([fetchJobsByIds(route.job_ids || []), refreshUndoHistory()]);
+            if (refreshed.some(item => item.status === "rejected")) message.warning("Booking moved. Refresh to update job details and undo history.");
+          }
+          message.success({ content: response.message, key: "move_stops" });
+        } catch (error: unknown) {
+          const detail = isAxiosError<{ detail?: string }>(error) ? error.response?.data?.detail
+            : (error as { detail?: string })?.detail;
+          message.destroy("move_stops");
+          Modal.error({ title: `Could not move Job${selection.jobIds.length === 1 ? "" : "s"} ${labels}${selection.jobIds.length > 3 ? ` and ${selection.jobIds.length - 3} more` : ""} to ${target.team_member_name}`, width: 640,
+            content: <div className="whitespace-pre-line break-words">{typeof detail === "string" ? detail : error instanceof Error ? error.message : "Could not move this booking"}</div>,
+            okText: "Got it", okButtonProps: { style: { backgroundColor: "#003220", borderColor: "#003220" } },
+          });
+        } finally {
+          setIsMovingTrip(false);
+        }
+      },
+    });
+  }, [route, vehicles, fetchJobsByIds, refreshUndoHistory, setOptimizationResult]);
 
   const handleTransferStops = useCallback(
     async (
@@ -1471,6 +1611,7 @@ const OptimizationView = ({
           duration: 0,
         });
 
+        if (reoptimize) setOptimizationResult("processing");
         const res = await transferRouteStops(
           route.id,
           sourceRouteIndex,
@@ -1494,9 +1635,7 @@ const OptimizationView = ({
           });
 
           if (reoptimize && res.is_async) {
-            setOptimizationResult("processing");
-
-            await pollUntilComplete(route.id);
+            await waitUntilComplete(route.id);
           }
           const refresh = await Promise.allSettled([
             fetchOptimization(route.id), fetchJobsByIds(route.job_ids || jobIds), refreshUndoHistory(),
@@ -1510,6 +1649,7 @@ const OptimizationView = ({
           message.warning({ content: "Transfer saved. Re-optimization or refresh failed; refresh the plan before continuing.", key: "transfer_stops" });
           return;
         }
+        if (reoptimize) await fetchOptimization(route.id).catch(() => {});
         message.error({
           content: error?.response?.data?.detail || error?.message || "Failed to transfer stops",
           key: "transfer_stops",
@@ -1517,7 +1657,7 @@ const OptimizationView = ({
         throw error;
       }
     },
-    [route, fetchOptimization, fetchJobsByIds, refreshUndoHistory, pollUntilComplete, setOptimizationResult],
+    [route, fetchOptimization, fetchJobsByIds, refreshUndoHistory, waitUntilComplete, setOptimizationResult],
   );
 
   // Map marker removal uses the same validated confirmation as the timeline.
@@ -1682,9 +1822,9 @@ const OptimizationView = ({
           message.loading({ content: "Re-optimization queued. Waiting for result…", key: "reopt_all", duration: 0 });
           await reOptimize(route.id);
           setPendingDeletedJobIds(new Set());
-          // Poll until the global re-optimize worker finishes
+          // Wait for the dispatch WebSocket completion event
 
-          await pollUntilComplete(route.id);
+          await waitUntilComplete(route.id);
           message.success({ content: "All routes re-optimized!", key: "reopt_all" });
 
           console.log(
@@ -1696,7 +1836,7 @@ const OptimizationView = ({
         }
       },
     });
-  }, [reOptimize, route.id, route.result?.routes, pendingDeletedJobIds, applyStagedRemovals, pollUntilComplete]);
+  }, [reOptimize, route.id, route.result?.routes, pendingDeletedJobIds, applyStagedRemovals, waitUntilComplete]);
 
   const getRouteData = (index: number | null) =>
     index !== null ? route.result?.routes?.[index] : null;
@@ -1803,6 +1943,22 @@ const OptimizationView = ({
                 <span>
                   {totalVehicles} {totalVehicles === 1 ? "route" : "routes"}
                 </span>
+                {isIssueMinimized && (
+                  <>
+                    <span className="mx-1 text-gray-400">·</span>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-red-700 font-medium hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-red-600 cursor-pointer"
+                      aria-label="Show optimization issue details"
+                      aria-expanded={false}
+                      onClick={() => setMinimizedIssue(null)}
+                    >
+                      <CircleX size={12} aria-hidden="true" />
+                      Optimization Issue
+                      <ChevronDown size={12} aria-hidden="true" />
+                    </button>
+                  </>
+                )}
                 {hasPendingOptimization ? (
                   <>
                     <span className="mx-1 text-gray-400">·</span>
@@ -1890,8 +2046,8 @@ const OptimizationView = ({
       </nav>
 
       {/* Error Banner */}
-      {error && (
-        <OptimizationIssueBanner key={`${route.id}:${error}`} error={error} />
+      {error && !isIssueMinimized && (
+        <OptimizationIssueBanner error={error} onMinimize={() => setMinimizedIssue(issueKey)} />
       )}
 
       {/* Main Content Area */}
@@ -2304,6 +2460,8 @@ const OptimizationView = ({
                       targetRouteIndexRef.current = idx;
                       setAddStopRouteIndex(idx);
                     }}
+                    onMoveStops={isWorkerShuttle && !isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed") ? handleMoveStops : undefined}
+                    onMoveTrip={!isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed") ? handleMoveTrip : undefined}
                     onAddUnassignedJob={handleAddUnassignedJob}
                     onSwapDriver={(idx) => setSwapDriverRouteIndex(idx)}
                     onChangeVehicle={route.status === "completed" || route.status === "failed"
