@@ -1345,11 +1345,12 @@ const OptimizationView = ({
           }
         }
       } catch (error: any) {
-        message.error({
-          content: error?.response?.data?.detail || error?.message || "Failed to save & reoptimize route",
-          key: "save_reopt",
-        });
-        setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to reoptimize route");
+        const errorMessage = error?.response?.data?.detail || error?.detail || error?.message || "Failed to save & reoptimize route";
+        message.error({ content: errorMessage, key: "save_reopt" });
+        const current = useOptimizationStore.getState().currentOptimization;
+        if (current?.id === route.id) {
+          setOptimizationResult(current.status === "completed" ? "completed" : "failed", undefined, errorMessage);
+        }
       }
     },
     [route.id, route.result, fetchOptimization, setOptimizationResult, pendingDeletedJobIds, applyStagedRemovals, waitUntilComplete],
@@ -1411,8 +1412,12 @@ const OptimizationView = ({
               message.success({ content: `${driverName}'s route re-optimized!`, key: "reopt" });
             }
           } catch (error: any) {
-            message.error({ content: error?.response?.data?.detail || error?.message || "Failed to reoptimize route", key: "reopt" });
-            setOptimizationResult("failed", undefined, error?.response?.data?.detail || "Failed to reoptimize route");
+            const errorMessage = error?.response?.data?.detail || error?.detail || error?.message || "Failed to reoptimize route";
+            message.error({ content: errorMessage, key: "reopt" });
+            const current = useOptimizationStore.getState().currentOptimization;
+            if (current?.id === route.id) {
+              setOptimizationResult(current.status === "completed" ? "completed" : "failed", undefined, errorMessage);
+            }
           }
         },
       });
