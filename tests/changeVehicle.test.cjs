@@ -64,8 +64,9 @@ test("driver dialog offers a clear choice between trips and all trips", () => {
   const html = renderToStaticMarkup(React.createElement(modal, {
     optimizationId: 21, routeIndex: 0, onClose: () => {}, onSuccess: () => {},
     routes: [
-      { team_member_id: 8, team_member_name: "Driver Example", vehicle_name: "Van 1", leg: "GO" },
-      { team_member_id: 8, team_member_name: "Driver Example", vehicle_name: "Car 2", leg: "RETURN" },
+      { team_member_id: 8, team_member_name: "Driver Example", vehicle_name: "Van 1", leg: "GO", stops: [{ job_id: 1 }] },
+      { team_member_id: 8, team_member_name: "Driver Example", vehicle_name: "Car 2", leg: "RETURN", stops: [{ job_id: 2 }] },
+      { team_member_id: 8, team_member_name: "Driver Example", vehicle_name: "Empty vehicle", leg: "GO", stops: [] },
     ],
   }));
   assert.match(html, /Change vehicle/);
@@ -73,15 +74,35 @@ test("driver dialog offers a clear choice between trips and all trips", () => {
   assert.match(html, /GO · Van 1/);
   assert.match(html, /RETURN · Car 2/);
   assert.match(html, /All trips for this driver/);
+  assert.doesNotMatch(html, /Empty vehicle/);
   assert.match(html, /disabled=""/);
 });
 
 test("leader dialog makes the both-leg vehicle replacement explicit", () => {
   const html = renderToStaticMarkup(React.createElement(modal, {
     optimizationId: 21, routeIndex: 0, onClose: () => {}, onSuccess: () => {},
-    routes: [{ team_member_id: 8, team_member_name: "Leader", vehicle_name: "Bus 1", leg: "COMBINED", is_team_leader: true }],
+    routes: [{ team_member_id: 8, team_member_name: "Leader", vehicle_name: "Bus 1", leg: "COMBINED", is_team_leader: true, stops: [{ job_id: 1 }] }],
   }));
   assert.match(html, /Bus 1/);
   assert.match(html, /Both legs will be updated together/);
   assert.doesNotMatch(html, /<select/);
+});
+
+test("vehicle dialog preserves backend details from plain API and Axios errors", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/route/_components/ChangeVehicleModal.tsx"), "utf8");
+  const tree = ts.createSourceFile("modal.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let declaration;
+  (function visit(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(tree) === "errorText") declaration = node.parent.parent.getText(tree);
+    ts.forEachChild(node, visit);
+  })(tree);
+  assert.ok(declaration);
+  const compiled = ts.transpileModule(declaration, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
+  const errorText = new Function("isAxiosError", compiled + ";return errorText;")(require("axios").isAxiosError);
+  const detail = "Route times are missing. Reoptimize before changing vehicles.";
+  assert.equal(errorText({ detail }), detail);
+  assert.equal(errorText({ isAxiosError: true, response: { data: { detail } } }), detail);
+  for (const error of [null, undefined, {}, { detail: [] }, new Error("Network failure")]) {
+    assert.equal(errorText(error), "Unable to change the vehicle. Please try again.");
+  }
 });

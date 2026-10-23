@@ -21,7 +21,7 @@ for (const axiosStyle of [false, true]) test(`move error keeps the complete ${ax
     require, exports: {},
     useCallback: fn => fn,
     tripMoveInProgress: { current: false },
-    route: { id: 235, result: { routes: [{ team_member_id: 14, team_member_name: "Alliance Driver 14" },
+    route: { id: 235, result: { routes: [{ team_member_id: 14, team_member_name: "Alliance Driver 14", vehicle_id: 14, vehicle_name: "VEHICULE 3" },
       { team_member_id: 2, team_member_name: "Alliance Driver 2", vehicle_id: 13, vehicle_name: "VEHICULE 2" }] } },
     vehicles: [], dayjs: require("dayjs"),
     Modal: { confirm: options => { confirmation = options; }, error: options => { dialog = options; } },
@@ -37,6 +37,8 @@ for (const axiosStyle of [false, true]) test(`move error keeps the complete ${ax
   fn({ sourceRouteIndex: 0, startStopIndex: 0, sourceDriverId: 14, sourceLeg: "RETURN", stops: [
     { arrival_time: "2026-09-29T21:31:09" }, { arrival_time: "2026-09-29T22:45:18" },
   ] }, 1);
+  assert.match(confirmation.content, /keep VEHICULE 3 if the driver has the required qualifications; otherwise it will use VEHICULE 2/);
+  assert.match(confirmation.content, /driver and vehicle availability checked/);
   await confirmation.onOk();
   assert.equal(dialog.title, "Trip could not be moved");
   assert.equal(dialog.content.props.children, detail);

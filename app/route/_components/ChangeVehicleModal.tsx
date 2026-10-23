@@ -15,10 +15,11 @@ interface Props {
   onSuccess: () => void;
 }
 
-const errorText = (error: unknown) =>
-  isAxiosError(error) && typeof error.response?.data?.detail === "string"
-    ? error.response.data.detail
-    : "Unable to change the vehicle. Please try again.";
+const errorText = (error: unknown) => {
+  const detail = isAxiosError(error) ? error.response?.data?.detail
+    : (error as { detail?: unknown } | null)?.detail;
+  return typeof detail === "string" ? detail : "Unable to change the vehicle. Please try again.";
+};
 
 export default function ChangeVehicleModal({ optimizationId, routeIndex, routes, onClose, onSuccess }: Props) {
   const [trip, setTrip] = useState(String(routeIndex));
@@ -29,7 +30,8 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const driverId = routes[routeIndex]?.team_member_id;
-  const trips = routes.map((route, index) => ({ route, index })).filter(item => item.route.team_member_id === driverId);
+  const trips = routes.map((route, index) => ({ route, index })).filter(item =>
+    item.route.team_member_id === driverId && item.route.stops?.length);
   const leader = trips.some(item => item.route.is_team_leader) || options?.is_team_leader;
   const selectedIndex = trip === "all" ? routeIndex : Number(trip);
   const scope = trip === "all" ? "driver" : "route";
