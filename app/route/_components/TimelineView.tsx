@@ -82,6 +82,7 @@ interface TimelineViewProps {
   onAddStop?: (routeIndex: number) => void;
   onSwapDriver?: (routeIndex: number) => void;
   onChangeVehicle?: (routeIndex: number) => void;
+  onSwapVehicles?: (routeIndex: number) => void;
   onReverseRoute?: (routeIndex: number) => void;
   onReOptimize?: (routeIndex: number) => void;
   pendingRouteIndices?: ReadonlySet<number>;
@@ -400,6 +401,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   onAddStop,
   onSwapDriver,
   onChangeVehicle,
+  onSwapVehicles,
   onReverseRoute,
   onReOptimize,
   pendingRouteIndices,
@@ -1532,6 +1534,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   }, [selectedMarkerId, routes, startTime, pixelsPerMinute]);
 
   const getRouteMenuItems = (routeIndex: number): MenuProps["items"] => [
+    ...(isWorkerShuttle && onSwapVehicles ? [{
+      key: "swap-vehicles",
+      icon: <SwapOutlined />,
+      label: "Swap vehicles...",
+      onClick: () => onSwapVehicles(routeIndex),
+    }] : []),
     ...(isWorkerShuttle && onChangeVehicle ? [{
       key: "change-vehicle",
       icon: <CarOutlined />,
