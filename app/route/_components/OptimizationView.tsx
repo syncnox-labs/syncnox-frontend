@@ -53,6 +53,7 @@ import JobForm from "@/components/Jobs/JobForm";
 import EditJobTitle from "@/components/Jobs/EditJobTitle";
 import SwapDriverDrawer from "./SwapDriverDrawer";
 import ChangeVehicleModal from "./ChangeVehicleModal";
+import SwapVehicleModal from "./SwapVehicleModal";
 import { Route } from "@/types/routes.type";
 import type { Job } from "@/types/job.type";
 import { useJobsStore } from "@/store/jobs.store";
@@ -679,6 +680,7 @@ const OptimizationView = ({
   );
   const targetRouteIndexRef = useRef<number | null>(null);
   const [changeVehicleRouteIndex, setChangeVehicleRouteIndex] = useState<number | null>(null);
+  const [swapVehicleRouteIndex, setSwapVehicleRouteIndex] = useState<number | null>(null);
   const [swapDriverRouteIndex, setSwapDriverRouteIndex] = useState<
     number | null
   >(null);
@@ -2469,6 +2471,8 @@ const OptimizationView = ({
                     onSwapDriver={(idx) => setSwapDriverRouteIndex(idx)}
                     onChangeVehicle={route.status === "completed" || route.status === "failed"
                       ? setChangeVehicleRouteIndex : undefined}
+                    onSwapVehicles={route.status === "completed" || route.status === "failed"
+                      ? setSwapVehicleRouteIndex : undefined}
                     onReverseRoute={handleReverseRoute}
                     onReOptimize={handleReOptimize}
                     pendingRouteIndices={pendingRouteIndices}
@@ -2610,6 +2614,22 @@ const OptimizationView = ({
           return createPlanJobs(payload, token, target);
         }}
       />
+
+      {swapVehicleRouteIndex !== null && (
+        <SwapVehicleModal
+          optimizationId={route.id}
+          routeIndex={swapVehicleRouteIndex}
+          routes={route.result?.routes || []}
+          onClose={() => setSwapVehicleRouteIndex(null)}
+          onSuccess={() => {
+            void Promise.allSettled([
+              fetchOptimization(route.id),
+              fetchJobsByIds(route.job_ids || []),
+              refreshUndoHistory(),
+            ]);
+          }}
+        />
+      )}
 
       {changeVehicleRouteIndex !== null && (
         <ChangeVehicleModal

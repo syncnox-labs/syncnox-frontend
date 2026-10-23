@@ -242,6 +242,47 @@ export interface VehicleReplacementOptions {
   vehicles: VehicleReplacementOption[];
 }
 
+export interface VehicleSwapRoute {
+  route_index: number;
+  driver_id: number;
+  driver_name: string;
+  vehicle_id: number;
+  vehicle_name: string;
+  leg: string | null;
+  route_indices: number[];
+  is_team_leader: boolean;
+}
+
+export interface VehicleSwapPreview {
+  source: VehicleSwapRoute;
+  target: VehicleSwapRoute;
+}
+
+export const getVehicleSwapOptions = async (optimizationId: number, routeIndex: number, targetRouteIndex: number): Promise<VehicleSwapPreview> => {
+  const response = await apiClient.get(
+    `optimization/requests/${optimizationId}/routes/${routeIndex}/vehicle-swap-options`,
+    { params: { target_route_index: targetRouteIndex } },
+  );
+  return response.data;
+};
+
+export const swapRouteVehicles = async (optimizationId: number, routeIndex: number, preview: VehicleSwapPreview): Promise<RouteOperationResponse> => {
+  const response = await apiClient.post(
+    `optimization/requests/${optimizationId}/routes/${routeIndex}/swap-vehicles`, {
+      target_route_index: preview.target.route_index,
+      expected_source_route_indices: preview.source.route_indices,
+      expected_target_route_indices: preview.target.route_indices,
+      expected_source_driver_id: preview.source.driver_id,
+      expected_source_vehicle_id: preview.source.vehicle_id,
+      expected_source_leg: preview.source.leg,
+      expected_target_driver_id: preview.target.driver_id,
+      expected_target_vehicle_id: preview.target.vehicle_id,
+      expected_target_leg: preview.target.leg,
+    },
+  );
+  return response.data;
+};
+
 export const getRouteVehicleOptions = async (
   optimizationId: number, routeIndex: number, scope: "route" | "driver" = "route",
 ): Promise<VehicleReplacementOptions> => {
