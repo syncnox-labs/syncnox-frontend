@@ -50,6 +50,7 @@ import { getAssignedRouteJobs, getUnassignedRouteJobs } from "./assignedRouteJob
 import { getAddedJobIds, getPendingDriverRoutes } from "./jobAddition.utils";
 import AddJobsModal from "@/app/plan/AddJobsModal";
 import JobForm from "@/components/Jobs/JobForm";
+import EditJobTitle from "@/components/Jobs/EditJobTitle";
 import SwapDriverDrawer from "./SwapDriverDrawer";
 import ChangeVehicleModal from "./ChangeVehicleModal";
 import { Route } from "@/types/routes.type";
@@ -1245,19 +1246,20 @@ const OptimizationView = ({
         try {
           const targetRoute = route.result.routes[routeIndex];
           if (targetRoute && targetRoute.stops) {
-            const depotStart = targetRoute.stops.find(
-              (s: any) => s.stop_type === "depot_start" || (s.stop_type === "depot" && s === targetRoute.stops[0])
-            );
-            const lastStop = targetRoute.stops[targetRoute.stops.length - 1];
-            const depotEnd = targetRoute.stops.length > 1 && (lastStop.stop_type === "depot_end" || lastStop.stop_type === "depot")
-              ? lastStop
-              : null;
-
-            const reorderedStops = [
-              ...(depotStart ? [depotStart] : []),
-              ...orderedStopIndices.map((idx) => targetRoute.stops[idx]).filter(Boolean),
-              ...(depotEnd ? [depotEnd] : []),
-            ];
+            const reorderedJobStops = orderedStopIndices
+              .map((idx) => targetRoute.stops[idx])
+              .filter(Boolean);
+            let jobCursor = 0;
+            const reorderedStops = targetRoute.stops.map((s: any) => {
+              const isDepot =
+                s.stop_type === "depot" ||
+                s.stop_type === "depot_start" ||
+                s.stop_type === "depot_end";
+              if (!isDepot && s.job_id && jobCursor < reorderedJobStops.length) {
+                return reorderedJobStops[jobCursor++];
+              }
+              return s;
+            });
 
             const updatedRoutes = [...route.result.routes];
             updatedRoutes[routeIndex] = {
@@ -1473,12 +1475,13 @@ const OptimizationView = ({
       return;
     }
     const vehicleName = target.vehicle_name || vehicles.find(vehicle => vehicle.id === target.vehicle_id)?.name || "the destination route's vehicle";
+    const originalVehicleName = source.vehicle_name || vehicles.find(vehicle => vehicle.id === source.vehicle_id)?.name || "the original vehicle";
     const first = dayjs(selection.stops[0]?.arrival_time);
     const last = dayjs(selection.stops.at(-1)?.arrival_time);
     tripMoveInProgress.current = true;
     Modal.confirm({
       title: "Move complete trip",
-      content: `Move ${source.team_member_name}'s ${first.format("ddd, h:mm A")}–${last.format("ddd, h:mm A")} trip to ${target.team_member_name}? The trip will use ${vehicleName}. Passenger times and stop order stay unchanged. Home travel will be recalculated and the driver's availability checked.`,
+      content: `Move ${source.team_member_name}'s ${first.format("ddd, h:mm A")}–${last.format("ddd, h:mm A")} trip to ${target.team_member_name}? The trip will keep ${originalVehicleName} if the driver has the required qualifications; otherwise it will use ${vehicleName}. Passenger times and stop order stay unchanged. Home travel will be recalculated, and driver and vehicle availability checked.`,
       okText: "Move trip",
       okButtonProps: { style: { backgroundColor: "#003220", borderColor: "#003220" } },
       onCancel: () => { tripMoveInProgress.current = false; },
@@ -2646,7 +2649,7 @@ const OptimizationView = ({
 
       {/* Edit Job Drawer */}
       <Drawer
-        title={`Edit Job #${editJobData?.id || ""}`}
+        title={<EditJobTitle job={editJobData} />}
         width={720}
         onClose={() => setEditJobData(null)}
         open={Boolean(editJobData)}

@@ -32,6 +32,7 @@ type JobTab = "all" | JobStatus;
 
 import BaseTable from "@/components/Table/BaseTable";
 import JobForm from "@/components/Jobs/JobForm";
+import EditJobTitle from "@/components/Jobs/EditJobTitle";
 import GoogleMaps from "@/components/GoogleMaps";
 import MarkerTooltip from "@/components/MarkerTooltip";
 import { createJobTableColumns, STANDARD_JOB_FIELD_KEYS } from "@/utils/jobs.utils";
@@ -418,7 +419,7 @@ export default function JobsList() {
 
       {/* Edit Job Drawer */}
       <Drawer
-        title={`Edit Job #${editJobData?.id || ""}`}
+        title={<EditJobTitle job={editJobData} />}
         width={720}
         onClose={() => setEditJobData(null)}
         open={Boolean(editJobData)}

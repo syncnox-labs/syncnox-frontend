@@ -1058,6 +1058,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   }, [routes, startTime, pixelsPerMinute]);
 
   const getDriverDropRouteIndex = (e: React.DragEvent, driverRoutes: DriverGroup["routes"]) => {
+    if (
+      draggedStopInfo &&
+      driverRoutes.some(({ originalIndex }) => originalIndex === draggedStopInfo.routeIndex)
+    ) {
+      return draggedStopInfo.routeIndex;
+    }
     const mouseX = e.clientX - e.currentTarget.getBoundingClientRect().left;
     let closestIndex = driverRoutes[0].originalIndex;
     let closestDistance = Infinity;
@@ -1102,14 +1108,22 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       setTripDropRouteIndex(allowed ? routeIndex : null);
       return;
     }
-    if (e.dataTransfer.types.includes("application/x-syncnox-booking")) {
+    if (
+      e.dataTransfer.types.includes("application/x-syncnox-booking") &&
+      routes[routeIndex]?.team_member_id !== draggedStopInfo?.moveSelection?.sourceDriverId
+    ) {
       e.preventDefault();
       e.stopPropagation();
-      const allowed = Boolean(onMoveStops && draggedStopInfo?.moveSelection && routes[routeIndex]?.team_member_id !== draggedStopInfo.moveSelection.sourceDriverId);
+      const allowed = Boolean(onMoveStops && draggedStopInfo?.moveSelection);
       e.dataTransfer.dropEffect = allowed ? "move" : "none";
       setTripDropRouteIndex(allowed ? routeIndex : null);
+      if (dragOverSlotRef.current) {
+        dragOverSlotRef.current = null;
+        setDragOverStopInfo(null);
+      }
       return;
     }
+    setTripDropRouteIndex(null);
     if (!draggedStopInfo && !e.dataTransfer.types.includes("application/json")) {
       return;
     }
@@ -1250,18 +1264,26 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     if (e.dataTransfer.types.includes("application/x-syncnox-booking")) {
       try {
         const selection: StopMoveSelection = JSON.parse(e.dataTransfer.getData("application/x-syncnox-booking"));
-        if (onMoveStops && selection.sourceDriverId !== routes[routeIndex]?.team_member_id) onMoveStops(selection, routeIndex);
+        if (selection.sourceDriverId !== routes[routeIndex]?.team_member_id) {
+          if (onMoveStops) onMoveStops(selection, routeIndex);
+          setDraggedStopInfo(null);
+          setTripDropRouteIndex(null);
+          setDragOverStopInfo(null);
+          dragOverSlotRef.current = null;
+          setSelectedStopJobIds(new Set());
+          setSelectionSourceRouteIndex(null);
+          return;
+        }
       } catch {
         message.error("Could not read the selected booking. Drag it again.");
-      } finally {
         setDraggedStopInfo(null);
         setTripDropRouteIndex(null);
         setDragOverStopInfo(null);
         dragOverSlotRef.current = null;
         setSelectedStopJobIds(new Set());
         setSelectionSourceRouteIndex(null);
+        return;
       }
-      return;
     }
 
     try {
@@ -1921,10 +1943,22 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                     data-route-indices={routeIndicesStr}
                     data-route-index={primaryIndex}
                     onDragOver={event => {
-                      if (event.dataTransfer.types.includes("application/x-syncnox-trip") || event.dataTransfer.types.includes("application/x-syncnox-booking")) handleTimelineTrackDragOver(event, primaryIndex);
+                      if (
+                        event.dataTransfer.types.includes("application/x-syncnox-trip") ||
+                        (event.dataTransfer.types.includes("application/x-syncnox-booking") &&
+                          routes[primaryIndex]?.team_member_id !== draggedStopInfo?.moveSelection?.sourceDriverId)
+                      ) {
+                        handleTimelineTrackDragOver(event, primaryIndex);
+                      }
                     }}
                     onDrop={event => {
-                      if (event.dataTransfer.types.includes("application/x-syncnox-trip") || event.dataTransfer.types.includes("application/x-syncnox-booking")) void handleTimelineDrop(event, primaryIndex);
+                      if (
+                        event.dataTransfer.types.includes("application/x-syncnox-trip") ||
+                        (event.dataTransfer.types.includes("application/x-syncnox-booking") &&
+                          routes[primaryIndex]?.team_member_id !== draggedStopInfo?.moveSelection?.sourceDriverId)
+                      ) {
+                        void handleTimelineDrop(event, primaryIndex);
+                      }
                     }}
                     className={`flex border-b border-gray-100 hover:bg-gray-50 transition-colors ${tripDropRouteIndex != null && routes[tripDropRouteIndex]?.team_member_id === routes[primaryIndex]?.team_member_id ? "bg-emerald-50 ring-2 ring-inset ring-emerald-500" : ""}`}
                     style={{ height: ROW_HEIGHT }}

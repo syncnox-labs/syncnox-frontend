@@ -12,6 +12,7 @@ import { useTeamStore } from "@/store/team.store";
 import { useIndexStore } from "@/store/index.store";
 import { Button, Typography, Drawer, Flex } from "antd";
 import JobForm from "@/components/Jobs/JobForm";
+import EditJobTitle from "@/components/Jobs/EditJobTitle";
 import CreateRouteModal from "./_components/CreateRouteModal";
 import ResizeHandle from "@/components/ResizeHandle";
 import DraftJobsDatePicker from "@/components/Jobs/DraftJobsDatePicker";
@@ -190,7 +191,7 @@ const Recents = () => {
             </div>
             <Drawer
               onClose={() => setEditJobData(null)}
-              title={`Edit Job #${editJobData?.id || ""}`}
+              title={<EditJobTitle job={editJobData} />}
               open={editJobData?.id !== undefined}
               width={720}
               placement="right"
