@@ -155,13 +155,14 @@ function renderJobForm(fields, config = {}, props = {}) {
   };
   Object.assign(ObservedForm, antd.Form);
   const { default: JobForm } = loadSource("components/Jobs/JobForm.tsx", {
+    react: config.effects ? { ...React, useEffect: effect => config.effects.push(effect) } : React,
     antd: config.onForm ? { ...antd, Form: ObservedForm,
       message: { useMessage: () => [{ success() {}, error: value => config.errors?.push(value) }, null] },
     } : antd,
     "./jobForm.schema": schema,
     "@/utils/jobPickupType.utils": loadSource("utils/jobPickupType.utils.ts"),
     "@/hooks/useFieldConfig": { useFieldConfig: () => ({ customFields: fields, loading: false, error: null, reloadConfigs() {}, ...config }) },
-    "@/store/jobs.store": { useJobsStore: () => ({ isLoading: false }) },
+    "@/store/jobs.store": { useJobsStore: () => ({ isLoading: false, updateJobAction: config.updateJob }) },
     "@/store/team.store": { useTeamStore: () => ({ teams: [] }) },
     "@/store/depots.store": { useDepotStore: () => ({ depots: [] }) },
     "@/store/location-mapping.store": { useLocationMappingStore: () => ({ locationMappings: [] }) },
@@ -329,4 +330,46 @@ test("add modal waits for attachment, preserves the booking array, and reuses it
   renderToStaticMarkup(React.createElement(Modal, props));
   await formProps.createJobs({});
   assert.notEqual(tokens[2], tokens[0], "a fresh add form starts a new booking");
+});
+
+test("editing a contact sends no unchanged shift, address, coordinate or assignment fields", () => {
+  const fields = [field("candidate_phone"), field("start_hour"), field("end_hour"), field("pick_up_address"),
+    field("assigned_to", { data_type: "number" }), field("pickup_type")];
+  const values = getJobInitialValues(fields, { candidate_phone: "555", start_hour: "06:00:00", end_hour: "18:00:00",
+    pick_up_address: "Station", assigned_to: 6, custom_fields: { pickup_type: "round_trip" } });
+  const coordinates = { pick_up_address: { lat: 45, lng: -73 } };
+  const initial = buildJobFormPayload(fields, values, "worker_shuttle", coordinates);
+  const edited = buildJobFormPayload(fields, { ...values, candidate_phone: "777" }, "worker_shuttle", coordinates);
+  assert.deepEqual(schema.buildJobFormPatch(initial, edited), {
+    template_type: "worker_shuttle", candidate_phone: "777", custom_fields: { candidate_phone: "777" },
+  });
+  assert.deepEqual(schema.buildJobFormPatch(initial, initial), {});
+});
+
+test("partial form payloads retain explicit clearing, false, zero and changed address coordinates", () => {
+  const initial = { template_type: "worker_shuttle", pick_up_address: "Old", pick_up_location: { lng: -73, lat: 45 },
+    custom_fields: { pick_up_address: "Old", notes: "Old note", approved: true, count: 5 } };
+  const edited = { template_type: "worker_shuttle", pick_up_address: "New", pick_up_location: { lat: 46, lng: -74 },
+    custom_fields: { pick_up_address: "New", notes: null, approved: false, count: 0 } };
+  assert.deepEqual(schema.buildJobFormPatch(initial, edited), edited);
+  assert.deepEqual(schema.buildJobFormPatch(initial, { ...initial, pick_up_location: { lat: 45, lng: -73 } }), {});
+  assert.deepEqual(schema.buildJobFormPatch({}, { template_type: "worker_shuttle", notes: null, custom_fields: { notes: null } }), {});
+});
+
+test("mounted edit submission sends only changes and skips a no-op update", async () => {
+  let finish;
+  const effects = [], calls = [], saved = [];
+  const fields = [field("candidate_phone"), field("start_hour"), field("end_hour"), field("pick_up_address")];
+  const job = { id: 7, template_type: "worker_shuttle", candidate_phone: "555", start_hour: "06:00", end_hour: "18:00",
+    pick_up_address: "Station", pick_up_location: { lat: 45, lng: -73 } };
+  renderJobForm(fields, { effects, onForm: props => { finish = props.onFinish; },
+    updateJob: async payload => { calls.push(payload); return { ...job, ...payload }; },
+  }, { initialData: job, onSubmit: value => saved.push(value) });
+  effects.forEach(effect => effect());
+  const initial = getJobInitialValues(fields, job);
+  await finish({ ...initial, candidate_phone: "777" });
+  assert.deepEqual(calls, [{ id: 7, template_type: "worker_shuttle", candidate_phone: "777", custom_fields: { candidate_phone: "777" } }]);
+  await finish(initial);
+  assert.equal(calls.length, 1, "a no-op submit must not call the API");
+  assert.equal(saved.at(-1), job);
 });
