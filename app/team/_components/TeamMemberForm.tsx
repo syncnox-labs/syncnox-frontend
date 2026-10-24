@@ -25,13 +25,13 @@ const TeamMemberForm = ({
   onSubmit,
   isInline = false,
   showSubmitButton = false,
-  form: externalForm,
-}: TeamMemberFormProps & { form?: any }) => {
+}: TeamMemberFormProps) => {
   const [messageApi, contextHolder] = message.useMessage();
   const { createTeamAction, updateTeamAction, isLoading } = useTeamStore();
   const { depots } = useDepotStore();
-  const [internalForm] = Form.useForm();
-  const form = externalForm || internalForm;
+  // This keyed editor owns its form. A pending unmount save must never read
+  // fields populated by the next selected team member.
+  const [form] = Form.useForm();
 
   const [activeSection, setActiveSection] = useState<MenuKey>("basic");
   const [zones, setZones] = useState<any[]>([]);
@@ -190,9 +190,7 @@ const TeamMemberForm = ({
       isPrefillingRef.current = true;
       const formValues = transformApiToForm(initialData);
 
-      // The parent shares one Ant Design form instance between selected rows.
-      // Reset it before prefilling a different member so omitted/null import
-      // fields cannot leak from the previously selected driver.
+      // Clear omitted/null fields when initializing a different member.
       if (isNewTeamMember) {
         form.resetFields();
       }
@@ -343,6 +341,7 @@ const TeamMemberForm = ({
           className="custom-scrollbar"
         >
           <Form
+            id={initialData?.id ? `team-member-${initialData.id}` : undefined}
             form={form}
             layout="vertical"
             onFinish={onFinish}

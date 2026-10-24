@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { Button, Spin, Form, Modal, message } from "antd";
+import { Button, Spin, Modal, message } from "antd";
 import { Search, Truck, FileSpreadsheet, Plus, Trash2 } from "lucide-react";
 import { Vehicle } from "@/types/vehicle.type";
 import { useVehicleStore } from "@/store/vehicle.store";
@@ -20,7 +20,6 @@ function formatType(type: string | null): string {
 
 const VehicleList = () => {
   const { isLoading, vehicles, bulkDeleteVehiclesAction } = useVehicleStore();
-  const [form] = Form.useForm();
 
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [checkedIds, setCheckedIds] = useState<number[]>([]);
@@ -214,7 +213,8 @@ const VehicleList = () => {
                   <Button
                     type="primary"
                     loading={isLoading}
-                    onClick={() => form.submit()}
+                    htmlType="submit"
+                    form={`vehicle-${selectedVehicle.id}`}
                     id="vehicle-top-save-btn"
                   >
                     Save
@@ -228,7 +228,6 @@ const VehicleList = () => {
                   key={selectedVehicle.id}
                   initialData={selectedVehicle}
                   isInline
-                  form={form}
                   onSubmit={() => {
                     /* stay on entity after save */
                   }}

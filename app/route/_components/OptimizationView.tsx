@@ -47,6 +47,7 @@ import type { StopMoveSelection } from "@/types/routes.type";
 import type { TripMoveSelection } from "./tripMove.utils";
 import PendingOptimizationIndicator from "./PendingOptimizationIndicator";
 import { getAssignedRouteJobs, getUnassignedRouteJobs } from "./assignedRouteJobs.utils";
+import { getJobMapLocation, getUnassignedJobMarker } from "./jobMapLocation.utils";
 import { getAddedJobIds, getPendingDriverRoutes } from "./jobAddition.utils";
 import AddJobsModal from "@/app/plan/AddJobsModal";
 import JobForm from "@/components/Jobs/JobForm";
@@ -344,30 +345,6 @@ const OptimizationView = ({
   const [selectedMarkerId, setSelectedMarkerId] = useState<
     string | number | null
   >(null);
-
-  useEffect(() => {
-    if (!requestedJobDetailsId) return;
-
-    const matchedJob = jobs.find((job) => job.id === requestedJobDetailsId);
-    if (!matchedJob) return;
-
-    setSelectedMarkerId(null);
-    setSelectedDrawerJob({
-      stopData: {
-        ...matchedJob,
-        job_id: matchedJob.id,
-        stop_type: "unassigned",
-        address_formatted:
-          matchedJob.pick_up_address ||
-          matchedJob.worker_shuttle_detail?.pick_up_address ||
-          matchedJob.address_formatted ||
-          matchedJob.pickup_delivery_detail?.address_formatted,
-      },
-      job: matchedJob,
-      isUnassigned: true,
-    });
-    onRequestedJobDetailsOpened?.();
-  }, [jobs, requestedJobDetailsId, onRequestedJobDetailsOpened]);
 
   // ── Depots & Additional Locations store state & visibility ──
   const { depots, initializeDepots } = useDepotStore();
@@ -949,16 +926,20 @@ const OptimizationView = ({
     return [...routeMarkers, ...registeredDepotMarkers, ...additionalLocationMarkers];
   }, [routeMarkers, registeredDepotMarkers, additionalLocationMarkers]);
 
-  // While a route is focused only its own stops stay on the map, along with depots and additional locations
+  const unassignedJobMarker = useMemo(() =>
+    selectedDrawerJob?.isUnassigned ? getUnassignedJobMarker(selectedDrawerJob.job) : null,
+  [selectedDrawerJob]);
+
+  // The temporary unassigned pin stays visible even while a route is focused.
   const markers = useMemo<MarkerData[]>(() => {
-    if (focusedRouteIndex === null) return allMarkers;
-    return allMarkers.filter((m) => {
+    const visible = focusedRouteIndex === null ? allMarkers : allMarkers.filter((m) => {
       if (m.routeIndex !== undefined) {
         return m.routeIndex === focusedRouteIndex;
       }
       return true;
     });
-  }, [allMarkers, focusedRouteIndex]);
+    return unassignedJobMarker ? [...visible, unassignedJobMarker] : visible;
+  }, [allMarkers, focusedRouteIndex, unassignedJobMarker]);
 
   // Derived from the full marker set so focusing a route doesn't yank the map
   // to a new default centre.
@@ -972,6 +953,35 @@ const OptimizationView = ({
   useEffect(() => {
     setCenter(initialCenter);
   }, [initialCenter]);
+
+  const handleOpenUnassignedJob = useCallback((job: Job) => {
+    const location = getJobMapLocation(job);
+    if (location) setCenter(location);
+    setSelectedMarkerId(null);
+    // Match stop selection: enlarge the pin and restart its brief bounce,
+    // including when the same unassigned job is clicked again.
+    if (location) {
+      setTimeout(() => {
+        setSelectedMarkerId(`unassigned-job-${job.id}`);
+      }, 0);
+    }
+    setSelectedDrawerJob({
+      stopData: {
+        ...job, job_id: job.id, stop_type: "unassigned",
+        address_formatted: job.pick_up_address || job.worker_shuttle_detail?.pick_up_address
+          || job.address_formatted || job.pickup_delivery_detail?.address_formatted,
+      },
+      job, isUnassigned: true,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!requestedJobDetailsId) return;
+    const job = jobs.find(item => item.id === requestedJobDetailsId);
+    if (!job) return;
+    handleOpenUnassignedJob(job);
+    onRequestedJobDetailsOpened?.();
+  }, [jobs, requestedJobDetailsId, onRequestedJobDetailsOpened, handleOpenUnassignedJob]);
 
   const focusedRoute =
     focusedRouteIndex !== null
@@ -991,15 +1001,14 @@ const OptimizationView = ({
     || jobs.some(job => job.template_type === "worker_shuttle" || Boolean(job.worker_shuttle_detail));
   const handleOpenTableJob = useCallback((job: Job) => {
     if (unassignedTableJobs.some(item => item.id === job.id)) {
-      setSelectedMarkerId(null);
-      setSelectedDrawerJob({ stopData: { ...job, job_id: job.id, stop_type: "unassigned" }, job, isUnassigned: true });
+      handleOpenUnassignedJob(job);
       return;
     }
     const match = candidateIndex.find(item => Number(item.jobId) === job.id
       && (focusedRouteIndex === null || item.routeIndex === focusedRouteIndex)
       && (allowedRouteIndices === null || allowedRouteIndices.has(item.routeIndex)));
     if (match) handleSelectCandidate(match);
-  }, [candidateIndex, focusedRouteIndex, allowedRouteIndices, handleSelectCandidate, unassignedTableJobs]);
+  }, [candidateIndex, focusedRouteIndex, allowedRouteIndices, handleSelectCandidate, unassignedTableJobs, handleOpenUnassignedJob]);
 
   // Focusing from the timeline recenters the map on that route, otherwise the
   // dispatcher can end up staring at an empty area with everything else gray.
@@ -1086,6 +1095,7 @@ const OptimizationView = ({
     }
 
     const markerIdStr = String(markerId);
+    if (markerIdStr.startsWith("unassigned-job-")) return;
     if (markerIdStr.startsWith("depot-") || markerIdStr.startsWith("loc-")) {
       setSelectedDrawerJob(null);
       return;

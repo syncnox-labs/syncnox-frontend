@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { Button, Spin, Modal, message, Form, Popconfirm } from "antd";
+import { Button, Spin, Modal, message, Popconfirm } from "antd";
 import {
   Search,
   MapPin,
@@ -158,7 +158,6 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
     bulkDeleteLocationMappings,
   } = useLocationMappingStore();
 
-  const [locationForm] = Form.useForm();
   const [selectedMapping, setSelectedMapping] = useState<LocationMapping | null>(null);
   const [locationCheckedIds, setLocationCheckedIds] = useState<number[]>([]);
   const [addLocationModalOpen, setAddLocationModalOpen] = useState(false);
@@ -693,7 +692,8 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                       <Button
                         type="primary"
                         loading={isLocationSaving}
-                        onClick={() => locationForm.submit()}
+                        htmlType="submit"
+                        form={`location-mapping-${selectedMapping.id}`}
                         className="bg-[#003220] hover:bg-[#002417]"
                       >
                         Save
@@ -706,7 +706,6 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                       key={selectedMapping.id}
                       initialData={selectedMapping}
                       isInline
-                      form={locationForm}
                       existingLocations={locationMappings}
                     />
                   </div>

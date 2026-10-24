@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { Button, Spin, Form, Modal, message } from "antd";
+import { Button, Spin, Modal, message } from "antd";
 import { Search, Users, FileSpreadsheet, Plus, Trash2 } from "lucide-react";
 import { Team } from "@/types/team.type";
 import { useTeamStore } from "@/store/team.store";
@@ -12,7 +12,6 @@ import BulkImportModal from "@/components/BulkImport/BulkImportModal";
 
 const TeamList = () => {
   const { isLoading, teams, bulkDeleteTeamsAction } = useTeamStore();
-  const [form] = Form.useForm();
 
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [checkedIds, setCheckedIds] = useState<number[]>([]);
@@ -221,7 +220,8 @@ const TeamList = () => {
                   <Button
                     type="primary"
                     loading={isLoading}
-                    onClick={() => form.submit()}
+                    htmlType="submit"
+                    form={`team-member-${selectedTeam.id}`}
                     id="team-top-save-btn"
                   >
                     Save
@@ -235,7 +235,6 @@ const TeamList = () => {
                   key={selectedTeam.id}
                   initialData={selectedTeam}
                   isInline
-                  form={form}
                   onSubmit={() => {
                     /* stay on entity after save */
                   }}

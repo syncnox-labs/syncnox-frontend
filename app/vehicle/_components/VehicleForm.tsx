@@ -108,11 +108,10 @@ const VehicleForm = ({
   onSubmit,
   isInline = false,
   showSubmitButton = false,
-  form: externalForm,
-}: VehicleFormProps & { form?: any }) => {
+}: VehicleFormProps) => {
   const [messageApi, contextHolder] = message.useMessage();
-  const [internalForm] = Form.useForm();
-  const form = externalForm || internalForm;
+  // Keep pending saves isolated from the next selected record.
+  const [form] = Form.useForm();
   const { createVehicleAction, updateVehicleAction, isLoading, vehicles } =
     useVehicleStore();
 
@@ -310,6 +309,7 @@ const VehicleForm = ({
           className="custom-scrollbar"
         >
           <Form
+            id={initialData?.id ? `vehicle-${initialData.id}` : undefined}
             form={form}
             layout="vertical"
             onFinish={onFinish}
