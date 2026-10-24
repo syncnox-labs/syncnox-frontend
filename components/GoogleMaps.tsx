@@ -46,6 +46,7 @@ const defaultCenter = {
 
 export interface MarkerData {
   id: string | number;
+  iconLabel?: string;
   position: google.maps.LatLngLiteral;
   title?: string;
   description?: string;
@@ -430,7 +431,7 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
       {/* Child components, such as markers, info windows, etc. */}
       {markers.map((marker) => {
         const markerNumber =
-          marker.sequenceNumber ?? marker.jobData?.id ?? marker.id;
+          marker.iconLabel ?? marker.sequenceNumber ?? marker.jobData?.id ?? marker.id;
 
         const status =
           (marker.jobData && "status" in marker.jobData

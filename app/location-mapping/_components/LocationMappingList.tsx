@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { Button, Spin, Form, Modal, message, Popconfirm } from "antd";
+import { Button, Spin, Modal, message, Popconfirm } from "antd";
 import { Search, MapPin, FileSpreadsheet, Plus, Trash2 } from "lucide-react";
 import { useLocationMappingStore } from "@/store/location-mapping.store";
 import { LocationMapping } from "@/apis/location-mapping.api";
@@ -21,7 +21,6 @@ export default function LocationMappingList() {
     bulkDeleteLocationMappings,
   } = useLocationMappingStore();
 
-  const [form] = Form.useForm();
   const [selectedMapping, setSelectedMapping] = useState<LocationMapping | null>(null);
   const [checkedIds, setCheckedIds] = useState<number[]>([]);
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -259,7 +258,8 @@ export default function LocationMappingList() {
                   <Button
                     type="primary"
                     loading={isSaving}
-                    onClick={() => form.submit()}
+                    htmlType="submit"
+                    form={`location-mapping-${selectedMapping.id}`}
                     id="location-top-save-btn"
                   >
                     Save
@@ -272,7 +272,6 @@ export default function LocationMappingList() {
                   key={selectedMapping.id}
                   initialData={selectedMapping}
                   isInline
-                  form={form}
                 />
               </div>
             </>

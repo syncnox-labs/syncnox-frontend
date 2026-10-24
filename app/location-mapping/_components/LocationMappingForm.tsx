@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Form, Input, Select, message, Typography, Flex } from "antd";
-import type { FormInstance } from "antd";
 import {
   LocationMapping,
   LocationTypeEnum,
@@ -29,7 +28,6 @@ const { Text } = Typography;
 interface LocationMappingFormProps {
   initialData?: LocationMapping | null;
   isInline?: boolean;
-  form?: FormInstance;
   existingLocations?: LocationMapping[];
 }
 
@@ -45,11 +43,10 @@ const getCoords = (data: any) => {
 
 const LocationMappingForm = ({
   initialData = null,
-  form: externalForm,
   existingLocations = [],
 }: LocationMappingFormProps) => {
-  const [internalForm] = Form.useForm();
-  const form = externalForm || internalForm;
+  // Keep pending saves isolated from the next selected record.
+  const [form] = Form.useForm();
   const { updateLocationMapping } = useLocationMappingStore();
 
   const [mapLocation, setMapLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -219,6 +216,7 @@ const LocationMappingForm = ({
   return (
     <Flex vertical gap={4} className="font-sans h-full">
       <Form
+        id={initialData?.id ? `location-mapping-${initialData.id}` : undefined}
         form={form}
         layout="vertical"
         onFinish={onFinish}
