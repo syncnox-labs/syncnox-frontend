@@ -1809,9 +1809,10 @@ const OptimizationView = ({
     Modal.confirm({
       title: "Reoptimize All Routes",
       content:
-        pendingDeletedJobIds.size > 0
-          ? `${pendingDeletedJobIds.size} job(s) will be removed from routes and all routes re-optimized. Continue?`
-          : "This will re-run the full optimization with updated job data. Old routes will be replaced. Continue?",
+        (pendingDeletedJobIds.size > 0 ? `${pendingDeletedJobIds.size} job(s) will be removed from routes. ` : "") +
+        (isWorkerShuttle
+          ? "This will rebuild all routes using updated jobs, current driver availability and vehicle settings, all active drivers, and the latest fleet, including new drivers and vehicles. Old routes will be replaced. Continue?"
+          : "This will re-run the full optimization with updated job and driver data. Old routes will be replaced. Continue?"),
       okText: "Reoptimize All Routes",
       okButtonProps: { style: { backgroundColor: "#003220", borderColor: "#003220" } },
       onOk: async () => {
@@ -1840,6 +1841,8 @@ const OptimizationView = ({
           // Wait for the dispatch WebSocket completion event
 
           await waitUntilComplete(route.id);
+          // The worker can expand the plan's driver pool as well as its routes.
+          await fetchOptimization(route.id);
           message.success({ content: "All routes re-optimized!", key: "reopt_all" });
 
           console.log(
@@ -1851,7 +1854,7 @@ const OptimizationView = ({
         }
       },
     });
-  }, [reOptimize, route.id, route.result?.routes, pendingDeletedJobIds, applyStagedRemovals, waitUntilComplete]);
+  }, [reOptimize, route.id, route.result?.routes, pendingDeletedJobIds, applyStagedRemovals, waitUntilComplete, fetchOptimization, isWorkerShuttle]);
 
   const getRouteData = (index: number | null) =>
     index !== null ? route.result?.routes?.[index] : null;
