@@ -123,3 +123,27 @@ export function buildJobFormPayload(
   payload.custom_fields = configured;
   return payload;
 }
+
+/** Unchanged fields must not trigger booking synchronization or geocoding. */
+export function buildJobFormPatch(initial: Record<string, unknown>, edited: Record<string, unknown>) {
+  const canonical = (value: unknown): unknown => {
+    if (value == null || value === "") return null;
+    if (Array.isArray(value)) return value.map(canonical);
+    if (typeof value === "object") return Object.fromEntries(
+      Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)]),
+    );
+    return value;
+  };
+  const same = (left: unknown, right: unknown) => JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
+  const patch: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(edited)) {
+    if (key === "template_type") continue;
+    if (key === "custom_fields") {
+      const previous = (initial.custom_fields || {}) as Record<string, unknown>;
+      const custom = Object.fromEntries(Object.entries(value as Record<string, unknown>)
+        .filter(([field, next]) => !same(previous[field], next)));
+      if (Object.keys(custom).length) patch.custom_fields = custom;
+    } else if (!same(initial[key], value)) patch[key] = value;
+  }
+  return Object.keys(patch).length ? { template_type: edited.template_type, ...patch } : patch;
+}

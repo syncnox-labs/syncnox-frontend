@@ -14,7 +14,7 @@ import { useTeamStore } from "@/store/team.store";
 import { useIndexStore } from "@/store/index.store";
 import { useDepotStore } from "@/store/depots.store";
 import { useLocationMappingStore } from "@/store/location-mapping.store";
-import { ADDRESS_LOCATION_KEYS, buildJobFormPayload, getJobFieldControl, getJobFormFields, getJobInitialValues, parseCoordinates } from "./jobForm.schema";
+import { ADDRESS_LOCATION_KEYS, buildJobFormPayload, buildJobFormPatch, getJobFieldControl, getJobFormFields, getJobInitialValues, parseCoordinates } from "./jobForm.schema";
 
 interface JobFormProps {
   initialData?: Job | null;
@@ -46,6 +46,7 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
   const { customFields, loading, error, reloadConfigs } = useFieldConfig("job");
   const fields = useMemo(() => getJobFormFields(customFields), [customFields]);
   const addressLocations = useRef<Record<string, unknown>>({});
+  const initialPayload = useRef<Record<string, unknown>>({});
   const date = dayjs.isDayjs(defaultDate) ? defaultDate.format("YYYY-MM-DD") : defaultDate;
   const initialValues = useMemo(
     () => getJobInitialValues(fields, initialData, { date, jobType: defaultJobType }),
@@ -72,7 +73,8 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
     addressLocations.current = Object.fromEntries(Object.entries(ADDRESS_LOCATION_KEYS).map(([key, locationKey]) => [
       key, (initialData as unknown as Record<string, unknown> | null)?.[locationKey] ?? detail?.[locationKey] ?? initialData?.custom_fields?.[locationKey],
     ]));
-  }, [form, initialValues, initialData, loading]);
+    initialPayload.current = buildJobFormPayload(fields, initialValues, activeTemplate, addressLocations.current);
+  }, [form, initialValues, initialData, loading, fields, activeTemplate]);
 
   const onFinish = async (values: Record<string, unknown>) => {
     if (loading || error || !fields.length || submittingRef.current) return;
@@ -81,8 +83,13 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
     onSubmittingChange?.(true);
     try {
       const payload = buildJobFormPayload(fields, values, activeTemplate, addressLocations.current);
+      const changes = initialData?.id ? buildJobFormPatch(initialPayload.current, payload) : payload;
+      if (initialData?.id && !Object.keys(changes).length) {
+        await onSubmit?.(initialData);
+        return;
+      }
       const job = initialData?.id
-        ? await updateJobAction({ ...payload, id: initialData.id } as Job)
+        ? await updateJobAction({ ...changes, id: initialData.id } as Job)
         : await (createJobs ? createJobs(payload) : createJobAction(payload));
       const saved = (Array.isArray(job) ? job : [job]) as Job[];
       await onSubmit?.(saved[0], saved);
