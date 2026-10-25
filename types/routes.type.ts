@@ -31,6 +31,17 @@ export interface Stop {
 }
 
 export interface Routes {
+  route_id?: number;
+  operational_route_ids?: number[];
+  name?: string;
+  manual_route?: boolean;
+  is_shared?: boolean;
+  planning_settings?: {
+    start_point?: { lat: number; lng: number; address: string };
+    end_point?: { lat: number; lng: number; address: string };
+    start_at?: string | null;
+    end_at?: string | null;
+  };
   stops: Stop[];
   needs_optimization?: boolean;
   vehicle_id: number;
@@ -124,6 +135,7 @@ export interface AllRoutes {
 
 export interface RouteOperationResponse {
   success: boolean;
+  result?: Route["result"];
   message: string;
   route?: Routes | Record<string, unknown>;
   target_route?: Routes | Record<string, unknown>;

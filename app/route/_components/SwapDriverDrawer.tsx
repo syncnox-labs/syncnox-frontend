@@ -78,7 +78,11 @@ const SwapDriverDrawer: React.FC<SwapDriverDrawerProps> = ({
       );
       if (res.success) {
         message.success(res.message);
-        onSuccess();
+        if (!res.is_async && res.result) {
+          useOptimizationStore.getState().setOptimizationResult("completed", res.result);
+        } else {
+          onSuccess();
+        }
         handleClose();
       } else {
         message.error("Failed to swap driver");
