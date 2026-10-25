@@ -18,6 +18,7 @@ import {
   Checkbox,
   Select,
   Radio,
+  Dropdown,
 } from "antd";
 import {
   ArrowLeftOutlined,
@@ -30,6 +31,8 @@ import {
   ReloadOutlined,
   BarsOutlined,
   TableOutlined,
+  MenuOutlined,
+  PlusOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 
@@ -46,6 +49,9 @@ import { snapshotMoveStops } from "./tripMove.utils";
 import type { StopMoveSelection } from "@/types/routes.type";
 import type { TripMoveSelection } from "./tripMove.utils";
 import PendingOptimizationIndicator from "./PendingOptimizationIndicator";
+import ManualRoutingDrawer from "./ManualRoutingDrawer";
+import AssignJobsModal from "./AssignJobsModal";
+import { useManualRoutingStore } from "@/store/manualRouting.store";
 import { getAssignedRouteJobs, getUnassignedRouteJobs } from "./assignedRouteJobs.utils";
 import { getJobMapLocation, getUnassignedJobMarker } from "./jobMapLocation.utils";
 import { getAddedJobIds, getPendingDriverRoutes } from "./jobAddition.utils";
@@ -1426,6 +1432,12 @@ const OptimizationView = ({
             setOptimizationResult("processing");
             const res = await reOptimizeRoute(route.id, routeIndex);
             if (res.success) {
+              if (!res.is_async && res.result) {
+                setOptimizationResult("completed", res.result);
+                setPendingDeletedJobIds(new Set());
+                message.success(res.message);
+                return;
+              }
               message.loading({ content: `Re-optimizing ${driverName}'s route…`, key: "reopt", duration: 0 });
               setPendingDeletedJobIds(new Set());
               // Wait for the dispatch WebSocket completion event
@@ -1458,21 +1470,13 @@ const OptimizationView = ({
   }, [waitUntilComplete, route.id]);
 
   const handleAddUnassignedJob = useCallback(
-    async (targetRouteIndex: number, jobId: number, position?: number) => {
-      try {
-        message.loading({ content: "Adding job to route...", key: "add-unassigned" });
-        await addStopToRoute(route.id, targetRouteIndex, jobId, position);
-        message.success({ content: "Job assigned successfully!", key: "add-unassigned" });
-
-        await fetchOptimization(route.id);
-      } catch (err: any) {
-        message.error({
-          content: err?.response?.data?.detail || "Failed to assign job",
-          key: "add-unassigned",
-        });
-      }
+    async (targetRouteIndex: number, jobId: number) => {
+      const target = route.result?.routes?.[targetRouteIndex];
+      if (!target) return;
+      useManualRoutingStore.getState().open({ planId: route.id, action: "assign", jobIds: [jobId],
+        driverId: target.team_member_id, driverName: target.team_member_name, placement: "auto" });
     },
-    [route.id, fetchOptimization]
+    [route.id, route.result?.routes]
   );
 
   const tripMoveInProgress = useRef(false);
@@ -1914,7 +1918,7 @@ const OptimizationView = ({
 
       {/* Header - matching NavBar height */}
       <nav className="bg-white border-b border-gray-200 px-3 shrink-0">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-2 min-h-14 py-2 relative">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-3 h-14 py-2 relative">
           {/* Left: Route details */}
           <div className="flex items-center gap-3 min-w-0">
             <Icon
@@ -1935,7 +1939,7 @@ const OptimizationView = ({
                   autoFocus
                   disabled={isSavingName}
                   maxLength={50}
-                  className="w-56 text-sm font-semibold rounded-none"
+                  className="w-full max-w-56 text-sm font-semibold rounded-none"
                 />
               ) : (
                 <div
@@ -1955,7 +1959,7 @@ const OptimizationView = ({
               )}
 
               {/* Stats below Route Name (Sample UI style) */}
-              <div className="flex flex-wrap items-center text-xs text-gray-500 font-normal leading-tight mt-0.5 select-none">
+              <div className="flex flex-nowrap items-center overflow-hidden whitespace-nowrap text-xs text-gray-500 font-normal leading-tight mt-0.5 select-none">
                 {formattedRouteDate && <span>{formattedRouteDate}</span>}
                 {formattedRouteDate && <span className="mx-1 text-gray-400">·</span>}
                 <span>
@@ -2002,24 +2006,26 @@ const OptimizationView = ({
             aria-label="Route view"
             size="small"
             buttonStyle="solid"
-            className="col-span-2 row-start-2 justify-self-center shrink-0 xl:col-span-1 xl:col-start-2 xl:row-start-1"
+            className="justify-self-center shrink-0 whitespace-nowrap"
             value={detailView}
             onChange={({ target: { value } }) => {
               setDetailView(value as "timeline" | "table");
               if (value === "table") setHasOpenedTable(true);
             }}
           >
-            <Radio.Button value="timeline"><BarsOutlined className="mr-1.5" />Timeline</Radio.Button>
-            <Radio.Button value="table"><TableOutlined className="mr-1.5" />Table</Radio.Button>
+            <Radio.Button value="timeline" aria-label="Timeline"><BarsOutlined className="sm:mr-1.5" /><span className="hidden sm:inline">Timeline</span></Radio.Button>
+            <Radio.Button value="table" aria-label="Table"><TableOutlined className="sm:mr-1.5" /><span className="hidden sm:inline">Table</span></Radio.Button>
           </Radio.Group>
 
           {/* Right: Action buttons */}
-          <div className="col-start-2 row-start-1 xl:col-start-3 flex flex-wrap items-center justify-end gap-2 min-w-0">
+          <div className="flex flex-nowrap items-center justify-end gap-2 min-w-0 whitespace-nowrap">
             {/* Undo Button */}
             {undoStep && (
               <Button
                 onClick={handleUndo}
-                className="border-slate-300 text-slate-700 bg-white font-semibold flex items-center gap-2 mr-2"
+                aria-label={`Undo ${undoStep.label}`}
+                title={`Undo ${undoStep.label}`}
+                className="border-slate-300 text-slate-700 bg-white font-semibold flex shrink-0 items-center gap-2"
                 loading={isUndoing}
                 disabled={isUndoing || isRemovingJob || (route.status !== "completed" && route.status !== "failed")}
                 icon={
@@ -2030,7 +2036,7 @@ const OptimizationView = ({
                   )} />
                 }
               >
-                Undo {undoStep.label}
+                <span className="hidden max-w-56 truncate xl:inline-block">Undo {undoStep.label}</span>
               </Button>
             )}
 
@@ -2047,18 +2053,42 @@ const OptimizationView = ({
                 />
               </Tooltip>
             )}
-            <Button icon={<ExportOutlined />} onClick={handleExportRoutes}>
-              Export
-            </Button>
-            <Button
-              type="primary"
-              icon={isSharing ? <LoadingOutlined /> : <ShareAltOutlined />}
-              loading={isSharing}
-              disabled={isSharing}
-              onClick={handleShareToApp}
+            <Dropdown
+              trigger={["click"]}
+              placement="bottomRight"
+              menu={{ items: [
+                {
+                  key: "create-route",
+                  icon: <PlusOutlined />,
+                  label: "Create route",
+                  disabled: isOptimizing,
+                  onClick: () => useManualRoutingStore.getState().open({ planId: route.id, action: "create" }),
+                },
+                {
+                  key: "edit-routes",
+                  icon: <EditOutlined />,
+                  label: "Edit routes",
+                  disabled: !route.result?.routes?.length || isOptimizing,
+                  onClick: () => useManualRoutingStore.getState().open({ planId: route.id, action: "edit", routeIndex: focusedRouteIndex ?? 0 }),
+                },
+                { type: "divider" },
+                {
+                  key: "export",
+                  icon: <ExportOutlined />,
+                  label: "Export",
+                  onClick: handleExportRoutes,
+                },
+                {
+                  key: "share",
+                  icon: isSharing ? <LoadingOutlined /> : <ShareAltOutlined />,
+                  label: isSharing ? "Sharing…" : "Share to App",
+                  disabled: isSharing,
+                  onClick: handleShareToApp,
+                },
+              ] }}
             >
-              Share to App
-            </Button>
+              <Button icon={<MenuOutlined />} aria-label="Route actions" aria-haspopup="menu" aria-busy={isSharing} title="Route actions" className="shrink-0" />
+            </Dropdown>
           </div>
         </div>
       </nav>
@@ -2481,6 +2511,7 @@ const OptimizationView = ({
                     onMoveStops={isWorkerShuttle && !isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed") ? handleMoveStops : undefined}
                     onMoveTrip={!isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed") ? handleMoveTrip : undefined}
                     onAddUnassignedJob={handleAddUnassignedJob}
+                    onEditRoute={index => useManualRoutingStore.getState().open({ planId: route.id, action: "edit", routeIndex: index })}
                     onSwapDriver={(idx) => setSwapDriverRouteIndex(idx)}
                     onChangeVehicle={route.status === "completed" || route.status === "failed"
                       ? setChangeVehicleRouteIndex : undefined}
@@ -2580,6 +2611,8 @@ const OptimizationView = ({
       </div>
 
       {/* Route Export Preview Modal */}
+      <ManualRoutingDrawer plan={route} />
+      <AssignJobsModal plan={route} />
       <RouteExportPreview
         open={showPreview}
         onClose={() => setShowPreview(false)}
