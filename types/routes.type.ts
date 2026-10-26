@@ -30,11 +30,24 @@ export interface Stop {
   service_duration_minutes?: number;
 }
 
+export interface WorkingTimeExtension {
+  driver_id: number;
+  driver_name: string;
+  request_id: number;
+  service_date: string;
+  approved: boolean;
+  extra_seconds: number;
+  extra_minutes: number;
+  windows: { start_at: string; end_at: string }[];
+  added_windows: { start_at: string; end_at: string }[];
+}
+
 export interface Routes {
   route_id?: number;
   operational_route_ids?: number[];
   name?: string;
   manual_route?: boolean;
+  working_time_extension?: WorkingTimeExtension;
   is_shared?: boolean;
   planning_settings?: {
     start_point?: { lat: number; lng: number; address: string };
@@ -58,6 +71,12 @@ export interface Routes {
   total_duration_seconds: number;
   /** Worker-shuttle routes only: "GO" (home → client) or "RETURN". */
   leg?: string;
+  source_optimization_id?: number;
+  source_route_index?: number;
+  source_route_name?: string | null;
+  source_scheduled_date?: string | null;
+  source_stop_range?: [number, number];
+  source_leg?: string | null;
 }
 
 export interface UnassignedJob {

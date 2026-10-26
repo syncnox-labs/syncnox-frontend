@@ -10,7 +10,7 @@ import { useVehicleStore } from "@/store/vehicle.store";
 import { useOptimizationStore } from "@/store/optimization.store";
 import { useManualRoutingStore } from "@/store/manualRouting.store";
 import { commitManualRouting, getManualRoutingContext, previewManualRouting, type ManualJobSummary, type ManualRoutingContext, type ManualRoutingPreview, type ManualRoutingRequest } from "@/apis/manualRouting.api";
-import { assignmentProposal, formatRouteClock, manualJobLabel, manualJobTrip, manualRouteLabel, manualRoutingError } from "./manualRouting.utils";
+import { assignmentProposal, formatRouteClock, manualJobLabel, manualJobTrip, manualRouteLabel, manualRoutingErrorInfo } from "./manualRouting.utils";
 
 const cleanName = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 
@@ -31,7 +31,9 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
   const [advanced, setAdvanced] = useState<string[]>([]);
   const [preview, setPreview] = useState<ManualRoutingPreview | null>(null);
   const [busy, setBusy] = useState<"load" | "preview" | "save" | null>(null);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<ReturnType<typeof manualRoutingErrorInfo>>();
+  const workingTimeExtensions = preview?.working_time_extensions || [];
+  const extraWorkingMinutes = workingTimeExtensions.reduce((total, extension) => total + extension.extra_minutes, 0);
   const session = useRef(0);
   const requestNumber = useRef(0);
   const saving = useRef(false);
@@ -67,7 +69,7 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
     saving.current = false;
     getManualRoutingContext(plan.id).then(data => {
       if (session.current === current) { setContext(data); setBusy(null); }
-    }).catch(reason => { if (session.current === current) { setError(manualRoutingError(reason)); setBusy(null); } });
+    }).catch(reason => { if (session.current === current) { setError(manualRoutingErrorInfo(reason)); setBusy(null); } });
     return () => { session.current = current + 1; };
   // The intent starts a session. Live plan events must not reset a selection.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,7 +87,7 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
         if (controller.signal.aborted || current !== requestNumber.current || active !== session.current) return;
         setPreview(result); retryToken.current = crypto.randomUUID();
       }).catch(reason => {
-        if (!controller.signal.aborted && current === requestNumber.current && active === session.current) setError(manualRoutingError(reason));
+        if (!controller.signal.aborted && current === requestNumber.current && active === session.current) setError(manualRoutingErrorInfo(reason));
       }).finally(() => {
         if (!controller.signal.aborted && current === requestNumber.current && active === session.current) setBusy(null);
       });
@@ -103,7 +105,7 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
     invalidate(); setBusy("load");
     const active = session.current;
     try { const data = await getManualRoutingContext(plan.id); if (session.current === active) setContext(data); }
-    catch (reason) { if (session.current === active) setError(manualRoutingError(reason)); }
+    catch (reason) { if (session.current === active) setError(manualRoutingErrorInfo(reason)); }
     finally { if (session.current === active) setBusy(null); }
   };
   const assign = async () => {
@@ -111,14 +113,14 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
     saving.current = true; setBusy("save"); setError(undefined);
     const active = session.current;
     try {
-      const saved = await commitManualRouting(plan.id, preview.preview_token, retryToken.current);
+      const saved = await commitManualRouting(plan.id, preview.preview_token, retryToken.current, workingTimeExtensions.length > 0);
       useOptimizationStore.setState(state => state.currentOptimization?.id === plan.id ? {
         currentOptimization: { ...state.currentOptimization, result: saved.result, status: "completed", error_message: null }, error: null,
       } : {});
       message.success(jobIds.length === 1 ? "Job assigned" : `${jobIds.length} jobs assigned`);
       if (active === session.current) close();
       void fetchJobsByIds(plan.job_ids || jobIds).catch(() => message.warning("Assignment saved. Refresh to load updated job details."));
-    } catch (reason) { if (active === session.current) setError(manualRoutingError(reason)); }
+    } catch (reason) { if (active === session.current) setError(manualRoutingErrorInfo(reason)); }
     finally { saving.current = false; if (active === session.current) setBusy(null); }
   };
   const changedRoutes = preview?.affected_route_indices.filter(index => !preview.deleted_route_indices.includes(index)) || [];
@@ -133,7 +135,7 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
     footer={<div className="flex justify-end gap-2">
       <Button onClick={close} disabled={busy === "save"}>Cancel</Button>
       <Button type="primary" icon={<Check size={15} />} onClick={assign} disabled={!preview || needsDriverChoice || Boolean(busy)} loading={Boolean(busy)}>
-        {busy === "save" ? "Assigning…" : busy ? "Checking availability…" : preview?.updates_drivers ? "Assign & update driver" : jobIds.length === 1 ? "Assign job" : `Assign ${jobIds.length} jobs`}
+        {busy === "save" ? "Assigning…" : busy ? "Checking availability…" : workingTimeExtensions.length ? "Extend time & assign" : preview?.updates_drivers ? "Assign & update driver" : jobIds.length === 1 ? "Assign job" : `Assign ${jobIds.length} jobs`}
       </Button>
     </div>}>
     <div className="space-y-4 pt-3">
@@ -158,7 +160,15 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
       {driverUnavailable ? <Alert type="warning" showIcon title="Choose an available driver" description={`${expectedName || "This driver"} is no longer active in the current roster. Choose a driver above to continue.`} />
         : driverChanged && <Alert type="warning" showIcon title="This driver's name has changed" description={`The saved plan shows ${expectedName}, but the current roster shows ${currentName}. Choose the intended driver above before assigning this job.`} />}
       {busy && busy !== "save" && !needsDriverChoice && <div role="status" className="flex gap-2 items-center rounded-lg bg-slate-50 p-3 text-sm text-slate-600"><Spin size="small" />Finding a trip for {currentName || expectedName || "an available driver"} at the job’s requested time…</div>}
-      {error && <Alert type="error" showIcon title="This assignment needs a change" description={<div><p className="whitespace-pre-line mb-2">{error}</p><div className="flex flex-wrap gap-2"><Button size="small" disabled={Boolean(busy)} onClick={retry}>Check again</Button><Button size="small" disabled={Boolean(busy)} onClick={() => setAdvanced(["options"])}>Change options</Button></div></div>} />}
+      {error && <Alert type="error" showIcon title={error.title} description={<div><p className="whitespace-pre-line mb-2">{error.message}</p><div className="flex flex-wrap gap-2"><Button size="small" disabled={Boolean(busy)} onClick={retry}>Check again</Button>{error.showChangeOptions && <Button size="small" disabled={Boolean(busy)} onClick={() => setAdvanced(["options"])}>Change options</Button>}</div></div>} />}
+
+      {workingTimeExtensions.length > 0 && <Alert type="warning" showIcon title={`${extraWorkingMinutes} extra working ${extraWorkingMinutes === 1 ? "minute" : "minutes"} needed`}
+        description={<div><p className="mb-2">You can extend working time for this trip and assign the job. The weekly roster stays the same.</p>
+          <div className="max-h-40 overflow-y-auto space-y-2">{workingTimeExtensions.map((extension, index) => <div key={`${extension.driver_id}-${index}`}>
+            <strong>{extension.driver_name}: +{extension.extra_minutes} {extension.extra_minutes === 1 ? "minute" : "minutes"}</strong>
+            {extension.added_windows.map((window, slot) => <div key={slot} className="text-xs mt-1">Extra time: {window.start_at.slice(0, 10)} {formatRouteClock(window.start_at)} → {window.end_at.slice(0, 10)} {formatRouteClock(window.end_at)}</div>)}
+          </div>)}</div>
+          <p className="mt-2 mb-0">Choose “Extend time & assign” to approve these times and save the assignment.</p></div>} />}
 
       {preview && <div aria-live="polite" className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 space-y-3">
         {changedRoutes.map(index => {
