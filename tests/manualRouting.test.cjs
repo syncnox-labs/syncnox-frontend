@@ -38,6 +38,22 @@ test("conflicts explain decoded API bodies, Axios errors and validation errors",
   assert.equal(manualRoutingError({ detail: [{ msg: "Select jobs" }] }), "Select jobs");
 });
 
+test("routing account failures show the provider remedy instead of changing the assignment", () => {
+  const { manualRoutingError, manualRoutingErrorInfo } = load("app/route/_components/manualRouting.utils.ts");
+  const detail = { category: "routing_provider_unavailable", code: "insufficient_credits",
+    message: "TomTom has insufficient credits. Restore credits, then check again." };
+  for (const error of [{ detail }, { response: { data: { detail } } }]) {
+    assert.equal(manualRoutingError(error), detail.message);
+    const info = manualRoutingErrorInfo(error);
+    assert.equal(info.title, "Routing service unavailable");
+    assert.equal(info.showChangeOptions, false);
+    assert.equal(info.message, detail.message);
+  }
+  const conflict = manualRoutingErrorInfo({ detail: "Conflicts with job #12864" });
+  assert.equal(conflict.title, "This assignment needs a change");
+  assert.equal(conflict.showChangeOptions, true);
+});
+
 test("local route times keep the plan's clock time", () => {
   const { localRouteTime } = load("app/route/_components/manualRouting.utils.ts");
   assert.equal(localRouteTime("2026-10-27T06:15:00"), "2026-10-27T06:15");
@@ -67,6 +83,17 @@ test("save sends the signed preview and stable retry token once", async () => {
   assert.equal(calls.length, 1);
   assert.equal(calls[0].body.preview_token, "signed-preview");
   assert.equal(calls[0].body.request_token, "stable-retry-token");
+  assert.equal(calls[0].body.approve_working_time_extension, false);
+});
+
+test("extending working time requires the explicit approval flag on the reviewed assignment", async () => {
+  const calls = [];
+  const api = load("apis/manualRouting.api.ts", { "@/config/apiClient.config": {
+    post: async (url, body) => { calls.push({ url, body }); return { data: { success: true } }; },
+  } });
+  await api.commitManualRouting(237, "reviewed-extension", "stable-approval-token", true);
+  assert.equal(calls[0].body.preview_token, "reviewed-extension");
+  assert.equal(calls[0].body.approve_working_time_extension, true);
 });
 
 test("canceling a preview stops fetching its result", async () => {

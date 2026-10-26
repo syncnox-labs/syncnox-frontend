@@ -1,5 +1,5 @@
 import apiClient from "@/config/apiClient.config";
-import type { Route } from "@/types/routes.type";
+import type { Route, WorkingTimeExtension } from "@/types/routes.type";
 
 export interface RoutePoint { lat: number; lng: number; address: string }
 export interface ManualStop { job_id: number; stop_type: "pickup" | "dropoff" | "job"; arrival_time?: string | null }
@@ -21,6 +21,7 @@ export interface ManualRoutingPreview {
   success: boolean; revision: string; preview_token: string; explanation: string; message: string;
   result: Route["result"]; affected_route_indices: number[]; deleted_route_indices: number[];
   updates_drivers: boolean;
+  working_time_extensions?: WorkingTimeExtension[];
 }
 export interface ManualJobSummary {
   id: number; name: string; job_type: string; template_type?: string;
@@ -49,11 +50,12 @@ export const previewManualRouting = async (id: number, proposal: ManualRoutingRe
   }
   return data;
 };
-export const commitManualRouting = async (id: number, previewToken: string, requestToken: string): Promise<{
+export const commitManualRouting = async (id: number, previewToken: string, requestToken: string, approveWorkingTimeExtension = false): Promise<{
   success: boolean; message: string; result: Route["result"]; affected_route_indices: number[];
 }> => {
   const { data } = await apiClient.post(`optimization/requests/${id}/manual-routing/commit`, {
     preview_token: previewToken, request_token: requestToken,
+    approve_working_time_extension: approveWorkingTimeExtension,
   });
   return data;
 };

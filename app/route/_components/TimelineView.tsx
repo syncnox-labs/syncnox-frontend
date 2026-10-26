@@ -625,24 +625,61 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   }, [teams, scheduleDayKey, showDriverWorkingTime]);
 
   const { startTime, endTime } = useMemo(() => {
-    if (!showDriverWorkingTime) return baseTimeRange;
+    // The timeline never extends past the previous day, the plan day and the
+    // next day, matching the routes the backend returns for this plan.
+    const hasScheduledDay = Boolean(scheduledDate) && dayjs(scheduledDate).isValid();
+    // Never cut off this plan's own routes, even if they run past the window.
+    const ownRoutes = routes.filter((r) => r.source_optimization_id == null);
+    const ownRange = ownRoutes.length ? calculateTimeRange(ownRoutes) : null;
+    let windowStart = scheduleDay.subtract(1, "day");
+    let windowEnd = scheduleDay.add(2, "day");
+    if (ownRange) {
+      if (ownRange.startTime.isBefore(windowStart)) windowStart = ownRange.startTime;
+      if (ownRange.endTime.isAfter(windowEnd)) windowEnd = ownRange.endTime;
+    }
+    const clampToWindow = (range: { startTime: dayjs.Dayjs; endTime: dayjs.Dayjs }) => {
+      if (!hasScheduledDay) return range;
+      const clampedStart = range.startTime.isBefore(windowStart) ? windowStart : range.startTime;
+      const clampedEnd = range.endTime.isAfter(windowEnd) ? windowEnd : range.endTime;
+      return clampedEnd.isAfter(clampedStart)
+        ? { startTime: clampedStart, endTime: clampedEnd }
+        : range;
+    };
+    if (!showDriverWorkingTime) return clampToWindow(baseTimeRange);
     let earliest = baseTimeRange.startTime;
     let latest = baseTimeRange.endTime;
 
-    persistedShiftsByTeamId.forEach((shift) => {
-      const shiftStart = scheduleDay.add(shift.startMinutes, "minute");
-      const shiftEnd = scheduleDay.add(shift.endMinutes, "minute");
-      if (shiftStart.subtract(30, "minute").isBefore(earliest)) {
-        earliest = shiftStart.subtract(30, "minute");
-      }
-      if (shiftEnd.add(60, "minute").isAfter(latest)) {
-        latest = shiftEnd.add(60, "minute");
-      }
-    });
+    const firstRouteDay = (
+      scheduleDay.isBefore(baseTimeRange.startTime.startOf("day"))
+        ? scheduleDay
+        : baseTimeRange.startTime.startOf("day")
+    );
+    const lastRouteDay = (
+      scheduleDay.isAfter(baseTimeRange.endTime.startOf("day"))
+        ? scheduleDay
+        : baseTimeRange.endTime.startOf("day")
+    );
+    let dayCursor = firstRouteDay;
+    while (dayCursor.isBefore(lastRouteDay) || dayCursor.isSame(lastRouteDay, "day")) {
+      const dayKey = dayCursor.format("dddd").toLowerCase();
+      teams.forEach((team) => {
+        const shift = getDriverShiftForDay(team, dayKey);
+        if (!shift) return;
+        const shiftStart = dayCursor.add(shift.startMinutes, "minute");
+        const shiftEnd = dayCursor.add(shift.endMinutes, "minute");
+        if (shiftStart.subtract(30, "minute").isBefore(earliest)) {
+          earliest = shiftStart.subtract(30, "minute");
+        }
+        if (shiftEnd.add(60, "minute").isAfter(latest)) {
+          latest = shiftEnd.add(60, "minute");
+        }
+      });
+      dayCursor = dayCursor.add(1, "day");
+    }
 
     if (!shiftDrag) {
-      const firstDay = baseTimeRange.startTime.startOf("day").subtract(1, "day");
-      const lastDay = baseTimeRange.endTime.startOf("day").add(1, "day");
+      const firstDay = earliest.startOf("day").subtract(1, "day");
+      const lastDay = latest.startOf("day").add(1, "day");
       Object.entries(shiftOverrides).forEach(([overrideKey, shift]) => {
         const dayKey = overrideKey.split(":").pop();
         let cursor = firstDay;
@@ -662,14 +699,17 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       });
     }
 
-    return { startTime: earliest, endTime: latest };
+    return clampToWindow({ startTime: earliest, endTime: latest });
   }, [
     baseTimeRange,
     persistedShiftsByTeamId,
     scheduleDay,
+    scheduledDate,
+    routes,
     shiftDrag,
     shiftOverrides,
     showDriverWorkingTime,
+    teams,
   ]);
 
   const teamsById = useMemo(() => {
@@ -1727,11 +1767,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                   className={`absolute top-0 bottom-0 select-none transition-colors border-l pl-1 text-xs flex items-center ${
                     marker.isNewDay
                       ? "border-l-2 border-dashed border-[#003220] font-bold text-[#003220] z-10"
-                      : "border-gray-200 text-gray-400"
+                      : i === 0 && marker.dateLabel
+                        ? "border-emerald-300 font-bold text-[#003220] z-10"
+                        : "border-gray-200 text-gray-400"
                   }`}
                   style={{ left: marker.position, height: "100%" }}
                 >
-                  {marker.isNewDay ? (
+                  {marker.isNewDay || (i === 0 && marker.dateLabel) ? (
                     <TimelineTooltip
                       color="#ffffff"
                       overlayInnerStyle={{
@@ -1835,8 +1877,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               </div>
             ) : (
               driverGroups.map((driverGroup) => {
-                const primaryRoute = driverGroup.routes[0].route;
-                const primaryIndex = driverGroup.routes[0].originalIndex;
+                const activeGroupRoute =
+                  (focusedRouteIndex !== null
+                    ? driverGroup.routes.find((r) => r.originalIndex === focusedRouteIndex)
+                    : undefined) || driverGroup.routes[0];
+                const primaryRoute = activeGroupRoute.route;
+                const primaryIndex = activeGroupRoute.originalIndex;
                 const pendingDriverRoute = driverGroup.routes.find(({ route, originalIndex }) =>
                   pendingRouteIndices?.has(originalIndex) || routeNeedsOptimization(route)
                 );
@@ -1903,7 +1949,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                 const shiftEndTime = activeShift
                   ? scheduleDay.add(activeShift.endMinutes, "minute")
                   : null;
-                const displayedAvailabilityWindows: DriverAvailabilityWindow[] =
+                const baseAvailabilityWindows: DriverAvailabilityWindow[] =
                   driverAvailabilityWindows.length > 0
                     ? driverAvailabilityWindows
                     : shiftStartTime && shiftEndTime
@@ -1914,6 +1960,17 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                           shift: activeShift,
                         }]
                       : [];
+                // When the timeline runs past the last shift (e.g. a route that
+                // continues into the next day), extend the shaded background to the
+                // end of the timeline instead of leaving it white.
+                const displayedAvailabilityWindows: DriverAvailabilityWindow[] =
+                  baseAvailabilityWindows.length > 0 && showDriverWorkingTime
+                    ? baseAvailabilityWindows.map((window, windowIndex, all) =>
+                        windowIndex === all.length - 1 && window.end.isBefore(endTime)
+                          ? { ...window, end: endTime }
+                          : window,
+                      )
+                    : baseAvailabilityWindows;
                 const availabilityLeft = shiftStartTime
                   ? Math.max(
                       0,

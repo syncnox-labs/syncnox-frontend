@@ -45,7 +45,16 @@ export function manualRoutingError(error: unknown): string {
   const detail = value?.response?.data?.detail ?? value?.detail;
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) return detail.map(item => typeof item?.msg === "string" ? item.msg : "Check the selected values.").join("\n");
+  if (detail && typeof detail === "object" && "message" in detail && typeof detail.message === "string") return detail.message;
   return value?.message || "The route could not be checked. Your selections are kept; please retry.";
+}
+export function manualRoutingErrorInfo(error: unknown) {
+  const value = error as { detail?: unknown; response?: { data?: { detail?: unknown } } };
+  const detail = value?.response?.data?.detail ?? value?.detail;
+  const serviceUnavailable = Boolean(detail && typeof detail === "object" && "category" in detail && detail.category === "routing_provider_unavailable");
+  return { message: manualRoutingError(error),
+    title: serviceUnavailable ? "Routing service unavailable" : "This assignment needs a change",
+    showChangeOptions: !serviceUnavailable };
 }
 export const hasJobProgress = (job: Job): boolean => ["in_transit", "in_progress", "completed", "failed"].includes(job.status);
 

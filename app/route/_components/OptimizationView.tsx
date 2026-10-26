@@ -1360,12 +1360,17 @@ const OptimizationView = ({
           }
 
           setOptimizationResult("processing");
+          const targetSourceOptId =
+            route.result?.routes?.[routeIndex]?.source_optimization_id || route.id;
           const reoptRes = await reOptimizeRoute(route.id, routeIndex);
           if (reoptRes.success) {
             message.loading({ content: `Re-optimizing ${driverName}'s route…`, key: "save_reopt", duration: 0 });
             setPendingDeletedJobIds(new Set());
 
-            await waitUntilComplete(route.id);
+            await waitUntilComplete(targetSourceOptId);
+            if (targetSourceOptId !== route.id) {
+              await fetchOptimization(route.id);
+            }
             message.success({ content: `${driverName}'s route re-optimized successfully!`, key: "save_reopt" });
           } else {
             await fetchOptimization(route.id);
@@ -1430,10 +1435,16 @@ const OptimizationView = ({
             }
 
             setOptimizationResult("processing");
+            const targetSourceOptId =
+              route.result?.routes?.[routeIndex]?.source_optimization_id || route.id;
             const res = await reOptimizeRoute(route.id, routeIndex);
             if (res.success) {
               if (!res.is_async && res.result) {
-                setOptimizationResult("completed", res.result);
+                if (targetSourceOptId !== route.id) {
+                  await fetchOptimization(route.id);
+                } else {
+                  setOptimizationResult("completed", res.result);
+                }
                 setPendingDeletedJobIds(new Set());
                 message.success(res.message);
                 return;
@@ -1442,7 +1453,10 @@ const OptimizationView = ({
               setPendingDeletedJobIds(new Set());
               // Wait for the dispatch WebSocket completion event
 
-              await waitUntilComplete(route.id);
+              await waitUntilComplete(targetSourceOptId);
+              if (targetSourceOptId !== route.id) {
+                await fetchOptimization(route.id);
+              }
               message.success({ content: `${driverName}'s route re-optimized!`, key: "reopt" });
             }
           } catch (error: any) {
