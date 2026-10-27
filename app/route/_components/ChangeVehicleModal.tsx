@@ -6,6 +6,7 @@ import { Car, Check, Search } from "lucide-react";
 import { isAxiosError } from "axios";
 import { changeRouteVehicle, getRouteVehicleOptions, type VehicleReplacementOptions } from "@/apis/routes.api";
 import type { Routes } from "@/types/routes.type";
+import { vehicleTripChoices } from "./vehicleTripChoices.utils";
 
 interface Props {
   optimizationId: number;
@@ -33,9 +34,13 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
   const trips = routes.map((route, index) => ({ route, index })).filter(item =>
     item.route.team_member_id === driverId && item.route.stops?.length);
   const leader = trips.some(item => item.route.is_team_leader) || options?.is_team_leader;
-  const selectedIndex = trip === "all" ? routeIndex : Number(trip);
+  const selectedIndex = trip === "all" ? routeIndex : Number(trip.split(":")[0]);
   const scope = trip === "all" ? "driver" : "route";
   const current = routes[selectedIndex];
+  const direction = trip.split(":")[1] || current?.leg;
+  const leg = !leader && scope === "route" && (trip.includes(":") || current?.source_leg === "COMBINED")
+    && (direction === "GO" || direction === "RETURN") ? direction : undefined;
+  const tripChoices = vehicleTripChoices(routes, driverId);
 
   useEffect(() => {
     let active = true;
@@ -43,12 +48,12 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
     setOptions(null);
     setSelectedId(null);
     setError(null);
-    getRouteVehicleOptions(optimizationId, selectedIndex, scope)
+    getRouteVehicleOptions(optimizationId, selectedIndex, scope, leg)
       .then(result => { if (active) setOptions(result); })
       .catch(error => { if (active) setError(errorText(error)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [optimizationId, selectedIndex, scope, current?.team_member_id, current?.vehicle_id, current?.leg]);
+  }, [optimizationId, selectedIndex, scope, leg, current?.team_member_id, current?.vehicle_id, current?.leg]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -63,7 +68,7 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
     try {
       await changeRouteVehicle(optimizationId, selectedIndex, {
         vehicle_id: selectedId, expected_driver_id: options.driver_id,
-        expected_vehicle_id: options.current_vehicle_id, expected_leg: options.leg, scope,
+        expected_vehicle_id: options.current_vehicle_id, expected_leg: options.leg, scope, ...(leg ? { leg } : {}),
       });
       message.success("Vehicle changed. Stops and pickup times stay the same.");
       onSuccess();
@@ -92,15 +97,11 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
           <p className="m-0 font-semibold text-gray-900">{routes[routeIndex]?.team_member_name || "Driver"}</p>
           <p className="mt-1 mb-0 text-xs text-gray-500">Choose a replacement for this plan. Your choice is kept when you reoptimize.</p>
         </div>
-        {!leader && trips.length > 1 ? (
+        {!leader && tripChoices.length > 1 ? (
           <div className="flex flex-col gap-1.5">
             <label htmlFor="vehicle-trip" className="text-xs font-medium text-gray-700">Change vehicle for</label>
-            <Select id="vehicle-trip" value={trip} onChange={setTrip} disabled={saving}
-              options={[
-                ...trips.map(({ route, index }) => ({ value: String(index),
-                  label: `${route.leg === "COMBINED" ? "GO + RETURN" : route.leg || "Trip"} · ${route.vehicle_name || `Vehicle #${route.vehicle_id}`}` })),
-                { value: "all", label: "All trips for this driver" },
-              ]}
+            <Select id="vehicle-trip" aria-label="Trips to change vehicle for" value={trip} onChange={setTrip} disabled={saving || loading}
+              options={tripChoices}
             />
           </div>
         ) : (

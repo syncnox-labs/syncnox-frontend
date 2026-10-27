@@ -1829,7 +1829,7 @@ const OptimizationView = ({
       content:
         (pendingDeletedJobIds.size > 0 ? `${pendingDeletedJobIds.size} job(s) will be removed from routes. ` : "") +
         (isWorkerShuttle
-          ? "This will rebuild all routes using updated jobs, current driver availability and vehicle settings, all active drivers, and the latest fleet, including new drivers and vehicles. Old routes will be replaced. Continue?"
+          ? "This will rebuild all routes using current jobs, drivers and vehicles. Drivers and stop times you chose manually may change, and some jobs may become unassigned. Continue?"
           : "This will re-run the full optimization with updated job and driver data. Old routes will be replaced. Continue?"),
       okText: "Reoptimize All Routes",
       okButtonProps: { style: { backgroundColor: "#003220", borderColor: "#003220" } },

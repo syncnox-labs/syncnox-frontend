@@ -26,15 +26,25 @@ export interface ManualRoutingPreview {
 export interface ManualJobSummary {
   id: number; name: string; job_type: string; template_type?: string;
   start_hour?: string | null; end_hour?: string | null; pickup?: RoutePoint | null; dropoff?: RoutePoint | null;
+  required_driver_name?: string | null;
+  required_driver_issue?: "not_active" | "no_vehicles" | "no_matching_qualifications" | null;
 }
 export interface ManualRoutingContext {
   revision: string; result: Route["result"];
   driver_names?: Record<string, string>;
   job_summaries?: Record<string, ManualJobSummary>;
   drivers?: { id: number; name: string; vehicle_id?: number | null }[];
+  vehicles?: { id: number; name: string; capacity: number }[];
+  assignment_choices?: AssignmentChoice[];
 }
-export const getManualRoutingContext = async (id: number): Promise<ManualRoutingContext> => {
-  const { data } = await apiClient.get(`optimization/requests/${id}/manual-routing/context`);
+export interface AssignmentChoice {
+  driver_id: number; vehicle_id: number; route_index: number | null;
+  requires_working_time_extension: boolean; changes_required_driver: boolean;
+  job_ids: number[];
+}
+export const getManualRoutingContext = async (id: number, jobIds: number[] = []): Promise<ManualRoutingContext> => {
+  const query = jobIds.map(jobId => `job_ids=${encodeURIComponent(jobId)}`).join("&");
+  const { data } = await apiClient.get(`optimization/requests/${id}/manual-routing/context${query ? `?${query}` : ""}`);
   return data;
 };
 export const previewManualRouting = async (id: number, proposal: ManualRoutingRequest, signal?: AbortSignal): Promise<ManualRoutingPreview> => {

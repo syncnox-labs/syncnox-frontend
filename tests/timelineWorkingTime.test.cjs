@@ -45,6 +45,11 @@ const TimelineView = load("app/route/_components/TimelineView.tsx", {
     Select: () => null, Input: () => null, message: {}, Modal: {},
   },
   "@/store/index.store": { useIndexStore: () => ({ activeJobTemplate: "worker_shuttle" }) },
+  "@/utils/jobPickupType.utils": load("utils/jobPickupType.utils.ts"),
+  "./jobAddition.utils": load("app/route/_components/jobAddition.utils.ts"),
+  "./tripMove.utils": load("app/route/_components/tripMove.utils.ts", {
+    "./jobAddition.utils": load("app/route/_components/jobAddition.utils.ts"),
+  }),
   "./optimizationView.utils": { isDriverMatch: () => true },
   "./ReorderStopsModal": () => null,
   "./TransferStopsModal": () => null,

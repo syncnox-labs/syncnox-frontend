@@ -202,14 +202,16 @@ test("the mounted edit form initializes saved values without waiting for an effe
   assert.match(html, /Update/);
 });
 
-test("shuttle edit forms show the operational leg as read-only metadata", () => {
+test("shuttle edit titles show the operational leg as read-only metadata", () => {
+  const EditJobTitle = loadSource("components/Jobs/EditJobTitle.tsx", {
+    "@/utils/jobPickupType.utils": loadSource("utils/jobPickupType.utils.ts"),
+  }).default;
   for (const [job_type, leg] of [["one_way", "GO"], ["return_only", "RETURN"]]) {
-    const html = renderJobForm([field("candidate_name", { id: 1 })], {}, {
-      initialData: { id: 12450, template_type: "worker_shuttle", job_type,
-        custom_fields: { pickup_type: "round_trip" } },
-    });
+    const job = { id: 12450, template_type: "worker_shuttle", job_type,
+      custom_fields: { pickup_type: "round_trip" } };
+    const html = renderToStaticMarkup(React.createElement(EditJobTitle, { job }));
     assert.match(html.replace(/<[^>]*>/g, " "), new RegExp(`Leg\\s+${leg}`));
-    assert.deepEqual([...html.matchAll(/<label[^>]*for="([^"]+)"/g)].map(match => match[1]), ["candidate_name"]);
+    assert.doesNotMatch(html, /<input|<select/);
   }
 });
 

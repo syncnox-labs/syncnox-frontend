@@ -284,10 +284,10 @@ export const swapRouteVehicles = async (optimizationId: number, routeIndex: numb
 };
 
 export const getRouteVehicleOptions = async (
-  optimizationId: number, routeIndex: number, scope: "route" | "driver" = "route",
+  optimizationId: number, routeIndex: number, scope: "route" | "driver" = "route", leg?: "GO" | "RETURN",
 ): Promise<VehicleReplacementOptions> => {
   const response = await apiClient.get(
-    `optimization/requests/${optimizationId}/routes/${routeIndex}/vehicle-options`, { params: { scope } },
+    `optimization/requests/${optimizationId}/routes/${routeIndex}/vehicle-options`, { params: { scope, ...(leg ? { leg } : {}) } },
   );
   return response.data;
 };
@@ -300,6 +300,7 @@ export const changeRouteVehicle = async (
     expected_vehicle_id: number | null;
     expected_leg: string | null;
     scope: "route" | "driver";
+    leg?: "GO" | "RETURN";
   },
 ): Promise<RouteOperationResponse> => {
   const response = await apiClient.post(
