@@ -51,6 +51,7 @@ test("a vehicle conflict reaches the dialog without an automatic retry", async (
 
 const Null = () => null;
 const modal = load("app/route/_components/ChangeVehicleModal.tsx", {
+  "./vehicleTripChoices.utils": load("app/route/_components/vehicleTripChoices.utils.ts", {}),
   "@/apis/routes.api": {},
   antd: {
     Modal: ({ title, children, footer }) => React.createElement("section", null, React.createElement("h1", null, title), children, footer),
@@ -86,6 +87,33 @@ test("leader dialog makes the both-leg vehicle replacement explicit", () => {
   assert.match(html, /Bus 1/);
   assert.match(html, /Both legs will be updated together/);
   assert.doesNotMatch(html, /<select/);
+});
+
+test("one combined row with the same vehicle offers independent GO and RETURN choices", () => {
+  const html = renderToStaticMarkup(React.createElement(modal, {
+    optimizationId: 51, routeIndex: 0, onClose: () => {}, onSuccess: () => {},
+    routes: [{ team_member_id: 15, team_member_name: "Vikas Singh", vehicle_name: "32_Dodge Grand Caravan",
+      leg: "COMBINED", is_team_leader: false, stops: [{ job_id: 6666 }, { job_id: 6665 }] }],
+  }));
+  assert.match(html, /GO only · 32_Dodge Grand Caravan/);
+  assert.match(html, /RETURN only · 32_Dodge Grand Caravan/);
+  assert.match(html, /GO \+ RETURN · 32_Dodge Grand Caravan/);
+});
+
+test("direction-specific options and save keep the selected leg explicit", async () => {
+  const calls = [];
+  const api = load("apis/routes.api.ts", { "@/config/apiClient.config": {
+    get: async (...args) => { calls.push(args); return { data: {} }; },
+    post: async (...args) => { calls.push(args); return { data: { success: true } }; },
+  } });
+  await api.getRouteVehicleOptions(51, 2, "route", "RETURN");
+  const body = { vehicle_id: 11, expected_driver_id: 15, expected_vehicle_id: 13,
+    expected_leg: "RETURN", scope: "route", leg: "RETURN" };
+  await api.changeRouteVehicle(51, 2, body);
+  assert.deepEqual(calls, [
+    ["optimization/requests/51/routes/2/vehicle-options", { params: { scope: "route", leg: "RETURN" } }],
+    ["optimization/requests/51/routes/2/change-vehicle", body],
+  ]);
 });
 
 test("vehicle dialog preserves backend details from plain API and Axios errors", () => {

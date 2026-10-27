@@ -1,6 +1,7 @@
 import type { Job } from "@/types/job.type";
-import type { Routes } from "@/types/routes.type";
+import type { Routes, Stop } from "@/types/routes.type";
 import type { ManualJobSummary } from "@/apis/manualRouting.api";
+import { assignmentErrorInfo } from "./assignmentError.utils";
 
 export const routeJobIds = (route?: Routes): number[] => [...new Set((route?.stops || []).map(stop => stop.job_id).filter((id): id is number => typeof id === "number"))];
 export function manualRouteLabel(route: Routes, index: number): string {
@@ -22,6 +23,44 @@ export function formatRouteClock(value?: string | null): string {
   if (!match) return clock;
   const hour = Number(match[1]);
   return `${hour % 12 || 12}:${match[2]} ${hour < 12 ? "AM" : "PM"}`;
+}
+
+export function rideDurationSeconds(pickup?: string | null, dropoff?: string | null): number | undefined {
+  if (!pickup || !dropoff) return undefined;
+  const timestamp = (value: string) => Date.parse(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(value) ? `${value}Z` : value,
+  );
+  const elapsed = Math.round((timestamp(dropoff) - timestamp(pickup)) / 1000);
+  if (!Number.isFinite(elapsed) || elapsed < 0) return undefined;
+  return elapsed;
+}
+
+export function formatRideDuration(pickup?: string | null, dropoff?: string | null): string | undefined {
+  const elapsed = rideDurationSeconds(pickup, dropoff);
+  if (elapsed === undefined) return undefined;
+  const hours = Math.floor(elapsed / 3600);
+  const minutes = Math.floor((elapsed % 3600) / 60);
+  const seconds = elapsed % 60;
+  return [hours ? `${hours}h` : "", minutes ? `${minutes}m` : "", seconds ? `${seconds}s` : ""]
+    .filter(Boolean).join(" ") || "0m";
+}
+
+export function otherLongRides(stops: Stop[], selectedIds: number[]): { jobId: number; duration: string }[] {
+  const pickups = new Map<number, string>();
+  const rides: { jobId: number; duration: string }[] = [];
+  for (const stop of stops) {
+    const id = stop.job_id;
+    if (id == null || selectedIds.includes(id)) continue;
+    if (stop.stop_type === "pickup") pickups.set(id, stop.arrival_time);
+    if (stop.stop_type === "dropoff") {
+      const pickup = pickups.get(id);
+      const seconds = rideDurationSeconds(pickup, stop.arrival_time);
+      const duration = formatRideDuration(pickup, stop.arrival_time);
+      if (seconds !== undefined && seconds > 7200 && duration) rides.push({ jobId: id, duration });
+      pickups.delete(id);
+    }
+  }
+  return rides;
 }
 
 export function manualJobTrip(job: Job | ManualJobSummary): { direction: string; timeLabel: string } {
@@ -49,12 +88,9 @@ export function manualRoutingError(error: unknown): string {
   return value?.message || "The route could not be checked. Your selections are kept; please retry.";
 }
 export function manualRoutingErrorInfo(error: unknown) {
-  const value = error as { detail?: unknown; response?: { data?: { detail?: unknown } } };
+  const value = error as { detail?: unknown; response?: { status?: number; data?: { detail?: unknown } } };
   const detail = value?.response?.data?.detail ?? value?.detail;
-  const serviceUnavailable = Boolean(detail && typeof detail === "object" && "category" in detail && detail.category === "routing_provider_unavailable");
-  return { message: manualRoutingError(error),
-    title: serviceUnavailable ? "Routing service unavailable" : "This assignment needs a change",
-    showChangeOptions: !serviceUnavailable };
+  return assignmentErrorInfo(detail, manualRoutingError(error), value?.response?.status);
 }
 export const hasJobProgress = (job: Job): boolean => ["in_transit", "in_progress", "completed", "failed"].includes(job.status);
 
