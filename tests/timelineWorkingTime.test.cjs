@@ -26,7 +26,10 @@ let renderedRows = [];
 let renderedLanes = [];
 let renderedTracks = [];
 let renderedStops = [];
+let renderedMergeButtons = [];
+let renderedRouteMenus = [];
 function recordElement(factory, type, props, key) {
+  if (type === "button" && /^Merge .*waiting time$/.test(props["aria-label"] || "")) renderedMergeButtons.push(props);
   if (type === "div" && props["data-driver-key"]) renderedRows.push(props);
   if (type === "div" && props["data-timeline-driver-track"]) renderedTracks.push(props);
   if (type === "div" && /^route-\d+$/.test(String(key))) {
@@ -41,7 +44,10 @@ const TimelineView = load("app/route/_components/TimelineView.tsx", {
     jsxs: (...args) => recordElement(jsxRuntime.jsxs, ...args),
   },
   antd: {
-    Avatar: childrenOnly, Tooltip: childrenOnly, Dropdown: childrenOnly,
+    Avatar: childrenOnly, Tooltip: childrenOnly, Dropdown: props => {
+      if (props.menu?.items) renderedRouteMenus.push(props.menu.items);
+      return childrenOnly(props);
+    },
     Select: () => null, Input: () => null, message: {}, Modal: {},
   },
   "@/store/index.store": { useIndexStore: () => ({ activeJobTemplate: "worker_shuttle" }) },
@@ -58,6 +64,7 @@ const TimelineView = load("app/route/_components/TimelineView.tsx", {
     return React.createElement("span", { "data-test": "route-stop" });
   },
   "./timelineSegment.utils": load("app/route/_components/timelineSegment.utils.ts"),
+  "./routeWaiting.utils": load("app/route/_components/routeWaiting.utils.ts"),
   "./TimelineTooltip": timelineTooltip,
   "./TimelineTravelSegment": load("app/route/_components/TimelineTravelSegment.tsx", { "./TimelineTooltip": timelineTooltip }),
   "./leaderRoute.utils": load("app/route/_components/leaderRoute.utils.ts"),
@@ -66,6 +73,50 @@ const TimelineView = load("app/route/_components/TimelineView.tsx", {
   }),
   "@/utils/timeline.utils": load("utils/timeline.utils.ts", { "./app.utils": load("utils/app.utils.ts") }),
 }).default;
+
+test("a timeline gap opens a merge for the two exact routes", () => {
+  renderedMergeButtons = [];
+  const calls = [];
+  const trip = (id, hour) => ({ ...route, vehicle_id: 5, stops: [
+    { ...route.stops[0], job_id: null, stop_type: "depot_start", arrival_time: `2026-09-29T${hour}:00:00` },
+    { ...route.stops[0], job_id: id, arrival_time: `2026-09-29T${hour}:05:00` },
+    { ...route.stops[1], job_id: id, arrival_time: `2026-09-29T${hour}:15:00` },
+    { ...route.stops[1], job_id: null, stop_type: "depot_end", arrival_time: `2026-09-29T${hour}:25:00` },
+  ] });
+  const html = renderToStaticMarkup(React.createElement(TimelineView, {
+    routes: [trip(1, "08"), trip(2, "09")], teams: [team], scheduledDate: "2026-09-29",
+    onMergeRoutes: (...args) => calls.push(args),
+  }));
+  assert.match(html, /aria-label="Merge routes with waiting time"/);
+  assert.equal(renderedMergeButtons.length, 1);
+  assert.equal(renderedMergeButtons[0].style.width, 24);
+  renderedMergeButtons[0].onClick({ stopPropagation() {} });
+  assert.deepEqual(calls, [[0, 1]]);
+});
+
+test("touching trips remain mergeable from the menu without a button covering their icons", () => {
+  renderedMergeButtons = [];
+  renderedRouteMenus = [];
+  const calls = [];
+  const stops = [
+    { ...route.stops[0], job_id: null, stop_type: "depot_start", arrival_time: "2026-09-29T07:55:00" },
+    ...route.stops,
+    { ...route.stops[1], job_id: null, stop_type: "depot_end", arrival_time: "2026-09-29T09:05:00" },
+    { ...route.stops[0], job_id: null, stop_type: "depot_start", arrival_time: "2026-09-29T09:05:00" },
+    { ...route.stops[0], job_id: 2, arrival_time: "2026-09-29T09:10:00" },
+    { ...route.stops[1], job_id: 2, arrival_time: "2026-09-29T09:20:00" },
+    { ...route.stops[1], job_id: null, stop_type: "depot_end", arrival_time: "2026-09-29T09:25:00" },
+  ];
+  renderToStaticMarkup(React.createElement(TimelineView, {
+    routes: [{ ...route, stops }], teams: [team], scheduledDate: "2026-09-29",
+    onEditWaiting: (...args) => calls.push(args),
+  }));
+  assert.equal(renderedMergeButtons.length, 0);
+  const item = renderedRouteMenus.flat().find(item => item.key === "merge-trips-0-3");
+  assert.ok(item, "The route menu must retain access to merging a narrow gap");
+  item.onClick();
+  assert.deepEqual(calls, [[0, 3]]);
+});
 
 const route = {
   team_member_id: 8, team_member_name: "Driver Example", leg: "GO",

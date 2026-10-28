@@ -89,3 +89,12 @@ test("measured transfer travel stays separate from the long trip gap", () => {
   assert.equal(result.isBetweenTrips, true);
   assert.equal(result.isWaiting, false);
 });
+
+test("between-trip waiting excludes alighting time when routes are merged", () => {
+  const result = getTimelineSegment({
+    ...start, segment_type_to_next: "between_trips", service_duration_seconds: 300,
+    travel_time_to_next_stop_seconds: 900, waiting_position: "left",
+  }, next);
+  assert.equal(result.waitingSeconds, 2400);
+  assert.equal(result.waitingPosition, "left");
+});

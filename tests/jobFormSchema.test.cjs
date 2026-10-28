@@ -167,10 +167,83 @@ function renderJobForm(fields, config = {}, props = {}) {
     "@/store/depots.store": { useDepotStore: () => ({ depots: [] }) },
     "@/store/location-mapping.store": { useLocationMappingStore: () => ({ locationMappings: [] }) },
     "@/store/index.store": { useIndexStore: select => select({ activeJobTemplate: "worker_shuttle" }) },
-    "@/components/AddressAutocomplete": { default: ({ value, onChange }) => React.createElement("input", { "data-address": true, value: value ?? "", onChange }), __esModule: true },
+    "@/components/AddressAutocomplete": { default: ({ value, onChange, ...addressProps }) => {
+      config.onAddress?.(addressProps);
+      return React.createElement("input", { id: addressProps.id, "data-address": true, value: value ?? "", onChange, placeholder: addressProps.placeholder });
+    }, __esModule: true },
   });
   return renderToStaticMarkup(React.createElement(JobForm, props));
 }
+
+function shuttleAddressFields() {
+  return [field("pickup_type", { id: 1, data_type: "select", options: ["one_way", "return_only", "round_trip"] }),
+    field("pick_up_address", { id: 2, display_order: 1, label: "Pickup Address" }),
+    field("drop_off_address", { id: 3, display_order: 2, label: "Drop off Address" }),
+    field("go_pickup_point", { id: 4, display_order: 3, label: "GO Pickup Point" }),
+    field("return_dropoff_point", { id: 5, display_order: 4, label: "RETURN Dropoff Point" })];
+}
+
+test("shuttle forms label and order each address by its actual leg and hide the other leg for single trips", () => {
+  const expected = {
+    one_way: ["Go pickup address", "Go dropoff address"],
+    return_only: ["Return pickup address", "Return dropoff address"],
+    round_trip: ["Go pickup address", "Go dropoff address", "Return pickup address", "Return dropoff address"],
+  };
+  for (const [trip, labels] of Object.entries(expected)) {
+    const html = renderJobForm(shuttleAddressFields(), {}, { defaultTemplate: "worker_shuttle", defaultJobType: trip });
+    assert.deepEqual([...html.matchAll(/<label[^>]*title="([^"]+ address)"/g)].map(match => match[1]), labels);
+    assert.doesNotMatch(html, /GO Pickup Point|RETURN Dropoff Point|Drop off Address|Search Pickup Address/);
+  }
+  const definitions = shuttleAddressFields();
+  assert.deepEqual(schema.getJobDisplayFields(definitions, "pickup_delivery_job"), getJobFormFields(definitions));
+});
+
+test("all four address selectors submit their own name and coordinates without crossed legacy inputs", async () => {
+  let finish, submitted;
+  const controls = [], effects = [];
+  renderJobForm(shuttleAddressFields(), { effects, onForm: props => { finish = props.onFinish; }, onAddress: props => controls.push(props) }, {
+    defaultTemplate: "worker_shuttle", defaultJobType: "round_trip", createJobs: async payload => { submitted = payload; return { id: 42 }; },
+  });
+  effects.forEach(effect => effect());
+  const endpoints = ["go_pickup_address", "go_dropoff_address", "return_pickup_address", "return_dropoff_address"];
+  const values = { pickup_type: "round_trip" };
+  endpoints.forEach((key, index) => {
+    const label = schema.getJobDisplayFields(shuttleAddressFields(), "worker_shuttle").find(field => field.field_key === key).label;
+    const control = controls.find(item => item.placeholder === `Search ${label}`);
+    assert.ok(control, `Missing selector for ${key}`);
+    assert.equal(control.id, key, "The visible field label must target its own address input");
+    values[key] = `Endpoint ${index}`;
+    control.onSelect({ address_formatted: values[key], location: { lat: 45 + index / 10, lng: -73 - index / 10 } });
+  });
+  await finish(values);
+  for (const [index, key] of endpoints.entries()) {
+    assert.equal(submitted[key], `Endpoint ${index}`);
+    assert.equal(submitted.custom_fields[key], `Endpoint ${index}`);
+    assert.deepEqual(submitted[schema.ADDRESS_LOCATION_KEYS[key]], { lat: 45 + index / 10, lng: -73 - index / 10 });
+  }
+  for (const key of ["pick_up_address", "drop_off_address", "go_pickup_point", "return_dropoff_point"]) {
+    assert.equal(Object.hasOwn(submitted, key), false);
+  }
+});
+
+test("editing a return leg initializes the four addresses from their roles rather than swapping GO with RETURN", () => {
+  const fields = schema.getJobDisplayFields(shuttleAddressFields(), "worker_shuttle", "return_only");
+  const job = { template_type: "worker_shuttle", job_type: "return_only", worker_shuttle_detail: {
+    pick_up_address: "Return work exit", drop_off_address: "Return station",
+  }, custom_fields: { pickup_type: "round_trip", go_pickup_address: "Go station", go_dropoff_address: "Go work entrance",
+    return_pickup_address: "Return work exit", return_dropoff_address: "Return station" } };
+  const values = getJobInitialValues(fields, job);
+  assert.equal(values.go_pickup_address, "Go station");
+  assert.equal(values.go_dropoff_address, "Go work entrance");
+  assert.equal(values.return_pickup_address, "Return work exit");
+  assert.equal(values.return_dropoff_address, "Return station");
+});
+
+test("coordinate-only edits include the canonical address so the server knows which leg changed", () => {
+  const initial = { template_type: "worker_shuttle", go_dropoff_address: "Work", go_dropoff_location: { lat: 45, lng: -73 }, custom_fields: { go_dropoff_address: "Work" } };
+  const patch = schema.buildJobFormPatch(initial, { ...initial, go_dropoff_location: { lat: 46, lng: -74 } });
+  assert.deepEqual(patch, { template_type: "worker_shuttle", go_dropoff_address: "Work", go_dropoff_location: { lat: 46, lng: -74 }, custom_fields: { go_dropoff_address: "Work" } });
+});
 
 test("actual form renders exactly the configured optimization, additional and POD fields, each once", () => {
   const html = renderJobForm([field("start_hour", { id: 1, label: "My shift", group: "optimization", is_required: true }),

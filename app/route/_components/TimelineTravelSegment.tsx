@@ -13,6 +13,7 @@ interface TimelineTravelSegmentProps {
   vehicleCapacity?: number | null;
   isDimmed?: boolean;
   isDragging?: boolean;
+  onEditWaiting?: () => void;
 }
 
 const durationLabel = (seconds: number) => seconds < 60
@@ -29,10 +30,19 @@ const tooltipStyles = {
 /** Travel and waiting are adjacent hover targets, never nested tooltips. */
 export default function TimelineTravelSegment({
   segment, left, width, pixelsPerMinute, routeColor,
-  vehicleName, vehicleCapacity, isDimmed = false, isDragging = false,
+  vehicleName, vehicleCapacity, isDimmed = false, isDragging = false, onEditWaiting,
 }: TimelineTravelSegmentProps) {
   const waitingWidth = Math.min(width, Math.max(0, (segment.waitingSeconds ?? 0) / 60 * pixelsPerMinute));
-  const travelWidth = Math.max(0, width - waitingWidth);
+  const waitOnLeft = segment.waitingPosition === "left";
+  const leftServiceWidth = waitOnLeft && waitingWidth > 0
+    ? Math.min(width - waitingWidth, Math.max(0, (segment.serviceSeconds ?? 0) / 60 * pixelsPerMinute)) : 0;
+  const travelWidth = Math.max(0, width - waitingWidth - leftServiceWidth);
+  const interactive = onEditWaiting && !isDragging;
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (interactive && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault(); event.stopPropagation(); onEditWaiting();
+    }
+  };
   const distanceKm = segment.distanceMeters === null ? null : segment.distanceMeters / 1000;
   const isServiceOnly = segment.travelSeconds === 0 && (segment.serviceSeconds ?? 0) > 0;
   const isUnknownTransfer = segment.isBetweenTrips && segment.travelSeconds === null;
@@ -47,6 +57,13 @@ export default function TimelineTravelSegment({
   ) : null;
 
   return <>
+    {leftServiceWidth > 0 && <Tooltip color="#ffffff" styles={tooltipStyles} title={
+      <div className="flex flex-col gap-1.5 text-xs text-slate-800">{vehicleHeader}<strong>Boarding / alighting: {durationLabel(segment.serviceSeconds!)}</strong></div>
+    }>
+      <div aria-label="Boarding / alighting time" className="absolute top-1/2 border-y border-slate-300"
+        style={{ left, width: leftServiceWidth, height: 5, transform: "translateY(-50%)", backgroundColor: routeColor,
+          opacity: isDimmed ? 0.15 : 0.35, pointerEvents: isDragging ? "none" : "auto" }} />
+    </Tooltip>}
     {travelWidth > 0 && <Tooltip color="#ffffff" styles={tooltipStyles} title={
       <div className="flex flex-col gap-1.5 text-xs text-slate-800 min-w-[140px]">
         {vehicleHeader}
@@ -64,11 +81,14 @@ export default function TimelineTravelSegment({
             <strong>{distanceKm === null ? "Distance unavailable" : distanceKm === 0 ? "Same location" : `${distanceKm.toFixed(2)} km`}</strong>
           </span>}
         </div>
+        {interactive && <span className="text-[10px] text-emerald-800">Click to add or edit waiting time</span>}
       </div>
     }>
       <div aria-label={isServiceOnly ? "Boarding / alighting time" : isUnknownTransfer ? "Between trips" : "Travel time and distance"}
+        role={interactive ? "button" : undefined} tabIndex={interactive ? 0 : undefined}
+        onClick={interactive ? event => { event.stopPropagation(); onEditWaiting(); } : undefined} onKeyDown={handleKeyDown}
         className="absolute top-1/2 cursor-pointer border-y border-slate-300 rounded-xs"
-        style={{ left, width: travelWidth, height: 5, transform: "translateY(-50%)",
+        style={{ left: left + (waitOnLeft ? waitingWidth + leftServiceWidth : 0), width: travelWidth, height: 5, transform: "translateY(-50%)",
           backgroundColor: isUnknownTransfer ? "#e2e8f0" : routeColor,
           backgroundImage: isUnknownTransfer ? waitingPattern : undefined,
           opacity: isDimmed ? 0.15 : 0.35, pointerEvents: isDragging ? "none" : "auto" }} />
@@ -80,10 +100,13 @@ export default function TimelineTravelSegment({
           <ClockCircleOutlined />
           <strong>Waiting: {durationLabel(segment.waitingSeconds!)}</strong>
         </span>
+        {interactive && <span className="text-[10px] text-emerald-800">Click to change duration or merge left / right</span>}
       </div>
     }>
       <div aria-label="Waiting time" className="absolute top-1/2 cursor-pointer border-y border-slate-300"
-        style={{ left: left + travelWidth, width: waitingWidth, height: 6, transform: "translateY(-50%)",
+        role={interactive ? "button" : undefined} tabIndex={interactive ? 0 : undefined}
+        onClick={interactive ? event => { event.stopPropagation(); onEditWaiting(); } : undefined} onKeyDown={handleKeyDown}
+        style={{ left: left + (waitOnLeft ? leftServiceWidth : travelWidth), width: waitingWidth, height: 6, transform: "translateY(-50%)",
           backgroundColor: "#e2e8f0", backgroundImage: waitingPattern,
           opacity: isDimmed ? 0.15 : 0.85, pointerEvents: isDragging ? "none" : "auto" }} />
     </Tooltip>}

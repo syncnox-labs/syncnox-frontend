@@ -134,7 +134,7 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{vehicle.name}</span>
                     <span className="block text-xs text-gray-500 mt-0.5">{vehicle.capacity} {vehicle.capacity === 1 ? "seat" : "seats"}{vehicle.license_plate ? ` · ${vehicle.license_plate}` : ""}</span>
-                    {vehicle.reason && <span className="block text-xs mt-1">{vehicle.reason}</span>}
+                    {vehicle.reason && <span className="block text-xs text-gray-600 mt-1">{vehicle.reason}</span>}
                   </span>
                   {selectedId === vehicle.id && <Check size={18} className="text-[#003220] shrink-0" />}
                 </button>

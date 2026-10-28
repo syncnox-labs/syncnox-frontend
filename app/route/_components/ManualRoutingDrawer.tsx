@@ -52,7 +52,7 @@ export default function ManualRoutingDrawer({ plan }: { plan: Route }) {
   const { jobs, fetchJobsByIds } = useJobsStore();
   const { teams } = useTeamStore();
   const { vehicles } = useVehicleStore();
-  const opened = intent?.planId === plan.id && intent.action !== "assign";
+  const opened = intent?.planId === plan.id && intent.action !== "assign" && intent.action !== "waiting";
   const [proposal, setProposal] = useState<ManualRoutingRequest>({ action: "assign", job_ids: [] });
   const [baseResult, setBaseResult] = useState(plan.result);
   const [routingContext, setRoutingContext] = useState<ManualRoutingContext | null>(null);
@@ -147,7 +147,7 @@ export default function ManualRoutingDrawer({ plan }: { plan: Route }) {
     (!["edit", "split", "merge", "delete"].includes(proposal.action) || selectedRoute) &&
     (proposal.action !== "merge" || proposal.merge_route_index !== undefined) &&
     (proposal.action === "delete" || proposal.action === "merge" || proposal.action === "create" || proposal.action === "edit" || proposal.job_ids.length));
-  const titles: Record<ManualRoutingRequest["action"], string> = { assign: "Assign jobs", create: "Create a route", edit: "Edit route", split: "Split into a new route", merge: "Merge routes", delete: "Delete route" };
+  const titles: Record<ManualRoutingRequest["action"], string> = { assign: "Assign jobs", create: "Create a route", edit: "Edit route", split: "Split into a new route", merge: "Merge routes", delete: "Delete route", waiting: "Edit waiting time" };
 
   const persist = async (checked: ManualRoutingPreview, token: string) => {
     if (saveInProgress.current) return false;
@@ -201,7 +201,7 @@ export default function ManualRoutingDrawer({ plan }: { plan: Route }) {
     </Field>;
   };
 
-  const actionLabels: Record<ManualRoutingRequest["action"], string> = { assign: "Assign jobs", create: "Create route", edit: "Save changes", split: "Split route", merge: "Merge routes", delete: "Delete route" };
+  const actionLabels: Record<ManualRoutingRequest["action"], string> = { assign: "Assign jobs", create: "Create route", edit: "Save changes", split: "Split route", merge: "Merge routes", delete: "Delete route", waiting: "Save waiting time" };
   const defaultVehicleId = proposal.vehicle_id ?? selectedRoute?.vehicle_id ?? activeDrivers.find(driver => driver.id === proposal.driver_id)?.vehicle_id;
   const defaultVehicle = vehicles.find(vehicle => vehicle.id === defaultVehicleId);
   const jobOptionLabel = (job: Job) => {

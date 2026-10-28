@@ -50,6 +50,8 @@ import type { StopMoveSelection } from "@/types/routes.type";
 import type { TripMoveSelection } from "./tripMove.utils";
 import PendingOptimizationIndicator from "./PendingOptimizationIndicator";
 import ManualRoutingDrawer from "./ManualRoutingDrawer";
+import RouteWaitingModal from "./RouteWaitingModal";
+import type { WaitingSelection } from "./routeWaiting.utils";
 import AssignJobsModal from "./AssignJobsModal";
 import { useManualRoutingStore } from "@/store/manualRouting.store";
 import { getAssignedRouteJobs, getUnassignedRouteJobs } from "./assignedRouteJobs.utils";
@@ -257,6 +259,7 @@ const OptimizationView = ({
   );
 
   const [isEditingName, setIsEditingName] = useState(false);
+  const [waitingSelection, setWaitingSelection] = useState<WaitingSelection | null>(null);
   const [tempRouteName, setTempRouteName] = useState(route.route_name);
   const [isSavingName, setIsSavingName] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -2526,6 +2529,10 @@ const OptimizationView = ({
                     onMoveTrip={!isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed") ? handleMoveTrip : undefined}
                     onAddUnassignedJob={handleAddUnassignedJob}
                     onEditRoute={index => useManualRoutingStore.getState().open({ planId: route.id, action: "edit", routeIndex: index })}
+                    onEditWaiting={!isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed")
+                      ? (routeIndex, afterStopIndex) => setWaitingSelection({ routeIndex, afterStopIndex }) : undefined}
+                    onMergeRoutes={!isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed")
+                      ? (routeIndex, mergeRouteIndex) => setWaitingSelection({ routeIndex, mergeRouteIndex }) : undefined}
                     onSwapDriver={(idx) => setSwapDriverRouteIndex(idx)}
                     onChangeVehicle={route.status === "completed" || route.status === "failed"
                       ? setChangeVehicleRouteIndex : undefined}
@@ -2626,6 +2633,7 @@ const OptimizationView = ({
 
       {/* Route Export Preview Modal */}
       <ManualRoutingDrawer plan={route} />
+      <RouteWaitingModal plan={route} selection={waitingSelection} onClose={() => setWaitingSelection(null)} />
       <AssignJobsModal plan={route} />
       <RouteExportPreview
         open={showPreview}

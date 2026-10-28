@@ -13,6 +13,7 @@ export interface AddressData {
 }
 
 interface AddressAutocompleteProps {
+  id?: string;
   value?: string | null;
   onChange?: (value: string) => void;
   onSelect?: (addressData: AddressData) => void;
@@ -35,6 +36,7 @@ interface PredictionOption {
  * Provides address search with location data extraction
  */
 const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
+  id,
   value,
   onChange,
   onSelect,
@@ -245,6 +247,7 @@ const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
 
   return (
     <AutoComplete
+      id={id}
       style={{ width: "100%" }}
       value={searchValue}
       options={options.map(opt => ({ value: opt.value, label: opt.label }))}
