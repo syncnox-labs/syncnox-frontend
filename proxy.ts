@@ -11,13 +11,13 @@ export async function proxy(request: NextRequest) {
   const publicRoutes = ["/sign-in"];
   const isPublicRoute = publicRoutes.includes(pathname);
 
-  // Redirect to sign-in if trying to access protected route without authentication
-  if (!isPublicRoute && !session) {
+  // Redirect to sign-in if trying to access protected route without valid authentication
+  if (!isPublicRoute && (!session || session.error === "RefreshAccessTokenError")) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }
 
   // Redirect to dashboard if authenticated user tries to access sign-in page
-  if (isPublicRoute && session) {
+  if (isPublicRoute && session && session.error !== "RefreshAccessTokenError") {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
