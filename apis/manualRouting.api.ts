@@ -9,9 +9,10 @@ export interface ManualJobUpdate {
   pickup?: RoutePoint; dropoff?: RoutePoint;
 }
 export interface ManualRoutingRequest {
-  action: "assign" | "create" | "edit" | "delete" | "split" | "merge";
+  action: "assign" | "create" | "edit" | "delete" | "split" | "merge" | "waiting";
   placement?: "auto" | "existing" | "new";
   route_index?: number; merge_route_index?: number; driver_id?: number; vehicle_id?: number;
+  waiting_after_stop_index?: number; waiting_seconds?: number; waiting_side?: "left" | "right";
   expected_driver_name?: string;
   job_ids: number[]; name?: string; start_point?: RoutePoint; end_point?: RoutePoint;
   start_at?: string | null; end_at?: string | null; ordered_stops?: ManualStop[];

@@ -94,3 +94,42 @@ test("dragging disables both hover targets and dimming applies to both parts", (
     assert.equal(part.target.props.style.opacity, 0.15);
   }
 });
+
+test("merging waiting left moves its bar before the drive", () => {
+  const [travel, waiting] = render({ travel_time_to_next_stop_seconds: 1440,
+    waiting_time_to_next_stop_seconds: 1020, waiting_position: "left" });
+  assert.equal(waiting.target.props.style.left, 100);
+  assert.equal(waiting.target.props.style.width, 68);
+  assert.equal(travel.target.props.style.left, 168);
+  assert.equal(travel.target.props.style.width, 96);
+});
+
+test("left waiting starts after alighting and before driving", () => {
+  const parts = render({ travel_time_to_next_stop_seconds: 1440, service_duration_seconds: 300,
+    waiting_time_to_next_stop_seconds: 720, waiting_position: "left" });
+  const boarding = parts.find(part => part.target.props["aria-label"] === "Boarding / alighting time");
+  const travel = parts.find(part => part.target.props["aria-label"] === "Travel time and distance");
+  const waiting = parts.find(part => part.target.props["aria-label"] === "Waiting time");
+  assert.equal(boarding.target.props.style.left, 100);
+  assert.equal(boarding.target.props.style.width, 20);
+  assert.equal(waiting.target.props.style.left, 120);
+  assert.equal(waiting.target.props.style.width, 48);
+  assert.equal(travel.target.props.style.left, 168);
+  assert.equal(travel.target.props.style.width, 96);
+});
+
+test("waiting can be edited by click or keyboard and dragging disables editing", () => {
+  let edits = 0;
+  const parts = render({ travel_time_to_next_stop_seconds: 1440, waiting_time_to_next_stop_seconds: 1020 },
+    { onEditWaiting: () => edits++ });
+  for (const part of parts) {
+    assert.equal(part.target.props.role, "button");
+    assert.equal(part.target.props.tabIndex, 0);
+    part.target.props.onClick({ stopPropagation() {} });
+    part.target.props.onKeyDown({ key: "Enter", preventDefault() {}, stopPropagation() {} });
+  }
+  assert.equal(edits, 4);
+  const dragging = render({ travel_time_to_next_stop_seconds: 1440, waiting_time_to_next_stop_seconds: 1020 },
+    { onEditWaiting: () => edits++, isDragging: true });
+  assert.ok(dragging.every(part => part.target.props.onClick === undefined));
+});

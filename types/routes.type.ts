@@ -20,8 +20,10 @@ export interface Stop {
   travel_time_to_next_stop_seconds?: number;
   service_duration_seconds?: number;
   waiting_time_to_next_stop_seconds?: number;
+  waiting_position?: "left" | "right";
+  manual_waiting?: boolean;
   leg?: "GO" | "RETURN";
-  segment_type_to_next?: "team_leader_work";
+  segment_type_to_next?: "team_leader_work" | "between_trips";
   is_new?: boolean;
   needs_optimization?: boolean;
   time_edited?: boolean;

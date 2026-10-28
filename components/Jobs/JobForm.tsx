@@ -14,7 +14,8 @@ import { useTeamStore } from "@/store/team.store";
 import { useIndexStore } from "@/store/index.store";
 import { useDepotStore } from "@/store/depots.store";
 import { useLocationMappingStore } from "@/store/location-mapping.store";
-import { ADDRESS_LOCATION_KEYS, buildJobFormPayload, buildJobFormPatch, getJobFieldControl, getJobFormFields, getJobInitialValues, parseCoordinates } from "./jobForm.schema";
+import { getJobPickupType } from "@/utils/jobPickupType.utils";
+import { ADDRESS_LOCATION_KEYS, SHUTTLE_ADDRESSES, buildJobFormPayload, buildJobFormPatch, getJobDisplayFields, getJobFieldControl, getJobInitialValues, getShuttleAddressValues, parseCoordinates } from "./jobForm.schema";
 
 interface JobFormProps {
   initialData?: Job | null;
@@ -44,7 +45,7 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
   const activeJobTemplate = useIndexStore(state => state.activeJobTemplate);
   const activeTemplate = initialData?.template_type || defaultTemplate || activeJobTemplate || "pickup_delivery_job";
   const { customFields, loading, error, reloadConfigs } = useFieldConfig("job");
-  const fields = useMemo(() => getJobFormFields(customFields), [customFields]);
+  const fields = useMemo(() => getJobDisplayFields(customFields, activeTemplate, initialData?.job_type || defaultJobType), [customFields, activeTemplate, initialData?.job_type, defaultJobType]);
   const addressLocations = useRef<Record<string, unknown>>({});
   const initialPayload = useRef<Record<string, unknown>>({});
   const date = dayjs.isDayjs(defaultDate) ? defaultDate.format("YYYY-MM-DD") : defaultDate;
@@ -52,6 +53,11 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
     () => getJobInitialValues(fields, initialData, { date, jobType: defaultJobType }),
     [fields, initialData, date, defaultJobType],
   );
+  const watchedPickupType = Form.useWatch("pickup_type", form);
+  const bookingType = getJobPickupType({ pickup_type: watchedPickupType || initialValues.pickup_type || initialValues.job_type || defaultJobType || getJobPickupType(initialData) || "one_way" } as Job);
+  const visibleFields = fields.filter(field => activeTemplate !== "worker_shuttle"
+    || !SHUTTLE_ADDRESSES.includes(field.field_key)
+    || bookingType === "round_trip" || (bookingType === "return_only" ? field.field_key.startsWith("return_") : field.field_key.startsWith("go_")));
 
   const predefinedLocations = useMemo(() => [
     ...depots.filter(depot => typeof depot.location?.lat === "number" && typeof depot.location?.lng === "number").map(depot => ({
@@ -70,8 +76,9 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
     // restore the job data when preserve=false clears unregistered fields.
     form.resetFields();
     const detail = initialData?.worker_shuttle_detail || initialData?.pickup_delivery_detail;
+    const shuttleAddresses = getShuttleAddressValues(initialData);
     addressLocations.current = Object.fromEntries(Object.entries(ADDRESS_LOCATION_KEYS).map(([key, locationKey]) => [
-      key, (initialData as unknown as Record<string, unknown> | null)?.[locationKey] ?? detail?.[locationKey] ?? initialData?.custom_fields?.[locationKey],
+      key, shuttleAddresses[locationKey] ?? (initialData as unknown as Record<string, unknown> | null)?.[locationKey] ?? detail?.[locationKey] ?? initialData?.custom_fields?.[locationKey],
     ]));
     initialPayload.current = buildJobFormPayload(fields, initialValues, activeTemplate, addressLocations.current);
   }, [form, initialValues, initialData, loading, fields, activeTemplate]);
@@ -156,16 +163,22 @@ const JobForm = ({ initialData = null, onSubmit, defaultTemplate, defaultDate, d
         : fields.length === 0 ? <Empty description="No job fields are enabled for dispatch. Configure them in Custom Fields settings." />
         : <Form disabled={submitting} form={form} initialValues={initialValues} layout="vertical" onFinish={onFinish} preserve={false}>
           <Row gutter={16}>
-            {fields.map(field => {
+            {visibleFields.map(configuredField => {
+              const physicalDirection = bookingType === "round_trip" ? initialData?.job_type || defaultJobType : bookingType;
+              const field = activeTemplate === "worker_shuttle" && ["pick_up_address", "drop_off_address"].includes(configuredField.field_key)
+                ? { ...configuredField, label: `${physicalDirection === "return_only" ? "Return" : "Go"} ${configuredField.field_key === "pick_up_address" ? "pickup" : "dropoff"} address` }
+                : configuredField;
               const control = getJobFieldControl(field);
-              const rules: Rule[] = [{ required: field.is_required, message: `${field.label} is required`,
+              const required = field.is_required || (activeTemplate === "worker_shuttle" && SHUTTLE_ADDRESSES.includes(field.field_key));
+              const rules: Rule[] = [{ required, message: `${field.label} is required`,
                 ...(control === "boolean" ? { type: "boolean" as const } : {}) }];
               if (control === "geo") rules.push({ validator: (_, value) =>
                 value === undefined || value === null || value === "" || parseCoordinates(value)
                   ? Promise.resolve() : Promise.reject(new Error("Enter a valid latitude, longitude")) });
               return <Col key={field.id} xs={24} sm={control === "address" || control === "geo" ? 24 : 12}>
                 <Form.Item name={field.field_key} label={field.label} rules={rules}
-                  required={field.is_required} tooltip={field.description || undefined}
+                  required={required} tooltip={field.description || undefined}
+                  preserve={activeTemplate === "worker_shuttle" && SHUTTLE_ADDRESSES.includes(field.field_key)}
                   valuePropName={control === "boolean" ? "checked" : "value"}>
                   {renderControl(field)}
                 </Form.Item>

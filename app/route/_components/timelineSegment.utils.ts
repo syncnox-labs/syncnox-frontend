@@ -8,6 +8,7 @@ type SegmentStop = {
   travel_time_to_next_stop_seconds?: number | null;
   service_duration_seconds?: number | null;
   waiting_time_to_next_stop_seconds?: number | null;
+  waiting_position?: "left" | "right";
 };
 
 const duration = (value: unknown): number | null =>
@@ -39,7 +40,7 @@ export function getTimelineSegment(stop: SegmentStop, next: SegmentStop) {
   const serviceSeconds = duration(stop.service_duration_seconds);
   const explicitWaiting = duration(stop.waiting_time_to_next_stop_seconds);
   const waitingSeconds = isWorking ? 0 : isBetweenTrips
-    ? travelSeconds === null ? null : Math.max(0, elapsedSeconds - travelSeconds)
+    ? travelSeconds === null ? null : Math.max(0, elapsedSeconds - travelSeconds - (serviceSeconds ?? 0))
     : explicitWaiting !== null
     ? Math.min(explicitWaiting, elapsedSeconds)
     : travelSeconds !== null && serviceSeconds !== null
@@ -47,6 +48,7 @@ export function getTimelineSegment(stop: SegmentStop, next: SegmentStop) {
       : null;
   return {
     elapsedSeconds, travelSeconds, serviceSeconds, waitingSeconds,
+    waitingPosition: stop.waiting_position || "right",
     isWorking, isBetweenTrips,
     distanceMeters: distinctLocations && rawDistance === 0 ? null : rawDistance,
     isWaiting: !isWorking && !isBetweenTrips && travelSeconds === 0 && (waitingSeconds ?? 0) > 0,

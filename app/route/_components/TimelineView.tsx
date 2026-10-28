@@ -46,6 +46,7 @@ import TimelineStopArrow from "./TimelineStopArrow";
 import TimelineTravelSegment from "./TimelineTravelSegment";
 import TimelineTooltip, { TimelineTooltipProvider } from "./TimelineTooltip";
 import { getTimelineSegment } from "./timelineSegment.utils";
+import { waitingMergeButtonLayout, waitingMergeCandidates } from "./routeWaiting.utils";
 import { isRedundantLeaderClientStart } from "./leaderRoute.utils";
 import { getRouteStopDisplay, type GroupedStop as DisplayStopGroup } from "./stopDisplay.utils";
 import {
@@ -81,6 +82,8 @@ interface TimelineViewProps {
   onStopClick?: (stop: any, routeIndex: number, stopIndex: number) => void;
   onAddStop?: (routeIndex: number) => void;
   onEditRoute?: (routeIndex: number) => void;
+  onEditWaiting?: (routeIndex: number, afterStopIndex: number) => void;
+  onMergeRoutes?: (routeIndex: number, mergeRouteIndex?: number) => void;
   onSwapDriver?: (routeIndex: number) => void;
   onChangeVehicle?: (routeIndex: number) => void;
   onSwapVehicles?: (routeIndex: number) => void;
@@ -401,6 +404,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   onStopClick,
   onAddStop,
   onEditRoute,
+  onEditWaiting,
+  onMergeRoutes,
   onSwapDriver,
   onChangeVehicle,
   onSwapVehicles,
@@ -1577,6 +1582,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
   const getRouteMenuItems = (routeIndex: number): MenuProps["items"] => [
     ...(onEditRoute ? [{ key: "edit-route", label: "Edit route, jobs & timing…", onClick: () => onEditRoute(routeIndex) }] : []),
+    ...(onMergeRoutes ? [{ key: "merge-waiting", icon: <ClockCircleOutlined />, label: "Merge routes with waiting…", onClick: () => onMergeRoutes(routeIndex) }] : []),
+    ...(onEditWaiting ? routes.flatMap((route, index) => route.team_member_id !== routes[routeIndex]?.team_member_id ? []
+      : (route.stops || []).flatMap((stop: any, stopIndex: number) => stop.stop_type === "depot_end" && route.stops[stopIndex + 1]?.stop_type === "depot_start" ? [{
+        key: `merge-trips-${index}-${stopIndex}`, icon: <ClockCircleOutlined />,
+        label: `Merge trips at ${dayjs(route.stops[stopIndex + 1].arrival_time).format("h:mm A")}…`,
+        onClick: () => onEditWaiting(index, stopIndex),
+      }] : [])) : []),
     ...(isWorkerShuttle && onSwapVehicles ? [{
       key: "swap-vehicles",
       icon: <SwapOutlined />,
@@ -2453,6 +2465,26 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 </div>
                             )}
 
+                            {/* Keep merge controls clear of the visible endpoint icons. Narrow gaps use the route menu. */}
+                            {onMergeRoutes && waitingMergeCandidates(routes, routeIndex).map(targetIndex => {
+                              const target = routes[targetIndex];
+                              const end = routeStops[routeStops.length - 1];
+                              const beginning = target.stops[0];
+                              if (!end || Date.parse(beginning.arrival_time) < Date.parse(end.arrival_time)) return null;
+                              const left = getPosition(end.arrival_time, startTime, pixelsPerMinute);
+                              const right = getPosition(beginning.arrival_time, startTime, pixelsPerMinute);
+                              const targetGroups = routeDataMap.get(targetIndex)?.groupedStops;
+                              const nextTime = targetGroups?.[1]?.representative.arrival_time;
+                              const layout = waitingMergeButtonLayout(left, right,
+                                nextTime ? getPosition(nextTime, startTime, pixelsPerMinute) : undefined);
+                              if (!layout) return null;
+                              return <TimelineTooltip key={`merge-${routeIndex}-${targetIndex}`} title="Merge these trips with travel and waiting time">
+                                <button type="button" aria-label="Merge routes with waiting time" onClick={event => { event.stopPropagation(); onMergeRoutes(routeIndex, targetIndex); }}
+                                  className="absolute top-1/2 -translate-y-1/2 h-6 flex items-center justify-center rounded border border-emerald-600 bg-white text-emerald-800 text-sm hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-emerald-600"
+                                  style={{ ...layout, zIndex: 5 }}><span aria-hidden="true">+</span></button>
+                              </TimelineTooltip>;
+                            })}
+
                             {/* Connection Lines (Segments) */}
                             {route.stops?.map((stop: any, index: number) => {
                               if (index === route.stops.length - 1) return null;
@@ -2478,13 +2510,24 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                               const width = endPos - startPos;
 
-                              if (width <= 0) return null;
+                              if (width < 0 || (width === 0 && stop.stop_type !== "depot_end")) return null;
 
                               const segment = getTimelineSegment(stop, nextStop);
                               const timeMin = Math.round(segment.elapsedSeconds / 60);
 
-                              // Do not draw a connection line between shifts after depot_end
-                              if (stop.stop_type === "depot_end") return null;
+                              if (stop.stop_type === "depot_end") {
+                                if (!onEditWaiting || nextStop.stop_type !== "depot_start") return null;
+                                const startGroupIndex = groupedStops.findIndex(group => group.firstRawIndex === index + 1);
+                                const nextTime = startGroupIndex >= 0 ? groupedStops[startGroupIndex + 1]?.representative.arrival_time : undefined;
+                                const layout = waitingMergeButtonLayout(startPos, endPos,
+                                  nextTime ? getPosition(nextTime, startTime, pixelsPerMinute) : undefined);
+                                if (!layout) return null;
+                                return <TimelineTooltip key={`join-${routeIndex}-${index}`} title="Merge these trips with travel and waiting time">
+                                  <button type="button" aria-label="Merge consecutive trips with waiting time" onClick={event => { event.stopPropagation(); onEditWaiting(routeIndex, index); }}
+                                    className="absolute top-1/2 -translate-y-1/2 h-6 flex items-center justify-center rounded border border-emerald-600 bg-white text-emerald-800 text-sm hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-emerald-600"
+                                    style={{ ...layout, zIndex: 5 }}>+</button>
+                                </TimelineTooltip>;
+                              }
 
                               // A long interval can include valid travel/waiting. Only an
                               // explicit depot_end above separates shifts, not its length.
@@ -2495,7 +2538,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 (lastJobStopIndex !== -1 && index >= lastJobStopIndex) ||
                                 (nextStop.stop_type === "depot" && index === routeStops.length - 2);
 
-                              if (isWaiting && isAfterRouteCompleted) return null;
+                              if (isWaiting && isAfterRouteCompleted && !stop.manual_waiting) return null;
 
                               if (segment.isWorking) {
                                 return (
@@ -2519,6 +2562,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 vehicleCapacity={routeVehicleCap}
                                 isDimmed={isDimmed}
                                 isDragging={Boolean(draggedStopInfo)}
+                                onEditWaiting={onEditWaiting && !route.needs_optimization && !pendingRouteIndices?.has(routeIndex) ? () => onEditWaiting(routeIndex, index) : undefined}
                               />;
                             })}
 
@@ -2647,6 +2691,11 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   >
                                     <div
                                       className="absolute top-1/2 -translate-y-1/2 h-6 border border-gray-300 cursor-pointer hover:opacity-100 transition-opacity"
+                                      role={onEditWaiting && typeof idle.after_stop_index === "number" ? "button" : undefined}
+                                      tabIndex={onEditWaiting && typeof idle.after_stop_index === "number" ? 0 : undefined}
+                                      aria-label="Edit waiting time"
+                                      onClick={event => { if (onEditWaiting && typeof idle.after_stop_index === "number") { event.stopPropagation(); onEditWaiting(routeIndex, idle.after_stop_index); } }}
+                                      onKeyDown={event => { if (onEditWaiting && typeof idle.after_stop_index === "number" && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); event.stopPropagation(); onEditWaiting(routeIndex, idle.after_stop_index); } }}
                                       style={{
                                         left: idleStartPos,
                                         width: idleWidth,
