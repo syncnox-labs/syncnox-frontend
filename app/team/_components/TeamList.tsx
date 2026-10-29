@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { Button, Spin, Modal, message } from "antd";
-import { Search, Users, FileSpreadsheet, Plus, Trash2 } from "lucide-react";
+import { Button, Spin, Modal, Dropdown, message } from "antd";
+import { Search, Users, FileSpreadsheet, Plus, Trash2, Download } from "lucide-react";
 import { Team } from "@/types/team.type";
 import { useTeamStore } from "@/store/team.store";
+import { exportTeamMembers } from "@/apis/team.api";
+import { generateTeamMembersCsv, triggerDownload } from "@/utils/exportCsv.utils";
 import TeamMemberForm from "./TeamMemberForm";
 import AddTeamMemberModal from "./AddTeamMemberModal";
 import TeamMemberCard from "./TeamMemberCard";
@@ -18,6 +20,7 @@ const TeamList = () => {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   // Auto-select first member on initial load
   useEffect(() => {
@@ -81,6 +84,33 @@ const TeamList = () => {
     });
   };
 
+  const handleExport = async (selectedOnly: boolean = false) => {
+    try {
+      setIsExporting(true);
+      const targetIds = selectedOnly && checkedIds.length > 0 ? checkedIds : undefined;
+      const count = targetIds ? targetIds.length : teams.length;
+      
+      try {
+        await exportTeamMembers(targetIds);
+      } catch (apiErr) {
+        // Fallback to client-side CSV generation if backend endpoint is unavailable
+        const membersToExport = targetIds
+          ? teams.filter((t) => targetIds.includes(t.id))
+          : teams;
+        const csv = generateTeamMembersCsv(membersToExport);
+        triggerDownload(
+          targetIds ? `drivers_selected_${targetIds.length}.csv` : "drivers_export.csv",
+          csv
+        );
+      }
+      message.success(`Successfully exported ${count} driver(s) to CSV`);
+    } catch (err: any) {
+      message.error(err?.message || "Failed to export drivers");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const getInitials = (name: string) =>
     name
       .split(" ")
@@ -116,6 +146,41 @@ const TeamList = () => {
               id="team-bulk-delete-btn"
             >
               Delete ({checkedIds.length})
+            </Button>
+          )}
+          {checkedIds.length > 0 ? (
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: "selected",
+                    label: `Export Selected (${checkedIds.length})`,
+                    onClick: () => handleExport(true),
+                  },
+                  {
+                    key: "all",
+                    label: `Export All (${teams.length})`,
+                    onClick: () => handleExport(false),
+                  },
+                ],
+              }}
+            >
+              <Button
+                icon={<Download size={15} />}
+                loading={isExporting}
+                id="team-export-btn"
+              >
+                Export ({checkedIds.length})
+              </Button>
+            </Dropdown>
+          ) : (
+            <Button
+              icon={<Download size={15} />}
+              loading={isExporting}
+              onClick={() => handleExport(false)}
+              id="team-export-btn"
+            >
+              Export CSV
             </Button>
           )}
           <Button

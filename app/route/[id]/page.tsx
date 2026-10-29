@@ -298,6 +298,15 @@ function formatShortTime(raw?: string | null): string | null {
   return trimmed;
 }
 
+function formatShortDate(raw?: string | null): string | null {
+  if (!raw) return null;
+  // Parse the calendar date locally so UTC conversion cannot shift the day.
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return raw;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 function summarizeReasonText(reason?: string): { primary: string; secondary?: string } {
   if (!reason) return { primary: "" };
   const cleaned = reason.trim();
@@ -443,6 +452,9 @@ const RoutePage = () => {
           fullJob?.time_window_start ||
           pickupDetails?.time_window_start,
       );
+      const scheduledDate = formatShortDate(
+        fullJob?.scheduled_date || currentOptimization?.scheduled_date,
+      );
 
       const fixedDriver =
         customFields.fixed_driver_name ||
@@ -464,10 +476,11 @@ const RoutePage = () => {
         clientName: String(clientName),
         address,
         scheduledTime,
+        scheduledDate,
         fixedDriver: fixedDriver ? String(fixedDriver) : undefined,
       };
     });
-  }, [jobs, unassignedJobs]);
+  }, [jobs, unassignedJobs, currentOptimization?.scheduled_date]);
 
   /** Group jobs by reason_code */
   const reasonGroups = useMemo(() => {
@@ -915,13 +928,13 @@ const RoutePage = () => {
                               {!job.hasCandidateName && (
                                 <span>Candidate name not set</span>
                               )}
-                              {job.scheduledTime && (
+                              {(job.scheduledTime || job.scheduledDate) && (
                                 <span
                                   className="inline-flex items-center gap-1 font-semibold text-slate-700 bg-slate-100/90 px-1.5 py-0.5 rounded leading-none"
-                                  title="Scheduled shift / pickup time"
+                                  title="Scheduled shift / pickup date and time"
                                 >
                                   <Clock size={10} className="text-slate-500" />
-                                  {job.scheduledTime}
+                                  {[job.scheduledTime, job.scheduledDate].filter(Boolean).join(" · ")}
                                 </span>
                               )}
                               {job.fixedDriver && (
