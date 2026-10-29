@@ -39,6 +39,15 @@ const Card = load("app/route/_components/JobDetailsCard.tsx", {
   "@/store/location-mapping.store": { useLocationMappingStore: () => ({ locationMappings: [] }) },
 }).default;
 
+test("pickup and dropoff addresses offer keyboard-accessible map actions", () => {
+  const html = renderToStaticMarkup(React.createElement(Card, {
+    job: { id: 42, template_type: "worker_shuttle", pick_up_address: "Station", drop_off_address: "Workplace" },
+    stopData: { job_id: 42, stop_type: "pickup" }, onClose() {}, onShowLocation() {},
+  }));
+  assert.match(html, /<button[^>]*type="button"[^>]*aria-label="Show pickup location on map"/);
+  assert.match(html, /<button[^>]*type="button"[^>]*aria-label="Show dropoff location on map"/);
+});
+
 test("optimization details show Round Trip and both actual estimates on either direction", () => {
   for (const [job_type, pickup, dropoff, date] of [
     ["one_way", "2026-09-29T20:30:00", "2026-09-29T20:50:00", "Tue, Sep 29"],
@@ -54,7 +63,9 @@ test("optimization details show Round Trip and both actual estimates on either d
     }));
     const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
     assert.match(text, /Pickup Type Round Trip/);
-    assert.match(text, job_type === "return_only" ? /Leg RETURN/ : /Leg GO/);
+    const expectedLeg = job_type === "return_only" ? "RETURN" : "GO";
+    assert.match(html, new RegExp(`<h3[^>]*>Journey<span[^>]*aria-label="Leg ${expectedLeg}"[^>]*>${expectedLeg}</span></h3>`));
+    assert.doesNotMatch(text, /Leg (GO|RETURN)/);
     assert.match(html, /class="[^"]*border-emerald-400[^"]*uppercase[^"]*">\s*Round Trip/);
     assert.ok(text.includes(`Estimated pickup time ${appUtils.formatTime12h(pickup)}`));
     assert.ok(text.includes(`Estimated dropoff time ${appUtils.formatTime12h(dropoff)}`));
@@ -81,7 +92,7 @@ test("pickup and dropoff selections resolve the same job pair across midnight", 
   }
 });
 
-test("the dropoff card highlights Dropoff and segregates passenger, journey, shift and assignment", () => {
+test("the dropoff card highlights Dropoff and groups passenger and assignment together", () => {
   const html = renderToStaticMarkup(React.createElement(Card, {
     job: { id: 42, template_type: "worker_shuttle", status: "assigned",
       candidate_name: "Passenger", candidate_phone: "+1 438 123 4567", candidate_id: "C-42",
@@ -94,7 +105,7 @@ test("the dropoff card highlights Dropoff and segregates passenger, journey, shi
   assert.match(text, /Estimated dropoff time 12:20 AM Wed, Sep 30/);
   assert.match(html, /aria-current="step"[\s\S]*?<h4[^>]*>[\s\S]*?Dropoff/);
   assert.doesNotMatch(text, /ETA|Client Phone|HIDDEN-CLIENT-PHONE|Trip Type|Trip Leg|Status/);
-  for (const section of ["Passenger", "Journey", "Shift &amp; schedule", "Assignment", "Notes"]) {
+  for (const section of ["Passenger &amp; assignment", "Journey", "Shift &amp; schedule", "Notes"]) {
     assert.ok(html.includes(`aria-label="${section}"`));
   }
   assert.ok(text.includes("553 Bd du Curé-Boivin, Boisbriand, Québec"));
@@ -183,6 +194,6 @@ test("a legacy combined booking displays the selected return leg on both stop ty
       stopData: { job_id: 42, stop_type, leg: "RETURN" }, leg: "COMBINED", onClose() {},
     })).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
     assert.match(text, /Pickup Type Round Trip/);
-    assert.match(text, /Leg RETURN/);
+    assert.match(text, /Journey RETURN/);
   }
 });

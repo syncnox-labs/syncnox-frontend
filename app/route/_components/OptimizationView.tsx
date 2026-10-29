@@ -37,13 +37,15 @@ import {
 import dayjs from "dayjs";
 
 import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
-import { CircleX, X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil } from "lucide-react";
+import { CircleX, X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil, Truck } from "lucide-react";
 import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
 import { buildMapSearchIndex } from "./mapSearch.utils";
 import { getRouteStopDisplay } from "./stopDisplay.utils";
 import TimelineView from "./TimelineView";
 import AssignedJobsTable from "./AssignedJobsTable";
+import VehicleAssignments from "./VehicleAssignments";
+import type { VehicleAssignment } from "./vehicleSchedule.utils";
 import OptimizationIssueBanner from "./OptimizationIssueBanner";
 import { snapshotMoveStops } from "./tripMove.utils";
 import type { StopMoveSelection } from "@/types/routes.type";
@@ -55,7 +57,7 @@ import type { WaitingSelection } from "./routeWaiting.utils";
 import AssignJobsModal from "./AssignJobsModal";
 import { useManualRoutingStore } from "@/store/manualRouting.store";
 import { getAssignedRouteJobs, getUnassignedRouteJobs } from "./assignedRouteJobs.utils";
-import { getJobMapLocation, getUnassignedJobMarker } from "./jobMapLocation.utils";
+import { getJobMapLocation, getUnassignedJobMarker, getJobJourneyMapPoint, type JourneyLocationKind } from "./jobMapLocation.utils";
 import { getAddedJobIds, getPendingDriverRoutes } from "./jobAddition.utils";
 import AddJobsModal from "@/app/plan/AddJobsModal";
 import JobForm from "@/components/Jobs/JobForm";
@@ -201,13 +203,14 @@ const OptimizationView = ({
   const { jobs, fetchJobsByDate, fetchJobsByIds, isLoading: isJobsLoading, error: jobsError } = useJobsStore();
   const { updateRoute } = useRouteStore();
   const { teams, initializeTeams, updateTeamAction } = useTeamStore();
-  const { vehicles, initializeVehicles } = useVehicleStore();
+  const { vehicles, initializeVehicles, isLoading: isVehiclesLoading, error: vehiclesError } = useVehicleStore();
 
   const [minimizedIssue, setMinimizedIssue] = useState<string | null>(null);
   const issueKey = `${route.id}:${error}`;
   const isIssueMinimized = Boolean(error && minimizedIssue === issueKey);
-  const [detailView, setDetailView] = useState<"timeline" | "table">("timeline");
+  const [detailView, setDetailView] = useState<"timeline" | "table" | "vehicles">("timeline");
   const [hasOpenedTable, setHasOpenedTable] = useState(false);
+  const [hasOpenedVehicles, setHasOpenedVehicles] = useState(false);
   const planJobIds = useMemo(() => [...new Set([
     ...(route.job_ids || []),
     ...(route.result?.routes || []).flatMap(trip => (trip.stops || []).map(stop => stop.job_id).filter((id): id is number => typeof id === "number")),
@@ -939,6 +942,10 @@ const OptimizationView = ({
     selectedDrawerJob?.isUnassigned ? getUnassignedJobMarker(selectedDrawerJob.job) : null,
   [selectedDrawerJob]);
 
+  const [journeyLocation, setJourneyLocation] = useState<{ stopData: unknown; marker: MarkerData } | null>(null);
+  const journeyMarker = selectedDrawerJob && journeyLocation && journeyLocation.stopData === selectedDrawerJob.stopData
+    ? journeyLocation.marker : null;
+
   // The temporary unassigned pin stays visible even while a route is focused.
   const markers = useMemo<MarkerData[]>(() => {
     const visible = focusedRouteIndex === null ? allMarkers : allMarkers.filter((m) => {
@@ -947,8 +954,9 @@ const OptimizationView = ({
       }
       return true;
     });
-    return unassignedJobMarker ? [...visible, unassignedJobMarker] : visible;
-  }, [allMarkers, focusedRouteIndex, unassignedJobMarker]);
+    const pointer = journeyMarker || unassignedJobMarker;
+    return pointer ? [...visible, pointer] : visible;
+  }, [allMarkers, focusedRouteIndex, unassignedJobMarker, journeyMarker]);
 
   // Derived from the full marker set so focusing a route doesn't yank the map
   // to a new default centre.
@@ -983,6 +991,27 @@ const OptimizationView = ({
       job, isUnassigned: true,
     });
   }, []);
+
+  const handleShowJobLocation = (kind: JourneyLocationKind) => {
+    if (!selectedDrawerJob) return;
+    const stops = selectedDrawerJob.routeIndex === undefined ? []
+      : route.result?.routes?.[selectedDrawerJob.routeIndex]?.stops || [];
+    const point = getJobJourneyMapPoint(selectedDrawerJob.job, kind, selectedDrawerJob.stopData, stops);
+    if (!point) {
+      message.info(`No map coordinates are available for this ${kind} location.`);
+      return;
+    }
+    if (mapViewState === "collapsed") handleToggleCollapse();
+    const id = `job-location-${selectedDrawerJob.job?.id ?? selectedDrawerJob.stopData?.job_id}-${kind}`;
+    setJourneyLocation({ stopData: selectedDrawerJob.stopData, marker: {
+      id, position: point.position, title: point.address || `${kind === "pickup" ? "Pickup" : "Dropoff"} location`,
+      description: point.address, iconLabel: kind === "pickup" ? "P" : "D",
+      stopType: kind, color: kind === "pickup" ? "#047857" : "#2563eb", zIndex: 1000001,
+    } });
+    setCenter(point.position);
+    setSelectedMarkerId(null);
+    setTimeout(() => setSelectedMarkerId(id), 0);
+  };
 
   useEffect(() => {
     if (!requestedJobDetailsId) return;
@@ -1029,6 +1058,18 @@ const OptimizationView = ({
     if (firstStop) {
       setCenter({ lat: firstStop.latitude, lng: firstStop.longitude });
     }
+  };
+
+  const handleViewVehicleTrip = (assignment: VehicleAssignment) => {
+    if (!route.result?.routes?.[assignment.routeIndex]) return;
+    setDriverSearch("");
+    setSelectedDrawerJob(null);
+    setDetailView("timeline");
+    handleFocusRoute(assignment.routeIndex);
+    if (mapViewState === "fullscreen") handleToggleFullscreen();
+    // Reveal the timeline before its existing selected-stop effect measures it.
+    setSelectedMarkerId(null);
+    requestAnimationFrame(() => setSelectedMarkerId(`${assignment.routeIndex}-${assignment.startStopIndex}`));
   };
 
   const handleStopClick = (
@@ -1104,7 +1145,7 @@ const OptimizationView = ({
     }
 
     const markerIdStr = String(markerId);
-    if (markerIdStr.startsWith("unassigned-job-")) return;
+    if (markerIdStr.startsWith("unassigned-job-") || markerIdStr.startsWith("job-location-")) return;
     if (markerIdStr.startsWith("depot-") || markerIdStr.startsWith("loc-")) {
       setSelectedDrawerJob(null);
       return;
@@ -2026,12 +2067,17 @@ const OptimizationView = ({
             className="justify-self-center shrink-0 whitespace-nowrap"
             value={detailView}
             onChange={({ target: { value } }) => {
-              setDetailView(value as "timeline" | "table");
+              setDetailView(value as "timeline" | "table" | "vehicles");
               if (value === "table") setHasOpenedTable(true);
+              if (value === "vehicles") {
+                setHasOpenedVehicles(true);
+                if (mapViewState === "fullscreen") handleToggleFullscreen();
+              }
             }}
           >
             <Radio.Button value="timeline" aria-label="Timeline"><BarsOutlined className="sm:mr-1.5" /><span className="hidden sm:inline">Timeline</span></Radio.Button>
-            <Radio.Button value="table" aria-label="Table"><TableOutlined className="sm:mr-1.5" /><span className="hidden sm:inline">Table</span></Radio.Button>
+            <Radio.Button value="table" aria-label="Jobs"><TableOutlined className="sm:mr-1.5" /><span className="hidden sm:inline">Jobs</span></Radio.Button>
+            <Radio.Button value="vehicles" aria-label="Vehicles"><Truck size={14} className="inline-block sm:mr-1.5" /><span className="hidden sm:inline">Vehicles</span></Radio.Button>
           </Radio.Group>
 
           {/* Right: Action buttons */}
@@ -2572,6 +2618,12 @@ const OptimizationView = ({
                     />
                   </div>
                 )}
+                {hasOpenedVehicles && (
+                  <div className="relative h-full min-h-0 overflow-hidden" hidden={detailView !== "vehicles"}>
+                    <VehicleAssignments routes={route.result?.routes || []} vehicles={vehicles}
+                      loading={isVehiclesLoading} error={vehiclesError} onViewTrip={handleViewVehicleTrip} />
+                  </div>
+                )}
               </div>
             </div>
           </Panel>
@@ -2592,6 +2644,7 @@ const OptimizationView = ({
             leg={selectedDrawerJob.leg}
             isUnassigned={selectedDrawerJob.isUnassigned}
             isFullscreen={mapViewState === "fullscreen"}
+            onShowLocation={handleShowJobLocation}
             onClose={() => {
               setSelectedDrawerJob(null);
               setSelectedMarkerId(null);

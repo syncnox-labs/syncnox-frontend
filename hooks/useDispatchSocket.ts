@@ -71,9 +71,19 @@ export function useDispatchSocket() {
               }
             } else if (data.event === "optimization_updated") {
               console.log("[WS Dispatch] Real-time optimization_updated received:", data);
-              const { currentOptimization, setOptimizationResult } = useOptimizationStore.getState();
-              if (currentOptimization?.id === data.optimization_request_id) {
+              const { currentOptimization, setOptimizationResult, fetchOptimization } = useOptimizationStore.getState();
+              const ownPlan = currentOptimization?.id === data.optimization_request_id;
+              const visibleRoutes = currentOptimization?.result?.routes || [];
+              const hasNeighbors = visibleRoutes.some(route => route.source_optimization_id != null);
+              const neighboringPlan = visibleRoutes.some(route => route.source_optimization_id === data.optimization_request_id);
+              if (ownPlan) {
                 setOptimizationResult(data.status, data.result, data.error_message);
+              }
+              // Reconcile only affected combined views, once per terminal
+              // event. Never apply another plan's result to the viewed plan.
+              if (currentOptimization && ["completed", "success", "failed"].includes(data.status)
+                && ((ownPlan && hasNeighbors) || neighboringPlan)) {
+                void fetchOptimization(currentOptimization.id).catch(() => {});
               }
             }
           } catch (e) {
