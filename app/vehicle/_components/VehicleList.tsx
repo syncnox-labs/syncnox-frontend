@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { Button, Spin, Modal, message } from "antd";
-import { Search, Truck, FileSpreadsheet, Plus, Trash2 } from "lucide-react";
+import { Button, Spin, Modal, Dropdown, message } from "antd";
+import { Search, Truck, FileSpreadsheet, Plus, Trash2, Download } from "lucide-react";
 import { Vehicle } from "@/types/vehicle.type";
 import { useVehicleStore } from "@/store/vehicle.store";
+import { exportVehicles } from "@/apis/vehicle.api";
+import { generateVehiclesCsv, triggerDownload } from "@/utils/exportCsv.utils";
 import AddVehicleModal from "./AddVehicleModal";
 import VehicleForm from "./VehicleForm";
 import VehicleCard from "./VehicleCard";
@@ -26,6 +28,7 @@ const VehicleList = () => {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   // Auto-select first vehicle
   useEffect(() => {
@@ -89,6 +92,33 @@ const VehicleList = () => {
     });
   };
 
+  const handleExport = async (selectedOnly: boolean = false) => {
+    try {
+      setIsExporting(true);
+      const targetIds = selectedOnly && checkedIds.length > 0 ? checkedIds : undefined;
+      const count = targetIds ? targetIds.length : vehicles.length;
+
+      try {
+        await exportVehicles(targetIds);
+      } catch (apiErr) {
+        // Fallback to client-side CSV generation if backend endpoint is unavailable
+        const vehiclesToExport = targetIds
+          ? vehicles.filter((v) => targetIds.includes(v.id))
+          : vehicles;
+        const csv = generateVehiclesCsv(vehiclesToExport);
+        triggerDownload(
+          targetIds ? `vehicles_selected_${targetIds.length}.csv` : "vehicles_export.csv",
+          csv
+        );
+      }
+      message.success(`Successfully exported ${count} vehicle(s) to CSV`);
+    } catch (err: any) {
+      message.error(err?.message || "Failed to export vehicles");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (isLoading && vehicles.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -116,6 +146,41 @@ const VehicleList = () => {
               id="vehicle-bulk-delete-btn"
             >
               Delete ({checkedIds.length})
+            </Button>
+          )}
+          {checkedIds.length > 0 ? (
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: "selected",
+                    label: `Export Selected (${checkedIds.length})`,
+                    onClick: () => handleExport(true),
+                  },
+                  {
+                    key: "all",
+                    label: `Export All (${vehicles.length})`,
+                    onClick: () => handleExport(false),
+                  },
+                ],
+              }}
+            >
+              <Button
+                icon={<Download size={15} />}
+                loading={isExporting}
+                id="vehicle-export-btn"
+              >
+                Export ({checkedIds.length})
+              </Button>
+            </Dropdown>
+          ) : (
+            <Button
+              icon={<Download size={15} />}
+              loading={isExporting}
+              onClick={() => handleExport(false)}
+              id="vehicle-export-btn"
+            >
+              Export CSV
             </Button>
           )}
           <Button

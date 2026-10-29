@@ -78,4 +78,24 @@ export const downloadTeamTemplate = async (): Promise<void> => {
   link.remove();
 };
 
+export const exportTeamMembers = async (ids?: number[]): Promise<void> => {
+  const params = ids && ids.length > 0 ? { ids: ids.join(",") } : undefined;
+  const response = await apiClient.get(`${url}/export`, {
+    params,
+    responseType: "blob",
+  });
+  const blob = new Blob([response.data], { type: "text/csv;charset=utf-8;" });
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.setAttribute(
+    "download",
+    ids && ids.length > 0 ? `drivers_selected_${ids.length}.csv` : "drivers_export.csv"
+  );
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(downloadUrl);
+};
+
 

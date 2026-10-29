@@ -61,3 +61,23 @@ export const downloadVehicleTemplate = async (): Promise<void> => {
   link.remove();
 };
 
+export const exportVehicles = async (ids?: number[]): Promise<void> => {
+  const params = ids && ids.length > 0 ? { ids: ids.join(",") } : undefined;
+  const response = await apiClient.get(`${url}/export`, {
+    params,
+    responseType: "blob",
+  });
+  const blob = new Blob([response.data], { type: "text/csv;charset=utf-8;" });
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.setAttribute(
+    "download",
+    ids && ids.length > 0 ? `vehicles_selected_${ids.length}.csv` : "vehicles_export.csv"
+  );
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(downloadUrl);
+};
+
