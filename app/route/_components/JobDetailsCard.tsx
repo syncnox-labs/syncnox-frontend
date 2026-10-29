@@ -48,6 +48,7 @@ interface JobDetailsCardProps {
   onRemoveJob?: () => void;
   onJobSaved?: (info: { requiresReOptimization: boolean, timeChanged: boolean, startTime?: string, endTime?: string, oldStartTime?: string, oldEndTime?: string }) => void | Promise<void>;
   onEditJob?: (job: Job) => void;
+  onShowLocation?: (kind: "pickup" | "dropoff") => void;
   isFullscreen?: boolean;
 }
 
@@ -108,9 +109,9 @@ const Field: React.FC<{
   </div>
 );
 
-const DetailSection = ({ title, children, compact = false }: { title: string; children: React.ReactNode; compact?: boolean }) => (
+const DetailSection = ({ title, badge, children, compact = false }: { title: string; badge?: React.ReactNode; children: React.ReactNode; compact?: boolean }) => (
   <section className={`${compact ? "space-y-2 pb-3" : "space-y-3 pb-4"} border-b border-gray-100 last:border-0 last:pb-0`} aria-label={title}>
-    <h3 className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{title}</h3>
+    <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">{title}{badge}</h3>
     {children}
   </section>
 );
@@ -138,6 +139,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   onRemoveJob,
   onJobSaved,
   onEditJob,
+  onShowLocation,
   isFullscreen = false,
 }) => {
   const { patchJobLocally, updateJobAction, jobs } = useJobsStore();
@@ -427,13 +429,15 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     }
   };
 
+  const legBadge = jobLeg ? (
+    <span aria-label={`Leg ${jobLeg}`} className="inline-flex border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[10px] font-extrabold text-slate-800">
+      {jobLeg}
+    </span>
+  ) : null;
+
   const legField = (
     <Field icon={<Navigation size={13} className="text-gray-400" />} label="Leg">
-      {jobLeg ? (
-        <span className="inline-flex border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[10px] font-extrabold text-slate-800">
-          {jobLeg}
-        </span>
-      ) : "-"}
+      {legBadge ?? "-"}
     </Field>
   );
 
@@ -477,7 +481,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     <div
       className={`fixed ${
         isFullscreen ? "top-3 right-3 z-50" : "top-16 right-3 z-50"
-      } w-[calc(100vw-24px)] sm:w-[400px] h-[calc(100dvh-100px)] max-h-[720px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col overflow-hidden text-xs transition-all animate-in fade-in slide-in-from-right-4 duration-200`}
+      } w-[calc(100vw-24px)] sm:w-[400px] h-[calc(100dvh-76px)] max-h-[744px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col overflow-hidden text-xs transition-all animate-in fade-in slide-in-from-right-4 duration-200`}
     >
       {/* Header */}
       <div className="p-3.5 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
@@ -958,8 +962,8 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
           </div>
         ) : isShuttle && !isDepotStop ? (
           <>
-            <DetailSection title="Passenger" compact>
-              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-2">
+            <DetailSection title="Passenger & assignment" compact>
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
                 <Field icon={<User size={13} className="text-gray-400" />} label="Candidate Name"
                   valueClassName="text-sm font-semibold text-gray-900 pl-4.5 break-words">
                   {dash(candidateName)}
@@ -968,10 +972,14 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                   valueClassName="text-xs text-gray-600 font-medium break-words pl-4.5">
                   {candidatePhone ? <a href={`tel:${candidatePhone}`} className="hover:underline">{candidatePhone}</a> : "-"}
                 </Field>
+                <Field icon={<Building2 size={13} className="text-gray-400" />} label="Client Name"
+                  valueClassName="text-xs text-gray-700 break-words pl-4.5">{dash(passengerName)}</Field>
+                <Field icon={<User size={13} className="text-gray-400" />} label="Driver"
+                  valueClassName="text-xs text-gray-700 break-words pl-4.5">{dash(driverName)}</Field>
               </div>
             </DetailSection>
 
-            <DetailSection title="Journey" compact>
+            <DetailSection title="Journey" badge={legBadge} compact>
               {([
                 { key: "pickup", title: "Pickup", selected: isPickupStop, address: pickUpAddress,
                   estimate: estimates.pickup, Icon: Navigation },
@@ -987,7 +995,14 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                   </div>
                   <Field icon={<MapPin size={13} className="text-gray-400" />} label={`${title} address`}
                     valueClassName="text-xs text-gray-700 leading-snug break-words pl-4.5">
-                    {dash(journeyAddress)}
+                    {onShowLocation && journeyAddress ? (
+                      <button type="button" onClick={() => onShowLocation(key)}
+                        aria-label={`Show ${title.toLowerCase()} location on map`}
+                        title={`Show ${title.toLowerCase()} on map`}
+                        className="text-left text-emerald-800 underline decoration-dotted underline-offset-2 hover:text-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 cursor-pointer">
+                        {journeyAddress}
+                      </button>
+                    ) : dash(journeyAddress)}
                   </Field>
                   <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px]">
                     <span className="flex items-center gap-1.5 font-bold text-gray-900">
@@ -1012,18 +1027,10 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                 </Field>
                 <Field icon={<Clock size={13} className="text-gray-400" />} label="Shift Start Time">{dash(startHour)}</Field>
                 <Field icon={<Clock size={13} className="text-gray-400" />} label="Shift End Time">{dash(endHour)}</Field>
-                {legField}
               </div>
             </DetailSection>
 
-            <DetailSection title="Assignment">
-              <div className="grid grid-cols-2 gap-3">
-                <Field icon={<User size={13} className="text-gray-400" />} label="Driver"
-                  valueClassName="text-xs text-gray-700 break-words pl-4.5">{dash(driverName)}</Field>
-                <Field icon={<Building2 size={13} className="text-gray-400" />} label="Client Name"
-                  valueClassName="text-xs text-gray-700 break-words pl-4.5">{dash(passengerName)}</Field>
-              </div>
-            </DetailSection>
+
             {notes !== "-" && <DetailSection title="Notes"><div className="text-xs leading-relaxed text-gray-700 whitespace-pre-wrap break-words">{notes}</div></DetailSection>}
           </>
         ) : (

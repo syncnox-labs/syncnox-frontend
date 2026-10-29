@@ -11,6 +11,22 @@ import {
 import { Route } from "@/types/routes.type";
 import { formatOptimizationError } from "@/utils/optimizationError.utils";
 
+// Live updates contain persisted own-plan routes; GET also adds neighboring
+// plans. Keep those visible until a fresh GET reconciles the combined view.
+function preserveNeighborRoutes(current: Route["result"], incoming: Route["result"]): Route["result"] {
+  const neighbors = current?.routes?.filter(route => route.source_optimization_id != null) || [];
+  if (!neighbors.length || !Array.isArray(incoming?.routes)
+    || incoming.routes.some(route => route.source_optimization_id != null)) return incoming;
+  const routes = [...incoming.routes, ...neighbors];
+  return {
+    ...incoming, routes,
+    total_distance_meters: routes.reduce((total, route) => total + (route.total_distance_meters || 0), 0),
+    total_duration_seconds: routes.reduce((total, route) => total + (route.total_duration_seconds || 0), 0),
+  };
+}
+
+let latestOptimizationFetch = 0;
+
 interface OptimizationStore {
   currentOptimization: Route | null;
   isOptimizing: boolean;
@@ -66,7 +82,7 @@ export const useOptimizationStore = create<OptimizationStore>((set, get) => ({
             ...currentOptimization,
             status: "completed",
             error_message: formattedError,
-            result: result || currentOptimization.result,
+            result: result ? preserveNeighborRoutes(currentOptimization.result, result) : currentOptimization.result,
           },
           isOptimizing: false,
           error: formattedError,
@@ -104,12 +120,13 @@ export const useOptimizationStore = create<OptimizationStore>((set, get) => ({
   },
 
   fetchOptimization: async (id: number) => {
+    const requestNumber = ++latestOptimizationFetch;
+    const snapshot = get().currentOptimization;
     try {
       // Keep the current issue visible until the refreshed state replaces it.
-      const snapshot = get().currentOptimization;
       const optimization = await getOptimizationRequest(id);
       // A WebSocket update or navigation may have overtaken this request.
-      if (get().currentOptimization !== snapshot) return optimization;
+      if (requestNumber !== latestOptimizationFetch || get().currentOptimization !== snapshot) return optimization;
       set({
         currentOptimization: optimization,
         isOptimizing: optimization.status === "processing" || optimization.status === "queued",
@@ -121,7 +138,9 @@ export const useOptimizationStore = create<OptimizationStore>((set, get) => ({
         error.response?.data?.detail ||
         error.message ||
         "Failed to fetch optimization";
-      set({ error: errorMessage });
+      if (requestNumber === latestOptimizationFetch && get().currentOptimization === snapshot) {
+        set({ error: errorMessage });
+      }
       throw new Error(errorMessage);
     }
   },

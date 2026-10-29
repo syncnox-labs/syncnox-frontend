@@ -141,7 +141,20 @@ export default function RouteWaitingModal({ plan, selection, onClose }: {
         </div>}
         {(!merging || seconds !== null) && <div className={styles.field}>
           <label htmlFor="route-waiting-minutes" className={styles.label}>Waiting time</label>
-          <InputNumber id="route-waiting-minutes" aria-label="Waiting time in minutes" className={styles.durationInput} suffix="min" min={0} max={2880} step={1} precision={2} disabled={Boolean(busy)} value={seconds === null ? null : seconds / 60} onChange={value => { setSeconds(value === null ? null : Math.round(value * 60)); setDurationEdited(true); }} />
+          <InputNumber
+            id="route-waiting-minutes"
+            aria-label="Waiting time in minutes"
+            className={`${styles.durationInput} !w-full`}
+            style={{ width: "100%" }}
+            suffix="min"
+            min={0}
+            max={2880}
+            step={1}
+            precision={2}
+            disabled={Boolean(busy)}
+            value={seconds === null ? null : seconds / 60}
+            onChange={value => { setSeconds(value === null ? null : Math.round(value * 60)); setDurationEdited(true); }}
+          />
           <span className={styles.hint}>Set to 0 to remove waiting and keep the travel time.</span>
         </div>}
         <fieldset className={styles.placement} disabled={Boolean(busy)}>

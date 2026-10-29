@@ -105,7 +105,31 @@
 
 .select,
 .durationInput {
-  width: 100%;
+  width: 100% !important;
+}
+
+.durationInput {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 38px !important;
+  font-size: 14px !important;
+}
+
+.durationInput :global(.ant-input-number-input-wrap) {
+  height: 100%;
+}
+
+.durationInput :global(.ant-input-number-input) {
+  height: 36px !important;
+  font-size: 14px !important;
+  padding: 0 11px !important;
+}
+
+.durationInput :global(.ant-input-number-suffix) {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  margin-inline-end: 8px;
 }
 
 .mergeNote {
@@ -161,40 +185,84 @@
 }
 
 .sideOptions {
-  display: inline-flex;
-  gap: 8px;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
   max-width: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 .sideOption:global(.ant-radio-button-wrapper) {
-  display: inline-flex;
-  align-items: center;
-  height: 38px;
-  border-inline-start-width: 1px;
-  padding: 0 14px;
-  text-align: center;
-  line-height: normal;
-  white-space: nowrap;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 38px !important;
+  line-height: 36px !important;
+  margin: 0 !important;
+  padding: 0 16px !important;
+  border: 1px solid #d9d9d9 !important;
+  border-radius: 6px !important;
+  vertical-align: middle !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
+  transition: all 0.2s ease;
 }
 
-.sideOption::before {
+.sideOption:global(.ant-radio-button-wrapper):first-child {
+  border-radius: 6px !important;
+  margin-inline-end: 0 !important;
+}
+
+.sideOption:global(.ant-radio-button-wrapper):last-child {
+  border-radius: 6px !important;
+}
+
+.sideOption::before,
+.sideOption:global(.ant-radio-button-wrapper)::before {
   display: none !important;
 }
 
+.sideOption:global(.ant-radio-button-wrapper:hover) {
+  color: #003220 !important;
+  border-color: #003220 !important;
+}
+
 .sideOption:global(.ant-radio-button-wrapper-checked):not(:global(.ant-radio-button-wrapper-disabled)) {
-  border-color: #003220;
-  background: #003220;
-  color: #ffffff;
+  border-color: #003220 !important;
+  background: #003220 !important;
+  color: #ffffff !important;
+}
+
+.sideOption:global(.ant-radio-button-wrapper-checked):not(:global(.ant-radio-button-wrapper-disabled)):hover {
+  border-color: #004d32 !important;
+  background: #004d32 !important;
+  color: #ffffff !important;
+}
+
+.sideOption:global(.ant-radio-button-wrapper) :global(.ant-radio-button-label) {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 100% !important;
+  line-height: 1 !important;
 }
 
 .optionTitle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  line-height: 20px;
+  line-height: 1;
+}
+
+.optionTitle svg {
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .hint,

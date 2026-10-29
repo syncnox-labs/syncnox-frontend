@@ -126,7 +126,7 @@ export const createCustomMarkerIcon = (
         <!-- Pickup Badge (Emerald) -->
         <circle cx="26" cy="4" r="7" fill="#ffffff" stroke="#10b981" stroke-width="1.5"/>
         <g transform="translate(19, -3) scale(0.6)" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
-          <path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>
+          <path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>
         </g>
       `;
     } else if (stopType === "dropoff" || stopType === "drop_off") {
@@ -134,7 +134,7 @@ export const createCustomMarkerIcon = (
         <!-- Dropoff Badge (Blue) -->
         <circle cx="26" cy="4" r="7" fill="#ffffff" stroke="#3b82f6" stroke-width="1.5"/>
         <g transform="translate(19, -3) scale(0.6)" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
-          <path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>
+          <path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>
         </g>
       `;
     }
