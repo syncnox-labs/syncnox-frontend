@@ -53,6 +53,7 @@ import type { TripMoveSelection } from "./tripMove.utils";
 import PendingOptimizationIndicator from "./PendingOptimizationIndicator";
 import ManualRoutingDrawer from "./ManualRoutingDrawer";
 import RouteWaitingModal from "./RouteWaitingModal";
+import RouteETAModal, { type ETASelection } from "./RouteETAModal";
 import type { WaitingSelection } from "./routeWaiting.utils";
 import AssignJobsModal from "./AssignJobsModal";
 import { useManualRoutingStore } from "@/store/manualRouting.store";
@@ -263,6 +264,7 @@ const OptimizationView = ({
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [waitingSelection, setWaitingSelection] = useState<WaitingSelection | null>(null);
+  const [etaSelection, setETASelection] = useState<ETASelection | null>(null);
   const [tempRouteName, setTempRouteName] = useState(route.route_name);
   const [isSavingName, setIsSavingName] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -799,6 +801,7 @@ const OptimizationView = ({
       setShareResult(result);
     } catch (err: any) {
       const detail =
+        (typeof err?.detail === "string" ? err.detail : undefined) ??
         err?.response?.data?.detail ??
         "Failed to share routes. Please try again.";
       message.error(detail);
@@ -2645,6 +2648,18 @@ const OptimizationView = ({
             isUnassigned={selectedDrawerJob.isUnassigned}
             isFullscreen={mapViewState === "fullscreen"}
             onShowLocation={handleShowJobLocation}
+            onEditETA={selectedDrawerJob.routeIndex !== undefined && !selectedDrawerJob.isUnassigned
+              && route.status !== "processing" && route.status !== "queued" ? (kind, arrival) => {
+                const routeIndex = selectedDrawerJob.routeIndex!;
+                const stops = route.result.routes[routeIndex]?.stops || [];
+                const index = stops.findIndex(stop => stop.arrival_time === arrival
+                  && (kind === "arrival"
+                    ? stop.job_id === selectedDrawerJob.stopData?.job_id && stop.stop_type === selectedDrawerJob.stopData?.stop_type
+                    : stop.job_id === (selectedDrawerJob.job?.id ?? selectedDrawerJob.stopData?.job_id)
+                      && (kind === "pickup" ? ["pickup", "pick_up", "job"].includes(stop.stop_type) : ["dropoff", "drop_off"].includes(stop.stop_type))));
+                if (index >= 0) setETASelection({ routeIndex, stopIndex: index });
+                else message.info("This stop changed. Select it again before editing its ETA.");
+              } : undefined}
             onClose={() => {
               setSelectedDrawerJob(null);
               setSelectedMarkerId(null);
@@ -2687,6 +2702,14 @@ const OptimizationView = ({
       {/* Route Export Preview Modal */}
       <ManualRoutingDrawer plan={route} />
       <RouteWaitingModal plan={route} selection={waitingSelection} onClose={() => setWaitingSelection(null)} />
+      <RouteETAModal plan={route} selection={etaSelection} onClose={() => setETASelection(null)}
+        onSaved={updated => setSelectedDrawerJob(previous => {
+          if (!previous || !etaSelection) return previous;
+          const index = route.result.routes[etaSelection.routeIndex]?.stops.findIndex(stop => stop.job_id === previous.stopData?.job_id
+            && stop.stop_type === previous.stopData?.stop_type && stop.arrival_time === previous.stopData?.arrival_time);
+          return index !== undefined && index >= 0 && updated.stops[index]
+            ? { ...previous, stopData: updated.stops[index] } : previous;
+        })} />
       <AssignJobsModal plan={route} />
       <RouteExportPreview
         open={showPreview}
