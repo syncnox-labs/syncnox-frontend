@@ -49,6 +49,7 @@ interface JobDetailsCardProps {
   onJobSaved?: (info: { requiresReOptimization: boolean, timeChanged: boolean, startTime?: string, endTime?: string, oldStartTime?: string, oldEndTime?: string }) => void | Promise<void>;
   onEditJob?: (job: Job) => void;
   onShowLocation?: (kind: "pickup" | "dropoff") => void;
+  onEditETA?: (kind: "pickup" | "dropoff" | "arrival", arrival: string) => void;
   isFullscreen?: boolean;
 }
 
@@ -117,14 +118,14 @@ const DetailSection = ({ title, badge, children, compact = false }: { title: str
 );
 
 const EstimatedTime = ({ value }: { value?: string }) => (
-  <div className="flex items-center gap-1.5 flex-wrap">
+  <span className="inline-flex items-center gap-1.5 flex-wrap">
     <span>{value ? formatTime12h(value) : "Not scheduled"}</span>
     {value && dayjs(value).isValid() && (
       <time dateTime={value} className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
         {dayjs(value).format("ddd, MMM D")}
       </time>
     )}
-  </div>
+  </span>
 );
 
 const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
@@ -140,6 +141,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   onJobSaved,
   onEditJob,
   onShowLocation,
+  onEditETA,
   isFullscreen = false,
 }) => {
   const { patchJobLocally, updateJobAction, jobs } = useJobsStore();
@@ -455,7 +457,8 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
       valueClassName="text-xs text-gray-900 font-bold pl-4.5"
     >
       <div className="flex items-center gap-1.5 flex-wrap">
-        <span>{arrivalTime}</span>
+        {onEditETA && stopData?.arrival_time ? <button type="button" className="inline-flex items-center gap-1 text-emerald-800 underline decoration-dotted underline-offset-2"
+          aria-label="Edit estimated arrival time" onClick={() => onEditETA("arrival", stopData.arrival_time)}>{arrivalTime}<EditOutlined /></button> : <span>{arrivalTime}</span>}
         {stopData?.arrival_time && dayjs(stopData.arrival_time).isValid() && (
           <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
             {dayjs(stopData.arrival_time).format("ddd, MMM D")}
@@ -1010,7 +1013,10 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                       Estimated {key} time
                     </span>
                     <div className="text-xs font-semibold text-gray-900 pl-4.5">
-                      <EstimatedTime value={estimate} />
+                      {onEditETA && estimate ? <button type="button" aria-label={`Edit estimated ${key} time`}
+                        onClick={() => onEditETA(key, estimate)} className="inline-flex items-center gap-1 text-emerald-800 underline decoration-dotted underline-offset-2">
+                        <EstimatedTime value={estimate} /><EditOutlined />
+                      </button> : <EstimatedTime value={estimate} />}
                     </div>
                   </div>
                 </div>

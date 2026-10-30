@@ -154,6 +154,25 @@ test("enabled working time renders bands, shift handles, and the full shift rang
   assert.equal((html.match(/data-test="route-stop"/g) || []).length, 2);
 });
 
+test("an ETA update changes marker positions, the time axis and driver duration", () => {
+  const renderRoute = candidate => {
+    renderedStops = [];
+    const html = renderToStaticMarkup(React.createElement(TimelineView, {
+      routes: [candidate], teams: [team], scheduledDate: "2026-09-29", showDriverWorkingTime: false,
+    }));
+    return { html, positions: renderedStops.map(stop => stop.left) };
+  };
+  const before = renderRoute({ ...route, total_duration_seconds: 3600 });
+  const after = renderRoute({ ...route, total_duration_seconds: 10800, stops: [route.stops[0],
+    { ...route.stops[1], arrival_time: "2026-09-29T11:00:00", time_edited: true }] });
+  assert.equal(after.positions[0], before.positions[0]);
+  assert.equal(after.positions[1] - before.positions[1], 120 * 4);
+  assert.doesNotMatch(before.html, /11:00 AM/);
+  assert.match(after.html, /11:00 AM/);
+  assert.match(after.html, /width:1080px/);
+  assert.match(after.html, /3h/);
+});
+
 test("working time is shown by default, including inferred shifts", () => {
   const html = render(undefined, { id: 8, name: "Driver Example" });
   assert.match(html, /border-emerald-200\/80 bg-emerald-50\/50/);
