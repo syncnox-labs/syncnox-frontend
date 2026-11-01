@@ -7,7 +7,7 @@ const source = fs.readFileSync(path.join(__dirname, "../app/route/_components/ro
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
 const utils = {};
 new Function("exports", compiled)(utils);
-const { waitingMergeCandidates, waitingMergeButtonLayout } = utils;
+const { sameWaitingRoute, waitingMergeCandidates, waitingMergeButtonLayout } = utils;
 
 test("long gaps use a small centered merge button instead of a full-gap overlay", () => {
   const layout = waitingMergeButtonLayout(100, 1500);
@@ -58,4 +58,40 @@ test("consecutive overnight routes retain their chronological order", () => {
   const next = trip("00:00", "01:00");
   next.stops.forEach(stop => { stop.arrival_time = stop.arrival_time.replace("2026-10-24", "2026-10-25"); });
   assert.deepEqual(waitingMergeCandidates([next, trip("22:00", "23:00")], 1), [0]);
+});
+
+test("waiting editor accepts live progress overlays and context-enriched route IDs", () => {
+  const saved = trip("06:00", "07:00");
+  saved.stops.splice(1, 0, { job_id: 42, stop_type: "pickup", arrival_time: "2026-10-24T06:30:00" });
+  const displayed = structuredClone(saved);
+  Object.assign(displayed.stops[1], { stop_id: 91, status: "pending", actual_arrival_time: null,
+    actual_departure_time: null, actual_timezone: "America/Toronto" });
+  assert.equal(sameWaitingRoute(displayed, { ...saved, route_id: 12 }), true);
+  displayed.stops[1].status = "completed";
+  displayed.stops[1].actual_departure_time = "2026-10-24T10:32:00+00:00";
+  assert.equal(sameWaitingRoute(displayed, saved), true);
+});
+
+test("waiting editor compares stop values independently of JSON key order", () => {
+  const saved = trip("06:00", "07:00");
+  const displayed = { ...saved, stops: saved.stops.map(stop => Object.fromEntries(Object.entries(stop).reverse())) };
+  assert.equal(sameWaitingRoute(displayed, saved), true);
+});
+
+test("waiting editor rejects real planning changes and missing routes", () => {
+  const saved = { ...trip("06:00", "07:00"), route_id: 12 };
+  saved.stops.splice(1, 0, { job_id: 42, stop_type: "pickup", arrival_time: "2026-10-24T06:30:00",
+    latitude: 45, longitude: -73, waiting_time_to_next_stop_seconds: 120 });
+  for (const patch of [{ job_id: 43 }, { stop_type: "dropoff" }, { arrival_time: "2026-10-24T06:31:00" },
+    { latitude: 46 }, { waiting_time_to_next_stop_seconds: 180 }]) {
+    const changed = structuredClone(saved);
+    Object.assign(changed.stops[1], patch);
+    assert.equal(sameWaitingRoute(saved, changed), false);
+  }
+  for (const patch of [{ route_id: 13 }, { team_member_id: 2 }, { vehicle_id: 2 }, { leg: "RETURN" },
+    { stops: saved.stops.toReversed() }, { stops: saved.stops.slice(1) }]) {
+    assert.equal(sameWaitingRoute(saved, { ...saved, ...patch }), false);
+  }
+  assert.equal(sameWaitingRoute(undefined, saved), false);
+  assert.equal(sameWaitingRoute(saved, undefined), false);
 });

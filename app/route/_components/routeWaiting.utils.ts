@@ -35,3 +35,20 @@ export function waitingMergeCandidates(routes: Routes[], sourceIndex: number): n
     return [neighbor.index];
   });
 }
+
+// The timeline overlays mobile progress; the editing context contains the saved plan.
+// Compare planned stop data, independent of response field ordering and live progress.
+const liveStopFields = new Set([
+  "stop_id", "status", "actual_arrival_time", "actual_departure_time", "actual_timezone",
+]);
+
+export function sameWaitingRoute(before: Routes | undefined, fresh: Routes | undefined): boolean {
+  if (!before || !fresh) return false;
+  if (before.route_id != null && fresh.route_id != null && before.route_id !== fresh.route_id) return false;
+  if (before.team_member_id !== fresh.team_member_id || before.vehicle_id !== fresh.vehicle_id
+      || before.leg !== fresh.leg) return false;
+  const plannedStops = (route: Routes) => route.stops.map(stop => Object.entries(stop)
+    .filter(([key, value]) => !liveStopFields.has(key) && value !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right)));
+  return JSON.stringify(plannedStops(before)) === JSON.stringify(plannedStops(fresh));
+}
