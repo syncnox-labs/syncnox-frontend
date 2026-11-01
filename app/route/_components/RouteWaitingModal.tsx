@@ -9,7 +9,7 @@ import { useOptimizationStore } from "@/store/optimization.store";
 import { useJobsStore } from "@/store/jobs.store";
 import { formatRouteClock, manualRouteLabel, manualRoutingError } from "./manualRouting.utils";
 import { getTimelineSegment } from "./timelineSegment.utils";
-import { waitingMergeCandidates, type WaitingSelection } from "./routeWaiting.utils";
+import { sameWaitingRoute, waitingMergeCandidates, type WaitingSelection } from "./routeWaiting.utils";
 import styles from "./RouteWaitingModal.module.css";
 
 export default function RouteWaitingModal({ plan, selection, onClose }: {
@@ -43,7 +43,7 @@ export default function RouteWaitingModal({ plan, selection, onClose }: {
       const indices = [selection.routeIndex, ...(selection.mergeRouteIndex === undefined ? [] : [selection.mergeRouteIndex])];
       for (const index of indices) {
         const before = snapshot.routes[index], fresh = data.result.routes[index];
-        if (!before || !fresh || before.route_id !== fresh.route_id || JSON.stringify(before.stops) !== JSON.stringify(fresh.stops)) {
+        if (!sameWaitingRoute(before, fresh)) {
           throw new Error("These trips changed. Close this editor and select the interval again.");
         }
       }
