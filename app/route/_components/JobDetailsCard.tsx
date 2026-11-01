@@ -33,7 +33,7 @@ import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
 import { useDepotStore } from "@/store/depots.store";
 import { useLocationMappingStore } from "@/store/location-mapping.store";
-import { getJobStopEstimates, type JobTimingStop } from "./jobStopEstimates.utils";
+import { getJobJourneyStops, getJobStopEstimates, getStopProgress, type JobTimingStop } from "./jobStopEstimates.utils";
 import { buildJobEditPatch } from "./jobEditPatch.utils";
 
 interface JobDetailsCardProps {
@@ -128,9 +128,29 @@ const EstimatedTime = ({ value }: { value?: string }) => (
   </span>
 );
 
+const ProgressBadge = ({ progress }: { progress: ReturnType<typeof getStopProgress> }) => (
+  <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+    progress.status === "completed" ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : progress.status === "failed" ? "border-rose-200 bg-rose-50 text-rose-800"
+        : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+    {progress.label}
+  </span>
+);
+
+const ActualTime = ({ value, timezone }: { value?: string; timezone?: string }) => {
+  if (!value || Number.isNaN(new Date(value).getTime())) return <span>Not recorded</span>;
+  const date = new Date(value);
+  return <time dateTime={value} className="inline-flex flex-wrap items-center gap-1.5">
+    <span>{new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hour12: true, timeZoneName: "short" }).format(date)}</span>
+    <span className="text-[10px] font-semibold text-slate-500">
+      {new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short", month: "short", day: "numeric" }).format(date)}
+    </span>
+  </time>;
+};
+
 const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   stopData,
-  job,
+  job: selectedJob,
   stopIndex = 0,
   driverName,
   leg,
@@ -145,6 +165,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   isFullscreen = false,
 }) => {
   const { patchJobLocally, updateJobAction, jobs } = useJobsStore();
+  const job = jobs.find(item => item.id === (selectedJob?.id ?? stopData?.job_id)) ?? selectedJob;
   const { modal } = App.useApp();
   const { fetchRoutes, selectedStatus } = useRouteStore();
   const { depots } = useDepotStore();
@@ -192,9 +213,10 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
 
   const stopType = String(stopData?.stop_type || "").toLowerCase();
   const isDepotStop = stopType.includes("depot");
-  const isPickupStop = stopType === "pickup";
+  const isPickupStop = stopType === "pickup" || stopType === "pick_up"
+    || (stopType === "job" && (job?.template_type === "worker_shuttle" || Boolean(job?.worker_shuttle_detail)));
   const isDropoffStop = stopType === "dropoff" || stopType === "drop_off";
-  const stopBadge = STOP_TYPE_BADGES[stopType];
+  const stopBadge = STOP_TYPE_BADGES[isPickupStop ? "pickup" : stopType];
 
   const isShuttle =
     job?.template_type === "worker_shuttle" ||
@@ -258,6 +280,11 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
 
   const jobLeg = getJobLeg(job, stopData?.leg || stopData?.extra?.leg, leg);
   const estimates = getJobStopEstimates(job, stopData, routeStops, isUnassigned);
+  const journeyStops = getJobJourneyStops(job, stopData, routeStops, isUnassigned);
+  const selectedProgress = getStopProgress(
+    (isDropoffStop ? journeyStops.dropoff : journeyStops.pickup) ?? stopData,
+    isDropoffStop ? "dropoff" : isPickupStop ? "pickup" : "arrival", isShuttle,
+  );
   const startHour = formatTime12h(shuttleValue("start_hour"));
   const endHour = formatTime12h(shuttleValue("end_hour"));
   const pickupType = getJobPickupType(job);
@@ -341,10 +368,10 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   const [editValues, setEditValues] = useState(getInitialEditValues);
 
   useEffect(() => {
-    if (job) {
+    if (job && !isEditing) {
       setEditValues(getInitialEditValues());
     }
-  }, [job]);
+  }, [job, isEditing]);
 
   const handleUpdateStatus = async (newStatus: string) => {
     if (!jobId) return;
@@ -985,15 +1012,15 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
             <DetailSection title="Journey" badge={legBadge} compact>
               {([
                 { key: "pickup", title: "Pickup", selected: isPickupStop, address: pickUpAddress,
-                  estimate: estimates.pickup, Icon: Navigation },
+                  estimate: estimates.pickup, progress: getStopProgress(journeyStops.pickup, "pickup"), Icon: Navigation },
                 { key: "dropoff", title: "Dropoff", selected: isDropoffStop, address: dropOffAddress,
-                  estimate: estimates.dropoff, Icon: Flag },
-              ] as const).map(({ key, title, selected, address: journeyAddress, estimate, Icon }) => (
+                  estimate: estimates.dropoff, progress: getStopProgress(journeyStops.dropoff, "dropoff"), Icon: Flag },
+              ] as const).map(({ key, title, selected, address: journeyAddress, estimate, progress, Icon }) => (
                 <div key={key} aria-current={selected ? "step" : undefined}
                   className={`space-y-1.5 rounded-md border p-2.5 ${selected
                     ? "border-emerald-200 bg-emerald-50/50" : "border-gray-200 bg-gray-50/40"}`}>
                   <div className="flex items-center justify-between">
-                    <h4 className="flex items-center gap-1.5 font-semibold text-gray-900"><Icon size={14} />{title}</h4>
+                    <h4 className="flex flex-wrap items-center gap-1.5 font-semibold text-gray-900"><Icon size={14} />{title}<ProgressBadge progress={progress} /></h4>
                     {selected && <span className="text-[10px] font-semibold text-emerald-800">Selected stop</span>}
                   </div>
                   <Field icon={<MapPin size={13} className="text-gray-400" />} label={`${title} address`}
@@ -1019,6 +1046,15 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                       </button> : <EstimatedTime value={estimate} />}
                     </div>
                   </div>
+                  {progress.status !== "pending" && (
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-gray-200/70 pt-1.5 text-[11px]">
+                      <span className="flex items-center gap-1.5 font-bold text-gray-900"><Clock size={13} className="text-gray-400" />
+                        {progress.status === "failed" ? key === "pickup" ? "No-show recorded at" : "Failure recorded at"
+                          : progress.status === "skipped" ? "Skipped at" : `Actual ${key} time`}
+                      </span>
+                      <span className="text-xs font-semibold text-gray-900"><ActualTime value={progress.actualTime} timezone={progress.timezone} /></span>
+                    </div>
+                  )}
                 </div>
               ))}
             </DetailSection>
@@ -1052,6 +1088,14 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
             </div>
 
             {/* Address and arrival time */}
+            {!isDepotStop && <DetailSection title="Progress">
+              <div className="grid grid-cols-2 gap-3">
+                <Field icon={<CheckCircleOutlined className="text-gray-400" />} label="Status"><ProgressBadge progress={selectedProgress} /></Field>
+                {selectedProgress.status !== "pending" && <Field icon={<Clock size={13} className="text-gray-400" />} label="Actual completion time">
+                  <ActualTime value={selectedProgress.actualTime} timezone={selectedProgress.timezone} />
+                </Field>}
+              </div>
+            </DetailSection>}
             <div className="grid grid-cols-2 gap-3 border-b border-gray-100 pb-3">
               <Field
                 icon={<MapPin size={13} className="text-gray-400 shrink-0" />}
@@ -1164,7 +1208,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                 size="small"
                 icon={<CheckCircleOutlined />}
                 loading={isUpdating}
-                disabled={status === "completed"}
+                disabled={selectedProgress.status !== "pending" || status === "completed"}
                 onClick={() => handleUpdateStatus("completed")}
                 className="w-1/2 bg-[#003220] hover:bg-[#002417] text-xs font-semibold h-8"
               >
@@ -1173,7 +1217,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
               <Button
                 type="default"
                 size="small"
-                disabled={status === "skipped" || status === "failed"}
+                disabled={selectedProgress.status !== "pending" || status === "skipped" || status === "failed"}
                 onClick={() => handleUpdateStatus("failed")}
                 className="w-1/2 text-xs font-semibold h-8"
               >

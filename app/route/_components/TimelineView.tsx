@@ -28,7 +28,6 @@ import {
   CopyOutlined,
   DeleteOutlined,
   UndoOutlined,
-  LockOutlined,
   MenuOutlined,
   LoadingOutlined,
   CheckOutlined,
@@ -3019,7 +3018,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             const rawJobId = s.job_id || s.id || s.job?.id;
                                             const numJobId = rawJobId ? Number(rawJobId) : null;
                                             const isPendingDelete = numJobId ? pendingDeletedJobIds.has(numJobId) : false;
-                                            const isFinished = s.status === "COMPLETED" || s.status === "FAILED" || s.status === "completed" || s.status === "failed";
+                                            const status = String(s.status ?? "").toUpperCase();
+                                            const isCompleted = status === "COMPLETED";
+                                            const isFailed = status === "FAILED";
+                                            const isFinished = isCompleted || isFailed;
 
                                             if (isPendingDelete) {
                                               return (
@@ -3057,7 +3059,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             return (
                                               <div
                                                 key={i}
-                                                className="cursor-pointer bg-slate-50 hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 border border-slate-200 hover:border-emerald-400 px-2 py-1.5 transition-all flex items-center justify-between text-xs font-semibold overflow-hidden group/jobrow"
+                                                className={`cursor-pointer text-slate-800 border px-2 py-1.5 transition-all flex items-center justify-between text-xs font-semibold overflow-hidden group/jobrow ${
+                                                  isCompleted
+                                                    ? "bg-green-50 border-green-200 hover:bg-green-100 hover:border-green-300"
+                                                    : isFailed
+                                                      ? "bg-red-50 border-red-200 hover:bg-red-100 hover:border-red-300"
+                                                      : "bg-slate-50 hover:bg-emerald-50 hover:text-emerald-900 border-slate-200 hover:border-emerald-400"
+                                                }`}
                                                 onClick={(e) => {
                                                   e.stopPropagation();
                                                   onStopClick?.(s, routeIndex, displayIndex);
@@ -3072,11 +3080,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                                   {Boolean(s.is_edited || s.time_edited) && (
                                                     <span className="ml-1 text-[10px] font-bold uppercase bg-purple-100 text-purple-800 px-1 py-0.2 border border-purple-300 shrink-0 flex items-center gap-0.5">
                                                       <ClockCircleOutlined className="text-[9px]" /> Edited
-                                                    </span>
-                                                  )}
-                                                  {isFinished && (
-                                                    <span className="ml-1 text-[10px] font-extrabold uppercase bg-slate-200 text-slate-700 px-1 py-0.2 border border-slate-300 shrink-0 flex items-center gap-1">
-                                                      <LockOutlined className="text-[10px]" /> Finished
                                                     </span>
                                                   )}
                                                 </div>
