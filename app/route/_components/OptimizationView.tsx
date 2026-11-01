@@ -29,15 +29,13 @@ import {
   EditOutlined,
   LoadingOutlined,
   ReloadOutlined,
-  BarsOutlined,
-  TableOutlined,
   MenuOutlined,
   PlusOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 
 import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
-import { CircleX, X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil, Truck } from "lucide-react";
+import { CircleX, X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil, Route as RouteIcon, FileText, Truck } from "lucide-react";
 import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
 import { buildMapSearchIndex } from "./mapSearch.utils";
@@ -2078,9 +2076,9 @@ const OptimizationView = ({
               }
             }}
           >
-            <Radio.Button value="timeline" aria-label="Timeline"><BarsOutlined className="sm:mr-1.5" /><span className="hidden sm:inline">Timeline</span></Radio.Button>
-            <Radio.Button value="table" aria-label="Jobs"><TableOutlined className="sm:mr-1.5" /><span className="hidden sm:inline">Jobs</span></Radio.Button>
-            <Radio.Button value="vehicles" aria-label="Vehicles"><Truck size={14} className="inline-block sm:mr-1.5" /><span className="hidden sm:inline">Vehicles</span></Radio.Button>
+            <Radio.Button value="timeline" aria-label="Timeline"><RouteIcon size={14} className="inline-block sm:mr-1.5" /><span className="hidden sm:inline"></span></Radio.Button>
+            <Radio.Button value="table" aria-label="Jobs"><FileText size={14} className="inline-block sm:mr-1.5" /><span className="hidden sm:inline"></span></Radio.Button>
+            <Radio.Button value="vehicles" aria-label="Vehicles"><Truck size={14} className="inline-block sm:mr-1.5" /><span className="hidden sm:inline"></span></Radio.Button>
           </Radio.Group>
 
           {/* Right: Action buttons */}
@@ -2110,6 +2108,7 @@ const OptimizationView = ({
             {route.status === "completed" && (
               <Tooltip title="Reoptimize All Routes">
                 <Button
+                  ghost={true}
                   aria-label="Reoptimize All Routes"
                   icon={<ReloadOutlined />}
                   onClick={handleReOptimizeAll}

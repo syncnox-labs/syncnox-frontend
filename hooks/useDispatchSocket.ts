@@ -54,21 +54,32 @@ export function useDispatchSocket() {
             if (data.event === "stop_updated") {
               console.log("[WS Dispatch] Real-time stop_updated received:", data);
 
-              // 1. Update job status locally in jobs store (updates plan / jobs views)
-              if (data.job_id && data.job_status && updateJobStatusLocally) {
-                updateJobStatusLocally(data.job_id, data.job_status as JobStatus);
+              // Batch actions can board/no-show several passengers at once.
+              const stops = data.stops?.length ? data.stops : [{ stop_id: data.stop_id,
+                job_id: data.job_id, status: data.new_status, job_status: data.job_status }];
+              for (const stop of stops) {
+                if (stop.job_id && stop.job_status && updateJobStatusLocally) {
+                  updateJobStatusLocally(stop.job_id, stop.job_status as JobStatus);
+                }
+                if (data.route_id && stop.stop_id && stop.status && updateStopStatusLocally) {
+                  updateStopStatusLocally(data.route_id, stop.stop_id, stop.status);
+                }
               }
 
-              // 2. Update stop status locally in routes store (updates timeline / tracking views)
-              if (data.route_id && data.stop_id && data.new_status && updateStopStatusLocally) {
-                updateStopStatusLocally(data.route_id, data.stop_id, data.new_status);
-              }
+              // Load authoritative per-stop timestamps, including skipped partner
+              // legs. Open detail cards read this current route after each event.
+              const { currentOptimization, fetchOptimization } = useOptimizationStore.getState();
+              if (currentOptimization) void fetchOptimization(currentOptimization.id).catch(() => {});
 
               // 3. Silently refetch routes to sync progress bars and server state
               if (fetchRoutes) {
                 const { selectedStatus } = useRouteStore.getState();
                 fetchRoutes(selectedStatus === "all" ? undefined : selectedStatus);
               }
+            } else if (data.event === "route_started") {
+              // Starting a leader's route can automatically board their self-job.
+              const { currentOptimization, fetchOptimization } = useOptimizationStore.getState();
+              if (currentOptimization) void fetchOptimization(currentOptimization.id).catch(() => {});
             } else if (data.event === "optimization_updated") {
               console.log("[WS Dispatch] Real-time optimization_updated received:", data);
               const { currentOptimization, setOptimizationResult, fetchOptimization } = useOptimizationStore.getState();

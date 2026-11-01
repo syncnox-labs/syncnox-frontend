@@ -39,6 +39,72 @@ const Card = load("app/route/_components/JobDetailsCard.tsx", {
   "@/store/location-mapping.store": { useLocationMappingStore: () => ({ locationMappings: [] }) },
 }).default;
 
+for (const [status, label, actualLabel] of [["completed", "Boarded", "Actual pickup time"], ["failed", "No show", "No-show recorded at"]]) {
+  test(`job details show ${label} and the recorded mobile time from the fresh route`, () => {
+    const selected = { job_id: 42, stop_type: "pickup", arrival_time: "2026-10-24T06:30:00", status: "pending" };
+    const routeStops = [{ ...selected, status, actual_arrival_time: "2026-10-24T10:32:00Z",
+      actual_departure_time: "2026-10-24T10:36:00Z", actual_timezone: "America/Toronto" },
+      { job_id: 42, stop_type: "dropoff", arrival_time: "2026-10-24T06:50:00", status: status === "failed" ? "skipped" : "pending",
+        actual_departure_time: status === "failed" ? "2026-10-24T10:36:00Z" : null, actual_timezone: "America/Toronto" }];
+    const html = renderToStaticMarkup(React.createElement(Card, { job: { id: 42, template_type: "worker_shuttle", status: "assigned" },
+      stopData: selected, routeStops, onClose() {} }));
+    const text = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+    assert.ok(text.includes(label));
+    assert.ok(text.includes(actualLabel));
+    assert.match(text, /06:36 AM EDT/);
+    assert.match(text, /Sat, Oct 24/);
+    assert.match(text, /Estimated pickup time.*06:30 AM/);
+    assert.doesNotMatch(text, /Actual dropoff time/);
+    assert.doesNotMatch(text, /06:32 AM/); // Geofence arrival must not be shown as boarding time.
+  });
+}
+
+test("completed dropoff shows its own actual time alongside the earlier boarding", () => {
+  const routeStops = [
+    { job_id: 42, stop_type: "pickup", status: "completed", actual_departure_time: "2026-10-24T10:36:00Z", actual_timezone: "UTC" },
+    { job_id: 42, stop_type: "dropoff", status: "completed", actual_departure_time: "2026-10-24T10:55:00Z", actual_timezone: "UTC" },
+  ];
+  const html = renderToStaticMarkup(React.createElement(Card, { job: { id: 42, template_type: "worker_shuttle", status: "completed" },
+    stopData: routeStops[1], routeStops, onClose() {} }));
+  const text = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+  assert.match(text, /Boarded/);
+  assert.match(text, /Dropped off/);
+  assert.match(text, /Actual pickup time.*10:36 AM/);
+  assert.match(text, /Actual dropoff time.*10:55 AM/);
+});
+
+test("undoing a mobile action clears the status and actual time in an already open card", () => {
+  const selected = { job_id: 42, stop_type: "pickup", status: "completed", actual_departure_time: "2026-10-24T10:36:00Z" };
+  const routeStops = [{ ...selected, status: "pending", actual_departure_time: null },
+    { job_id: 42, stop_type: "dropoff", status: "pending" }];
+  const html = renderToStaticMarkup(React.createElement(Card, { job: { id: 42, template_type: "worker_shuttle", status: "assigned" },
+    stopData: selected, routeStops, onClose() {} }));
+  assert.doesNotMatch(html, /Boarded|Actual pickup time|10:36/);
+  assert.match(html, /Pending/);
+});
+
+test("a geofence arrival is not substituted for a missing boarding action time", () => {
+  const stop = { job_id: 42, stop_type: "pickup", status: "completed", actual_arrival_time: "2026-10-24T10:32:00Z" };
+  const html = renderToStaticMarkup(React.createElement(Card, { job: { id: 42, template_type: "worker_shuttle", status: "in_transit" },
+    stopData: stop, routeStops: [stop], onClose() {} }));
+  assert.match(html, /Boarded/);
+  assert.match(html, /Not recorded/);
+  assert.doesNotMatch(html, /dateTime="2026-10-24T10:32/);
+});
+
+test("legacy round trips keep pending return progress separate from the completed GO leg", () => {
+  const routeStops = [
+    { job_id: 42, stop_type: "pickup", leg: "GO", status: "completed", actual_departure_time: "2026-10-24T10:36:00Z" },
+    { job_id: 42, stop_type: "dropoff", leg: "GO", status: "completed" },
+    { job_id: 42, stop_type: "pickup", leg: "RETURN", status: "pending" },
+    { job_id: 42, stop_type: "dropoff", leg: "RETURN", status: "pending" },
+  ];
+  const html = renderToStaticMarkup(React.createElement(Card, { job: { id: 42, template_type: "worker_shuttle", status: "completed" },
+    stopData: routeStops[2], routeStops, onClose() {} }));
+  assert.doesNotMatch(html, /Boarded|Dropped off|Actual pickup time|10:36/);
+  assert.match(html, /Pending/);
+});
+
 test("pickup and dropoff addresses offer keyboard-accessible map actions", () => {
   const html = renderToStaticMarkup(React.createElement(Card, {
     job: { id: 42, template_type: "worker_shuttle", pick_up_address: "Station", drop_off_address: "Workplace" },

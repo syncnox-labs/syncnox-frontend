@@ -8,6 +8,11 @@ type OptimizationStatus =
   | "success";
 
 export interface Stop {
+  stop_id?: number;
+  status?: "pending" | "completed" | "failed" | "skipped";
+  actual_arrival_time?: string | null;
+  actual_departure_time?: string | null;
+  actual_timezone?: string;
   id?: number | string;
   job_id: number | null;
   stop_type: string;

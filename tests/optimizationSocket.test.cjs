@@ -34,7 +34,7 @@ function store(fetch, reOptimizeRequest = async () => {}) {
   return state;
 }
 
-function dispatchSocket(state) {
+function dispatchSocket(state, jobState = {}, routeState = {}) {
   const hookSource = ts.transpileModule(fs.readFileSync(path.join(__dirname, "../hooks/useDispatchSocket.ts"), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText;
@@ -48,12 +48,13 @@ function dispatchSocket(state) {
     if (name === "react") return { useRef: value => ({ current: value }), useEffect: fn => { cleanup = fn(); } };
     if (name === "next-auth/react") return { useSession: () => ({ data: { user: { tenant_id: 4 }, access_token: "test" } }) };
     if (name === "@/store/optimization.store") return { useOptimizationStore: { getState: () => state } };
-    if (name === "@/store/jobs.store") return { useJobsStore: selector => selector({}) };
-    if (name === "@/store/routes.store") return { useRouteStore: selector => selector({}) };
+    if (name === "@/store/jobs.store") return { useJobsStore: selector => selector(jobState) };
+    if (name === "@/store/routes.store") return { useRouteStore: Object.assign(selector => selector(routeState), { getState: () => routeState }) };
     throw new Error(name);
   }, FakeWebSocket);
   hook.useDispatchSocket();
   return {
+    rawEvent: data => socket.onmessage({ data: JSON.stringify(data) }),
     event: (id, status, result, error_message) => socket.onmessage({ data: JSON.stringify({
       event: "optimization_updated", optimization_request_id: id, status, result, error_message,
     }) }),
@@ -70,6 +71,45 @@ function combinedPlan(status = "completed") {
       total_distance_meters: 200, total_duration_seconds: 20 },
   ], total_distance_meters: 300, total_duration_seconds: 30 } };
 }
+
+test("a mobile batch update refreshes actual stop times and all passenger statuses", async () => {
+  const plan = combinedPlan();
+  const refreshed = combinedPlan();
+  refreshed.result.routes[0].stops[0] = { job_id: 10, stop_type: "pickup", status: "completed",
+    actual_departure_time: "2026-10-24T10:36:00Z" };
+  const requests = [], jobs = [], stops = [], routeRefreshes = [];
+  const state = store(async id => { requests.push(id); return refreshed; });
+  state.currentOptimization = plan;
+  const socket = dispatchSocket(state, { updateJobStatusLocally: (...args) => jobs.push(args) }, {
+    selectedStatus: "all", fetchRoutes: (...args) => routeRefreshes.push(args),
+    updateStopStatusLocally: (...args) => stops.push(args),
+  });
+  socket.rawEvent({ event: "stop_updated", route_id: 100, stop_id: 4, job_id: 11, job_status: "failed", new_status: "failed", stops: [
+    { stop_id: 1, job_id: 10, job_status: "in_transit", status: "completed" },
+    { stop_id: 2, job_id: 10, job_status: "in_transit", status: "pending" },
+    { stop_id: 3, job_id: 11, job_status: "failed", status: "failed" },
+    { stop_id: 4, job_id: 11, job_status: "failed", status: "skipped" },
+  ] });
+  await Promise.resolve();
+  assert.deepEqual(requests, [1]);
+  assert.deepEqual(jobs, [[10, "in_transit"], [10, "in_transit"], [11, "failed"], [11, "failed"]]);
+  assert.deepEqual(stops.map(args => args[2]), ["completed", "pending", "failed", "skipped"]);
+  assert.equal(routeRefreshes.length, 1);
+  assert.equal(state.currentOptimization.result.routes[0].stops[0].actual_departure_time, "2026-10-24T10:36:00Z");
+  socket.cleanup();
+});
+
+test("automatic leader boarding on route start refreshes the open route details", async () => {
+  let fetches = 0;
+  const plan = combinedPlan();
+  const state = store(async () => { fetches++; return plan; });
+  state.currentOptimization = plan;
+  const socket = dispatchSocket(state);
+  socket.rawEvent({ event: "route_started", auto_checked_in_stop_ids: [1] });
+  await Promise.resolve();
+  assert.equal(fetches, 1);
+  socket.cleanup();
+});
 
 test("removing an own-plan job in a live update preserves neighboring drivers' routes and totals", () => {
   const state = store(async () => assert.fail("Applying a result must not fetch"));
