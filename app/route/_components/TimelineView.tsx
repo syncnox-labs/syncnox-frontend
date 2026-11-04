@@ -10,6 +10,7 @@ import { useIndexStore } from "@/store/index.store";
 import { getJobLeg } from "@/utils/jobPickupType.utils";
 import { routeNeedsOptimization } from "./jobAddition.utils";
 import { isDriverMatch } from "./optimizationView.utils";
+import DriverPresenceIndicator from "@/components/DriverPresenceIndicator";
 import {
   UserOutlined,
   UserAddOutlined,
@@ -2070,6 +2071,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                             <span className="font-semibold truncate text-gray-800 text-xs">
                               {driverGroup.driverName}
                             </span>
+                            <DriverPresenceIndicator driverId={Number.isFinite(routeTeamId) && routeTeamId > 0 ? routeTeamId : matchedTeam?.id} />
                             {reorderingRouteIndex === primaryIndex && (
                               <span className="inline-flex items-center gap-1 text-[9px] text-emerald-700 font-bold bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 shrink-0 animate-pulse">
                                 <LoadingOutlined className="text-[9px] animate-spin" /> Recalculating

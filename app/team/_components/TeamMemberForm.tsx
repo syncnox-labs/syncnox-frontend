@@ -265,6 +265,26 @@ const TeamMemberForm = ({
     }
   }, [initialData, form, depots]);
 
+  const handleStartLocationSameAsDepotChange = (checked: boolean) => {
+    latestAuxValuesRef.current.startLocationSameAsDepot = checked;
+    setStartLocationSameAsDepot(checked);
+    if (checked && depots.length > 0) {
+      latestAuxValuesRef.current.startDepotId = depots[0].id;
+      setStartDepotId(depots[0].id);
+    }
+    triggerAutoSave();
+  };
+
+  const handleEndLocationSameAsDepotChange = (checked: boolean) => {
+    latestAuxValuesRef.current.endLocationSameAsDepot = checked;
+    setEndLocationSameAsDepot(checked);
+    if (checked && depots.length > 0) {
+      latestAuxValuesRef.current.endDepotId = depots[0].id;
+      setEndDepotId(depots[0].id);
+    }
+    triggerAutoSave();
+  };
+
   const handleAddSkill = () => {
     if (skillInput.trim() && !skills.includes(skillInput.trim())) {
       const updatedSkills = [...skills, skillInput.trim()];
@@ -368,17 +388,9 @@ const TeamMemberForm = ({
                     }}
                     isDriver={isDriver}
                     startLocationSameAsDepot={startLocationSameAsDepot}
-                    onStartLocationSameAsDepotChange={(val) => {
-                      latestAuxValuesRef.current.startLocationSameAsDepot = val;
-                      setStartLocationSameAsDepot(val);
-                      triggerAutoSave();
-                    }}
+                    onStartLocationSameAsDepotChange={handleStartLocationSameAsDepotChange}
                     endLocationSameAsDepot={endLocationSameAsDepot}
-                    onEndLocationSameAsDepotChange={(val) => {
-                      latestAuxValuesRef.current.endLocationSameAsDepot = val;
-                      setEndLocationSameAsDepot(val);
-                      triggerAutoSave();
-                    }}
+                    onEndLocationSameAsDepotChange={handleEndLocationSameAsDepotChange}
                     startDepotId={startDepotId}
                     setStartDepotId={(val) => {
                       latestAuxValuesRef.current.startDepotId = val;
@@ -452,17 +464,9 @@ const TeamMemberForm = ({
                 }}
                 isDriver={isDriver}
                 startLocationSameAsDepot={startLocationSameAsDepot}
-                onStartLocationSameAsDepotChange={(val) => {
-                  latestAuxValuesRef.current.startLocationSameAsDepot = val;
-                  setStartLocationSameAsDepot(val);
-                  triggerAutoSave();
-                }}
+                onStartLocationSameAsDepotChange={handleStartLocationSameAsDepotChange}
                 endLocationSameAsDepot={endLocationSameAsDepot}
-                onEndLocationSameAsDepotChange={(val) => {
-                  latestAuxValuesRef.current.endLocationSameAsDepot = val;
-                  setEndLocationSameAsDepot(val);
-                  triggerAutoSave();
-                }}
+                onEndLocationSameAsDepotChange={handleEndLocationSameAsDepotChange}
                 startDepotId={startDepotId}
                 setStartDepotId={(val) => {
                   latestAuxValuesRef.current.startDepotId = val;

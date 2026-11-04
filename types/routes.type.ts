@@ -113,6 +113,8 @@ interface RouteResult {
 }
 
 export interface Route {
+  last_shared_at?: string | null;
+  sharing_status?: "pending_share" | "shared";
   id: number;
   tenant_id: number;
   route_name: string;

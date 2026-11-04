@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
-import { Job, JobStatus } from "@/types/job.type";
+import { Job, JobStatus, FetchJobsParams } from "@/types/job.type";
 import {
   fetchJobs,
   createJob,
@@ -10,6 +10,21 @@ import {
   deleteJobsBulk,
 } from "@/apis/jobs.api";
 import { findClosestDateToToday } from "@/utils/date.utils";
+import { refreshRoutesAfterDeletion } from "@/utils/refreshRoutesAfterDeletion.utils";
+
+// The table filters dates locally, so its cache must include every API page.
+async function fetchAllJobPages(
+  params: Pick<FetchJobsParams, "status" | "date"> = {},
+): Promise<Job[]> {
+  const jobs: Job[] = [];
+  const limit = 1000;
+  let page: Job[];
+  do {
+    page = await fetchJobs({ ...params, skip: jobs.length, limit });
+    jobs.push(...page);
+  } while (page.length === limit);
+  return jobs;
+}
 
 interface JobsState {
   // Data
@@ -85,12 +100,7 @@ export const useJobsStore = create<JobsState>()(
         });
 
         try {
-          const { selectedDate } = get();
-          const jobsData = await fetchJobs({
-            status,
-            date: selectedDate || undefined,
-            limit: 1000,
-          });
+          const jobsData = await fetchAllJobPages({ status });
 
           set((state) => {
             state.jobs = jobsData;
@@ -104,8 +114,8 @@ export const useJobsStore = create<JobsState>()(
               ),
             ].sort();
 
+            state.draftJobDates = dates;
             if (dates.length > 0) {
-              state.draftJobDates = dates;
               if (
                 !state.selectedDate ||
                 !dates.includes(state.selectedDate)
@@ -141,11 +151,7 @@ export const useJobsStore = create<JobsState>()(
         });
 
         try {
-          const { selectedDate } = get();
-          const jobsData = await fetchJobs({
-            date: selectedDate || undefined,
-            limit: 1000,
-          });
+          const jobsData = await fetchAllJobPages();
 
           set((state) => {
             state.jobs = jobsData;
@@ -161,8 +167,8 @@ export const useJobsStore = create<JobsState>()(
               ),
             ].sort();
 
+            state.draftJobDates = dates;
             if (dates.length > 0) {
-              state.draftJobDates = dates;
               if (
                 !state.selectedDate ||
                 !dates.includes(state.selectedDate)
@@ -274,7 +280,7 @@ export const useJobsStore = create<JobsState>()(
 
         try {
           await deleteJobApi(jobId);
-          await get().fetchAllJobs();
+          await Promise.all([get().fetchAllJobs(), refreshRoutesAfterDeletion()]);
         } catch (error) {
           set((state) => {
             state.isLoading = false;
@@ -294,7 +300,7 @@ export const useJobsStore = create<JobsState>()(
 
         try {
           await deleteJobsBulk(jobIds);
-          await get().fetchAllJobs();
+          await Promise.all([get().fetchAllJobs(), refreshRoutesAfterDeletion()]);
         } catch (error) {
           set((state) => {
             state.isLoading = false;
@@ -318,10 +324,7 @@ export const useJobsStore = create<JobsState>()(
         });
 
         try {
-          const jobsData = await fetchJobs({
-            date,
-            limit: 1000,
-          });
+          const jobsData = await fetchAllJobPages({ date });
 
           set((state) => {
             state.jobs = jobsData;

@@ -155,7 +155,7 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
     footer={<div className="flex justify-end gap-2">
       <Button onClick={close} disabled={busy === "save"}>Cancel</Button>
       <Button type="primary" icon={<Check size={15} />} onClick={assign} disabled={!preview || needsDriverChoice || !canCheck || Boolean(busy)} loading={Boolean(busy)}>
-        {busy === "save" ? "Assigning…" : busy ? "Checking availability…" : workingTimeExtensions.length ? "Extend time & assign" : preview?.updates_drivers ? "Assign & update driver" : jobIds.length === 1 ? "Assign job" : `Assign ${jobIds.length} jobs`}
+        {busy === "save" ? "Assigning…" : busy ? "Checking availability…" : workingTimeExtensions.length ? "Extend time & assign" : jobIds.length === 1 ? "Assign job" : `Assign ${jobIds.length} jobs`}
       </Button>
     </div>}>
     <div className="space-y-4 pt-3">

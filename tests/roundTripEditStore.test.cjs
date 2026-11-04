@@ -9,6 +9,7 @@ function storeWith(api) {
   const exports = {};
   new Function("exports", "require", code)(exports, name => {
     if (name === "@/apis/jobs.api") return api;
+    if (name === "@/utils/refreshRoutesAfterDeletion.utils") return { refreshRoutesAfterDeletion: async () => {} };
     if (name === "@/utils/date.utils") return { findClosestDateToToday: () => null };
     return require(name);
   });
@@ -48,13 +49,13 @@ test("a rejected booking edit keeps both local legs intact", async () => {
   assert.equal(store.getState().isLoading, false);
 });
 
-test("changing an unrouted booking's date refreshes the selected date filter", async () => {
+test("changing an unrouted booking's date refreshes all dates for local filtering", async () => {
   let request;
   const changed = [{ ...go, scheduled_date: "2026-10-14" }, { ...back, scheduled_date: "2026-10-14" }];
   const store = storeWith({ updateJob: async () => ({ ...changed[0], updated_jobs: changed }),
     fetchJobs: async params => { request = params; return []; } });
   store.setState({ jobs: [go, back], selectedDate: "2026-10-13" });
   await store.getState().updateJobAction({ id: 1, scheduled_date: "2026-10-14" });
-  assert.equal(request.date, "2026-10-13");
+  assert.equal(request.date, undefined);
   assert.deepEqual(store.getState().jobs, []);
 });

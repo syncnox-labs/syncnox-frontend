@@ -370,7 +370,18 @@ export const transferRouteStops = async (
 // Route Sharing (Driver Mobile App)
 // ─────────────────────────────────────────────
 
-export interface ShareRouteResponse {
+export interface RouteSharingState {
+  last_shared_at: string | null;
+  sharing_status: "pending_share" | "shared";
+}
+
+export const getRouteSharingStatus = async (id: number, signal?: AbortSignal): Promise<RouteSharingState> => {
+  const response = await apiClient.get(`optimization/${id}/sharing-status`, { signal });
+  return response.data;
+};
+
+export interface ShareRouteResponse extends RouteSharingState {
+  notifications_pending?: boolean;
   shared_count: number;
   driver_ids: number[];
   online_drivers: number[];

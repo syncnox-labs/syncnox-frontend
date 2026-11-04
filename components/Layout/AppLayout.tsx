@@ -14,6 +14,7 @@ import { useDepotStore } from "@/store/depots.store";
 import { useVehicleStore } from "@/store/vehicle.store";
 import { useAutoSyncTab } from "@/hooks/useAutoSyncTab";
 import { useDispatchSocket } from "@/hooks/useDispatchSocket";
+import { useDriverPresence } from "@/hooks/useDriverPresence";
 import { useOnboardingStore } from "@/store/onboarding.store";
 import { OnboardingModal } from "@/components/Onboarding";
 import { useLocationMappingStore } from "@/store/location-mapping.store";
@@ -25,6 +26,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
   useDispatchSocket();
   const { data: session, status: sessionStatus } = useSession();
+  useDriverPresence(session?.user?.tenant_id);
   const { setUser, clearUser } = useIndexStore();
   const { initializeTeams } = useTeamStore();
   const { initializeRoutes } = useRouteStore();

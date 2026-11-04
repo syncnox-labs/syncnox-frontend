@@ -145,8 +145,8 @@ test("vehicle view exposes searchable assignments, dates and accessible timeline
 
 test("Jobs rename and Vehicles tab preserve the existing mounted timeline and jobs table", () => {
   const source = fs.readFileSync(path.join(root, "OptimizationView.tsx"), "utf8");
-  assert.match(source, /value="table" aria-label="Jobs"/);
-  assert.match(source, /value="vehicles" aria-label="Vehicles"/);
+  assert.match(source, /value="table"\s+aria-label="Jobs"/);
+  assert.match(source, /value="vehicles"\s+aria-label="Vehicles"/);
   assert.match(source, /hidden=\{detailView !== "vehicles"\}/);
   assert.match(source, /onViewTrip=\{handleViewVehicleTrip\}/);
   const tree = ts.createSourceFile("view.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
