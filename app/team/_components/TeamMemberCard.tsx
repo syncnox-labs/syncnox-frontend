@@ -1,5 +1,6 @@
 import { Team } from "@/types/team.type";
 import { Checkbox } from "antd";
+import DriverPresenceIndicator from "@/components/DriverPresenceIndicator";
 
 interface TeamMemberCardProps {
   team: Team;
@@ -22,13 +23,6 @@ function capitalize(str: string): string {
   return str ? str.charAt(0).toUpperCase() + str.slice(1) : "";
 }
 
-const statusBgMap: Record<string, string> = {
-  active: "bg-green-500",
-  inactive: "bg-red-500",
-  online: "bg-blue-500",
-  offline: "bg-gray-400",
-};
-
 const TeamMemberCard = ({
   team,
   isSelected,
@@ -39,8 +33,6 @@ const TeamMemberCard = ({
   const sub = [capitalize(team.role_type), `ID ${team.id}`]
     .filter(Boolean)
     .join(" · ");
-
-  const statusDotClass = statusBgMap[team.status] || "bg-gray-400";
 
   return (
     <div
@@ -70,8 +62,9 @@ const TeamMemberCard = ({
         {getInitials(team.name)}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-semibold text-gray-900 truncate leading-snug">
-          {team.name}
+        <div className="text-xs font-semibold text-gray-900 leading-snug flex items-center gap-1.5">
+          <span className="truncate">{team.name}</span>
+          {team.role_type === "driver" && <DriverPresenceIndicator driverId={team.id} />}
         </div>
         {sub && (
           <div className="text-[11.5px] text-gray-500 truncate mt-0.5 leading-snug">
@@ -79,10 +72,6 @@ const TeamMemberCard = ({
           </div>
         )}
       </div>
-      <span
-        className={`w-2 h-2 shrink-0 ml-auto ${statusDotClass}`}
-        title={team.status}
-      />
     </div>
   );
 };

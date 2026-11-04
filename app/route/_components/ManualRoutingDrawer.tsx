@@ -209,16 +209,15 @@ export default function ManualRoutingDrawer({ plan }: { plan: Route }) {
     const trip = manualJobTrip(summary);
     return `${manualJobLabel(summary)} · #${job.id} · ${trip.direction} · ${trip.timeLabel}`;
   };
-  const chosenSharedRoute = Boolean(selectedRoute?.is_shared || (proposal.merge_route_index !== undefined && routes[proposal.merge_route_index]?.is_shared));
 
   return <Drawer open={opened} onClose={busy === "save" ? undefined : close} width="min(640px, 100vw)"
     title={<div className="flex items-center gap-2.5"><RouteIcon size={21} className="text-emerald-800" /><div><div className="text-base font-semibold">{titles[proposal.action]}</div><p className="m-0 text-xs font-normal text-slate-500 mt-0.5">{dayjs(plan.scheduled_date).format("ddd, D MMM YYYY")} · {plan.route_name}</p></div></div>}
     styles={{ body: { padding: 24 }, footer: { padding: "16px 24px" } }}
     footer={<div className="flex flex-wrap justify-between items-center gap-3">
-      <span className="text-xs text-slate-500">{busy === "preview" ? "Checking the route…" : busy === "save" ? "Saving…" : chosenSharedRoute ? "Saving updates the driver’s app." : "Times and availability are checked for you."}</span>
+      <span className="text-xs text-slate-500">{busy === "preview" ? "Checking the route…" : busy === "save" ? "Saving…" : "Save your edits, then share the plan when ready."}</span>
       <div className="flex items-center gap-2"><Button onClick={preview ? () => setPreview(null) : close} disabled={Boolean(busy)}>{preview ? "Back to editing" : "Cancel"}</Button>
         <Button type="primary" danger={proposal.action === "delete"} onClick={preview ? save : () => review(true)} loading={Boolean(busy)} disabled={preview ? Boolean(busy) : !canReview} icon={<Check size={15} />}>
-          {proposal.action === "edit" && chosenSharedRoute ? "Save & update driver" : actionLabels[proposal.action]}
+          {actionLabels[proposal.action]}
         </Button>
       </div>
     </div>}>
@@ -226,7 +225,7 @@ export default function ManualRoutingDrawer({ plan }: { plan: Route }) {
       {error && <Alert type="error" showIcon title="This change needs attention" description={<div><p className="whitespace-pre-line mb-2">{error}</p><div className="flex flex-wrap gap-2"><Button size="small" onClick={refresh} disabled={Boolean(busy)}>Refresh and keep my changes</Button><Button size="small" onClick={() => setAdvanced(["options"])} disabled={Boolean(busy)}>More options</Button></div></div>} />}
       {busy === "load" && <div role="status" className="py-5 text-center"><Spin /><p className="text-sm text-slate-500 mt-3">Loading route details…</p></div>}
       {preview ? <div className="space-y-4">
-        <Alert type="success" showIcon title={preview.explanation} description={preview.updates_drivers ? "Saving sends these changes to the driver." : "Ready to save."} />
+        <Alert type="success" showIcon title={preview.explanation} description="Save these changes, then share the plan when ready to update drivers." />
         {preview.deleted_route_indices.map(index => <div key={`deleted-${index}`} className="rounded-lg border border-rose-200 bg-rose-50 p-3"><strong>{manualRouteLabel(routes[index], index)}</strong><p className="text-sm text-rose-700 mt-1 mb-0">{proposal.action === "merge" ? "Jobs move to the merged route." : "Unfinished jobs return to Unassigned."}</p></div>)}
         {preview.affected_route_indices.filter(index => !preview.deleted_route_indices.includes(index)).map(index => {
           const route = preview.result.routes[index];

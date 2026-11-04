@@ -4,6 +4,7 @@ import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
 import { useOptimizationStore } from "@/store/optimization.store";
 import { JobStatus } from "@/types/job.type";
+import { useDriverPresenceStore } from "@/store/driverPresence.store";
 
 function getWsUrl(tenantId: string | number, token: string): string {
   const rawUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:8000";
@@ -43,6 +44,7 @@ export function useDispatchSocket() {
         ws.onopen = () => {
           console.log("[WS Dispatch] Connected to dispatch channel ✓");
           delay = 1000;
+          void useDriverPresenceStore.getState().refresh();
           // One reconciliation on connection/reconnection covers missed worker events.
           const { currentOptimization, fetchOptimization } = useOptimizationStore.getState();
           if (currentOptimization) void fetchOptimization(currentOptimization.id).catch(() => {});
@@ -51,7 +53,9 @@ export function useDispatchSocket() {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            if (data.event === "stop_updated") {
+            if (data.event === "driver_presence") {
+              useDriverPresenceStore.getState().update(data.tenant_id, data);
+            } else if (data.event === "stop_updated") {
               console.log("[WS Dispatch] Real-time stop_updated received:", data);
 
               // Batch actions can board/no-show several passengers at once.
@@ -105,6 +109,7 @@ export function useDispatchSocket() {
         ws.onclose = () => {
           console.log(`[WS Dispatch] Channel closed. Reconnecting in ${delay}ms...`);
           if (!isMounted) return;
+          useDriverPresenceStore.getState().markUnavailable();
           reconnectTimer.current = setTimeout(() => {
             delay = Math.min(delay * 2, 30000);
             connect();

@@ -103,6 +103,8 @@ import {
   moveRouteStops,
   transferRouteStops,
   shareOptimizationRoutes,
+  getRouteSharingStatus,
+  type RouteSharingState,
   type ShareRouteResponse,
 } from "@/apis/routes.api";
 
@@ -776,6 +778,8 @@ const OptimizationView = ({
         route_name: tempRouteName,
       });
       updateRoute(updatedRoute);
+      useOptimizationStore.setState(state => state.currentOptimization?.id === route.id
+        ? { currentOptimization: { ...state.currentOptimization, route_name: updatedRoute.route_name } } : {});
       message.success("Route name updated successfully");
       setIsEditingName(false);
     } catch (error) {
@@ -792,10 +796,31 @@ const OptimizationView = ({
     }
   };
 
+  const [sharingState, setSharingState] = useState<RouteSharingState | null>(null);
+  const [checkingShareStatus, setCheckingShareStatus] = useState(true);
+  const [shareStatusError, setShareStatusError] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    setCheckingShareStatus(true);
+    setShareStatusError(false);
+    getRouteSharingStatus(route.id, controller.signal).then(state => {
+      if (!controller.signal.aborted) setSharingState(state);
+    }).catch(() => {
+      if (!controller.signal.aborted) setShareStatusError(true);
+    }).finally(() => {
+      if (!controller.signal.aborted) setCheckingShareStatus(false);
+    });
+    return () => controller.abort();
+  }, [route.id, route.result, route.route_name, shareResult?.last_shared_at]);
+
+  const shareInFlight = useRef(false);
   const handleShareToApp = async () => {
+    if (shareInFlight.current) return;
+    shareInFlight.current = true;
     setIsSharing(true);
     try {
       const result = await shareOptimizationRoutes(route.id);
+      setSharingState({ last_shared_at: result.last_shared_at, sharing_status: result.sharing_status });
       setShareResult(result);
     } catch (err: any) {
       const detail =
@@ -804,6 +829,7 @@ const OptimizationView = ({
         "Failed to share routes. Please try again.";
       message.error(detail);
     } finally {
+      shareInFlight.current = false;
       setIsSharing(false);
     }
   };
@@ -1975,11 +2001,11 @@ const OptimizationView = ({
         </div>
       )}
 
-      {/* Header - matching NavBar height */}
-      <nav className="bg-white border-b border-gray-200 px-3 shrink-0">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-3 h-14 py-2 relative">
+      {/* Route header */}
+      <nav className="bg-white border-b border-gray-200 px-3 shrink-0 min-h-14 py-2 grid grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2">
+        <div className="contents">
           {/* Left: Route details */}
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="order-1 flex items-center gap-3 min-w-0">
             <Icon
               component={ArrowLeftOutlined}
               style={{ color: "#003220" }}
@@ -2001,19 +2027,21 @@ const OptimizationView = ({
                   className="w-full max-w-56 text-sm font-semibold rounded-none"
                 />
               ) : (
-                <div
-                  className="flex items-center gap-2 cursor-pointer group"
-                  onClick={handleNameClick}
-                  title="Click to edit route name"
-                >
-                  <Title
-                    level={5}
-                    className="!m-0 group-hover:text-primary transition-colors truncate font-bold text-gray-900 leading-tight"
-                    style={{ margin: 0 }}
+                <div className="flex items-center gap-2 min-w-0">
+                  <div
+                    className="flex items-center gap-2 cursor-pointer group min-w-0"
+                    onClick={handleNameClick}
+                    title="Click to edit route name"
                   >
-                    {route.route_name}
-                  </Title>
-                  <EditOutlined className="text-gray-400 group-hover:text-primary transition-colors text-xs shrink-0" />
+                    <Title
+                      level={5}
+                      className="!m-0 group-hover:text-primary transition-colors truncate font-bold text-gray-900 leading-tight"
+                      style={{ margin: 0 }}
+                    >
+                      {route.route_name}
+                    </Title>
+                    <EditOutlined className="text-gray-400 group-hover:text-primary transition-colors text-xs shrink-0" />
+                  </div>
                 </div>
               )}
 
@@ -2060,100 +2088,228 @@ const OptimizationView = ({
             </div>
           </div>
 
-          {/* Center: View switch */}
-          <Radio.Group
-            aria-label="Route view"
-            size="small"
-            buttonStyle="solid"
-            className="justify-self-center shrink-0 whitespace-nowrap"
-            value={detailView}
-            onChange={({ target: { value } }) => {
-              setDetailView(value as "timeline" | "table" | "vehicles");
-              if (value === "table") setHasOpenedTable(true);
-              if (value === "vehicles") {
-                setHasOpenedVehicles(true);
-                if (mapViewState === "fullscreen") handleToggleFullscreen();
-              }
-            }}
-          >
-            <Radio.Button value="timeline" aria-label="Timeline"><RouteIcon size={14} className="inline-block sm:mr-1.5" /><span className="hidden sm:inline"></span></Radio.Button>
-            <Radio.Button value="table" aria-label="Jobs"><FileText size={14} className="inline-block sm:mr-1.5" /><span className="hidden sm:inline"></span></Radio.Button>
-            <Radio.Button value="vehicles" aria-label="Vehicles"><Truck size={14} className="inline-block sm:mr-1.5" /><span className="hidden sm:inline"></span></Radio.Button>
-          </Radio.Group>
-
-          {/* Right: Action buttons */}
-          <div className="flex flex-nowrap items-center justify-end gap-2 min-w-0 whitespace-nowrap">
-            {/* Undo Button */}
-            {undoStep && (
-              <Button
-                onClick={handleUndo}
-                aria-label={`Undo ${undoStep.label}`}
-                title={`Undo ${undoStep.label}`}
-                className="border-slate-300 text-slate-700 bg-white font-semibold flex shrink-0 items-center gap-2"
-                loading={isUndoing}
-                disabled={isUndoing || isRemovingJob || (route.status !== "completed" && route.status !== "failed")}
-                icon={
-                  <Icon component={() => (
-                    <svg width="1em" height="1em" fill="currentColor" viewBox="0 0 1024 1024">
-                      <path d="M793 242H366v-74c0-6.7-7.7-10.4-12.9-6.3l-142 112a8 8 0 0 0 0 12.6l142 112c5.2 4.1 12.9.4 12.9-6.3v-74h415v470H175c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h618c35.3 0 64-28.7 64-64V306c0-35.3-28.7-64-64-64z"/>
-                    </svg>
-                  )} />
-                }
-              >
-                <span className="hidden max-w-56 truncate xl:inline-block">Undo {undoStep.label}</span>
-              </Button>
-            )}
-
-            {/* Reoptimize All Routes button — highlighted when job edits are pending */}
-            {route.status === "completed" && (
-              <Tooltip title="Reoptimize All Routes">
+          {/* Right: Sharing state and actions */}
+          <div className="contents xl:order-3 xl:flex xl:items-center xl:justify-end xl:gap-3 xl:min-w-0">
+            <div className="order-2 xl:order-none flex flex-col items-end justify-self-end gap-0.5 shrink-0 text-[11px] whitespace-nowrap" aria-live="polite">
+              {checkingShareStatus ? (
+                <span className="text-slate-500">Checking share status…</span>
+              ) : shareStatusError ? (
+                <span className="text-slate-500">Share status unavailable</span>
+              ) : (
+                <span
+                  className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold ${
+                    sharingState?.sharing_status === "shared"
+                      ? "bg-emerald-50 text-emerald-800"
+                      : "bg-amber-50 text-amber-800"
+                  }`}
+                >
+                  <span
+                    className={`size-1.5 rounded-full ${
+                      sharingState?.sharing_status === "shared"
+                        ? "bg-emerald-600"
+                        : "bg-amber-500"
+                    }`}
+                  />
+                  {sharingState?.sharing_status === "shared" ? "Shared" : "Pending share"}
+                </span>
+              )}
+              {(sharingState?.last_shared_at || route.last_shared_at) ? (
+                <time
+                  className="text-slate-500"
+                  dateTime={sharingState?.last_shared_at || route.last_shared_at || undefined}
+                  title={dayjs(sharingState?.last_shared_at || route.last_shared_at).format("D MMM YYYY, h:mm:ss A Z")}
+                >
+                  Last shared {dayjs(sharingState?.last_shared_at || route.last_shared_at).format("D MMM, h:mm A")}
+                </time>
+              ) : !checkingShareStatus && !shareStatusError && (
+                <span className="text-slate-500">Not shared yet</span>
+              )}
+            </div>
+            <div className="order-4 xl:order-none flex flex-nowrap items-center justify-end gap-1 sm:gap-2 shrink-0 whitespace-nowrap">
+              {/* Undo Button */}
+              {undoStep && (
                 <Button
-                  ghost={true}
-                  aria-label="Reoptimize All Routes"
-                  icon={<ReloadOutlined />}
-                  onClick={handleReOptimizeAll}
-                  className={hasPendingOptimization
-                    ? "border-amber-400 text-amber-700 bg-amber-50 font-semibold"
-                    : ""}
-                />
+                  onClick={handleUndo}
+                  aria-label={`Undo ${undoStep.label}`}
+                  title={`Undo`}
+                  className="border-slate-300 text-slate-700 bg-white font-semibold flex shrink-0 items-center gap-2"
+                  loading={isUndoing}
+                  disabled={isUndoing || isRemovingJob || (route.status !== "completed" && route.status !== "failed")}
+                  icon={
+                    <Icon component={() => (
+                      <svg width="1em" height="1em" fill="currentColor" viewBox="0 0 1024 1024">
+                        <path d="M793 242H366v-74c0-6.7-7.7-10.4-12.9-6.3l-142 112a8 8 0 0 0 0 12.6l142 112c5.2 4.1 12.9.4 12.9-6.3v-74h415v470H175c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h618c35.3 0 64-28.7 64-64V306c0-35.3-28.7-64-64-64z"/>
+                      </svg>
+                    )} />
+                  }
+                >
+                  <span>Undo</span>
+                </Button>
+              )}
+
+              {/* Reoptimize All Routes button — highlighted when job edits are pending */}
+              {route.status === "completed" && (
+                <Tooltip title="Reoptimize All Routes">
+                  <Button
+                    ghost={true}
+                    aria-label="Reoptimize All Routes"
+                    icon={<ReloadOutlined />}
+                    onClick={handleReOptimizeAll}
+                    className={hasPendingOptimization
+                      ? "border-amber-400 text-amber-700 bg-amber-50 font-semibold"
+                      : ""}
+                  />
+                </Tooltip>
+              )}
+              <Tooltip title="Send the saved plan to drivers. Optimization is optional; their current version stays unchanged until you share.">
+                <Button type="primary" aria-label="Share saved route to drivers" icon={<ShareAltOutlined />} loading={isSharing}
+                  disabled={isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued"}
+                  onClick={handleShareToApp} className="shrink-0">
+                  <span className="hidden 2xl:inline">{sharingState?.last_shared_at ? sharingState.sharing_status === "shared" ? "Share again" : "Share changes" : "Share to drivers"}</span>
+                </Button>
               </Tooltip>
-            )}
-            <Dropdown
-              trigger={["click"]}
-              placement="bottomRight"
-              menu={{ items: [
-                {
-                  key: "create-route",
-                  icon: <PlusOutlined />,
-                  label: "Create route",
-                  disabled: isOptimizing,
-                  onClick: () => useManualRoutingStore.getState().open({ planId: route.id, action: "create" }),
-                },
-                {
-                  key: "edit-routes",
-                  icon: <EditOutlined />,
-                  label: "Edit routes",
-                  disabled: !route.result?.routes?.length || isOptimizing,
-                  onClick: () => useManualRoutingStore.getState().open({ planId: route.id, action: "edit", routeIndex: focusedRouteIndex ?? 0 }),
-                },
-                { type: "divider" },
-                {
-                  key: "export",
-                  icon: <ExportOutlined />,
-                  label: "Export",
-                  onClick: handleExportRoutes,
-                },
-                {
-                  key: "share",
-                  icon: isSharing ? <LoadingOutlined /> : <ShareAltOutlined />,
-                  label: isSharing ? "Sharing…" : "Share to App",
-                  disabled: isSharing,
-                  onClick: handleShareToApp,
-                },
-              ] }}
+              <Dropdown
+                trigger={["click"]}
+                placement="bottomRight"
+                menu={{ items: [
+                  {
+                    key: "create-route",
+                    icon: <PlusOutlined />,
+                    label: "Create route",
+                    disabled: isOptimizing,
+                    onClick: () => useManualRoutingStore.getState().open({ planId: route.id, action: "create" }),
+                  },
+                  {
+                    key: "edit-routes",
+                    icon: <EditOutlined />,
+                    label: "Edit routes",
+                    disabled: !route.result?.routes?.length || isOptimizing,
+                    onClick: () => useManualRoutingStore.getState().open({ planId: route.id, action: "edit", routeIndex: focusedRouteIndex ?? 0 }),
+                  },
+                  { type: "divider" },
+                  {
+                    key: "export",
+                    icon: <ExportOutlined />,
+                    label: "Export",
+                    onClick: handleExportRoutes,
+                  },
+                  {
+                    key: "share",
+                    icon: isSharing ? <LoadingOutlined /> : <ShareAltOutlined />,
+                    label: isSharing ? "Sharing…" : "Share to App",
+                    disabled: isSharing || isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued",
+                    onClick: handleShareToApp,
+                  },
+                ] }}
+              >
+                <Button icon={<MenuOutlined />} aria-label="Route actions" aria-haspopup="menu" aria-busy={isSharing} title="Route actions" className="shrink-0" />
+              </Dropdown>
+            </div>
+          </div>
+        </div>
+
+        {/* Center the view switch on desktop and use a compact second row on smaller screens. */}
+        <div className="order-3 xl:order-2 flex items-center justify-start xl:justify-center min-w-0">
+          <div className="pointer-events-auto flex items-center">
+            <Radio.Group
+              aria-label="Route view"
+              buttonStyle="solid"
+              className="view-switch-radio whitespace-nowrap inline-flex items-center"
+              value={detailView}
+              onChange={({ target: { value } }) => {
+                setDetailView(value as "timeline" | "table" | "vehicles");
+                if (value === "table") setHasOpenedTable(true);
+                if (value === "vehicles") {
+                  setHasOpenedVehicles(true);
+                  if (mapViewState === "fullscreen") handleToggleFullscreen();
+                }
+              }}
             >
-              <Button icon={<MenuOutlined />} aria-label="Route actions" aria-haspopup="menu" aria-busy={isSharing} title="Route actions" className="shrink-0" />
-            </Dropdown>
+              <Radio.Button
+                value="timeline"
+                aria-label="Timeline"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: 32,
+                  width: 40,
+                  padding: 0,
+                  lineHeight: 1,
+                }}
+              >
+                <Tooltip title="Timeline" placement="bottom" mouseEnterDelay={0.15}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "100%",
+                      height: "100%",
+                      lineHeight: 1,
+                    }}
+                  >
+                    <RouteIcon size={16} strokeWidth={2} className="block shrink-0" />
+                  </span>
+                </Tooltip>
+              </Radio.Button>
+              <Radio.Button
+                value="table"
+                aria-label="Jobs"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: 32,
+                  width: 40,
+                  padding: 0,
+                  lineHeight: 1,
+                }}
+              >
+                <Tooltip title="Jobs" placement="bottom" mouseEnterDelay={0.15}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "100%",
+                      height: "100%",
+                      lineHeight: 1,
+                    }}
+                  >
+                    <FileText size={16} strokeWidth={2} className="block shrink-0" />
+                  </span>
+                </Tooltip>
+              </Radio.Button>
+              <Radio.Button
+                value="vehicles"
+                aria-label="Vehicles"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: 32,
+                  width: 40,
+                  padding: 0,
+                  lineHeight: 1,
+                }}
+              >
+                <Tooltip title="Vehicles" placement="bottom" mouseEnterDelay={0.15}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "100%",
+                      height: "100%",
+                      lineHeight: 1,
+                    }}
+                  >
+                    <Truck size={16} strokeWidth={2} className="block shrink-0" />
+                  </span>
+                </Tooltip>
+              </Radio.Button>
+            </Radio.Group>
           </div>
         </div>
       </nav>
@@ -2932,9 +3088,12 @@ const OptimizationView = ({
       >
         {shareResult && (
           <div className="space-y-4 py-2">
+            {shareResult.notifications_pending && <Alert type="warning" showIcon
+              title="Shared successfully; some live notifications are delayed"
+              description="The shared version is saved. Drivers will receive it when their app refreshes or reconnects. You can share again to retry live delivery." />}
             <div className="flex items-center justify-between p-4 rounded-lg bg-green-50 border border-green-100">
               <span className="text-green-700 font-medium">
-                Drivers notified
+                Drivers included
               </span>
               <span className="text-2xl font-bold text-green-600">
                 {shareResult.shared_count}
@@ -2947,7 +3106,7 @@ const OptimizationView = ({
                   {shareResult.online_drivers.length}
                 </div>
                 <div className="text-xs text-blue-500 mt-1">
-                  Online — received instantly
+                  Live delivery confirmed
                 </div>
               </div>
               <div className="p-3 rounded-lg bg-gray-50 border border-gray-200 text-center">
@@ -2955,7 +3114,7 @@ const OptimizationView = ({
                   {shareResult.shared_count - shareResult.online_drivers.length}
                 </div>
                 <div className="text-xs text-gray-400 mt-1">
-                  Offline — will receive on next login
+                  Available on refresh
                 </div>
               </div>
             </div>

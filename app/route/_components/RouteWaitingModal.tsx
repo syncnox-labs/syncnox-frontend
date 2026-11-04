@@ -169,7 +169,7 @@ export default function RouteWaitingModal({ plan, selection, onClose }: {
         </fieldset>
       </>}
       {preview && updated && <>
-        <Alert type="success" showIcon title={preview.explanation} description={preview.updates_drivers ? "Saving also updates the driver's app." : "Review the times below, then save."} />
+        <Alert type="success" showIcon title={preview.explanation} description="Review the times below, then save. Share the plan when ready to update drivers." />
         <div className={styles.previewTable}>
           <table className="w-full text-left text-xs"><thead className="sticky top-0 bg-slate-50 text-slate-500"><tr><th className="p-3">Stop</th><th className="p-3">Current</th><th className="p-3">After saving</th></tr></thead>
             <tbody>{updated.stops.map((stop, index) => {

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { Button, Spin, Modal, Dropdown, message } from "antd";
-import { Search, Users, FileSpreadsheet, Plus, Trash2, Download } from "lucide-react";
+import { Search, Users, Upload, Plus, Trash2, Download } from "lucide-react";
 import { Team } from "@/types/team.type";
 import { useTeamStore } from "@/store/team.store";
 import { exportTeamMembers } from "@/apis/team.api";
@@ -78,7 +78,7 @@ const TeamList = () => {
           message.success(`${checkedIds.length} team member(s) deleted`);
           setCheckedIds([]);
         } catch (err: any) {
-          message.error(err?.message || "Failed to delete team members");
+          message.error(typeof err?.detail === "string" ? err.detail : err?.message || "Failed to delete team members");
         }
       },
     });
@@ -119,7 +119,8 @@ const TeamList = () => {
       .toUpperCase()
       .slice(0, 2);
 
-  if (isLoading && teams.length === 0) {
+  // Keep open dialogs mounted while the first create/import request is running.
+  if (isLoading && teams.length === 0 && !addModalOpen && !bulkModalOpen) {
     return (
       <div className="flex items-center justify-center h-full">
         <Spin size="large" />
@@ -170,7 +171,7 @@ const TeamList = () => {
                 loading={isExporting}
                 id="team-export-btn"
               >
-                Export ({checkedIds.length})
+                Export Team Member ({checkedIds.length})
               </Button>
             </Dropdown>
           ) : (
@@ -180,15 +181,15 @@ const TeamList = () => {
               onClick={() => handleExport(false)}
               id="team-export-btn"
             >
-              Export CSV
+              Export Team Member
             </Button>
           )}
           <Button
-            icon={<FileSpreadsheet size={15} />}
+            icon={<Upload size={15} />}
             onClick={() => setBulkModalOpen(true)}
             id="team-bulk-import-btn"
           >
-            Bulk Import
+            Import Team Members
           </Button>
           <Button
             type="primary"

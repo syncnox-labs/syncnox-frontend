@@ -38,7 +38,7 @@ export default function PendingOptimizationIndicator({ drivers, disabled, onOpti
       aria-label={`Optimization pending for ${drivers.length} ${drivers.length === 1 ? "driver" : "drivers"}`}
       className="inline-flex items-center gap-1 text-amber-600 hover:text-amber-700 font-semibold cursor-pointer transition-colors disabled:cursor-wait">
       <span className="h-1.5 w-1.5 bg-amber-500 animate-pulse" aria-hidden="true" />
-      Optimization Pending ({drivers.length} {drivers.length === 1 ? "driver" : "drivers"})
+      Optimization Pending
       <DownOutlined className="text-[9px]" />
     </button>
   </Popover>;

@@ -48,6 +48,7 @@ function dispatchSocket(state, jobState = {}, routeState = {}) {
     if (name === "react") return { useRef: value => ({ current: value }), useEffect: fn => { cleanup = fn(); } };
     if (name === "next-auth/react") return { useSession: () => ({ data: { user: { tenant_id: 4 }, access_token: "test" } }) };
     if (name === "@/store/optimization.store") return { useOptimizationStore: { getState: () => state } };
+    if (name === "@/store/driverPresence.store") return { useDriverPresenceStore: { getState: () => ({ refresh: async () => {}, update() {}, markUnavailable() {} }) } };
     if (name === "@/store/jobs.store") return { useJobsStore: selector => selector(jobState) };
     if (name === "@/store/routes.store") return { useRouteStore: Object.assign(selector => selector(routeState), { getState: () => routeState }) };
     throw new Error(name);
@@ -367,6 +368,7 @@ test("dispatch socket ignores other plans and reconciles once on reconnect", asy
     if (name === "next-auth/react") return { useSession: () => ({ data: { user: { tenant_id: 4 }, access_token: "test" } }) };
     if (name === "@/store/optimization.store") return { useOptimizationStore: { getState: () => state } };
     if (name === "@/store/jobs.store") return { useJobsStore: selector => selector({}) };
+    if (name === "@/store/driverPresence.store") return { useDriverPresenceStore: { getState: () => ({ refresh: async () => {}, update() {}, markUnavailable() {} }) } };
     if (name === "@/store/routes.store") return { useRouteStore: selector => selector({}) };
     throw new Error(name);
   }, FakeWebSocket);
@@ -432,6 +434,7 @@ test("session refreshes and route filter changes do not reconnect the dispatch s
     // Each render gets a new session object, as it does after getSession().
     if (name === "next-auth/react") return { useSession: () => ({ data: { user: { tenant_id: tenant }, access_token: token } }) };
     if (name === "@/store/optimization.store") return { useOptimizationStore: { getState: () => ({}) } };
+    if (name === "@/store/driverPresence.store") return { useDriverPresenceStore: { getState: () => ({ refresh: async () => {}, update() {}, markUnavailable() {} }) } };
     if (name === "@/store/jobs.store") return { useJobsStore: selector => selector(jobState) };
     if (name === "@/store/routes.store") return { useRouteStore: routes };
     throw new Error(name);

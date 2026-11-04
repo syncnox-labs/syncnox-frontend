@@ -118,8 +118,8 @@ export default function JobsList() {
           await deleteJobsAction(selectedJobIds, "draft");
           message.success(`Successfully deleted ${count} job(s)`);
           setSelectedJobIds([]);
-        } catch (err) {
-          message.error("Failed to delete jobs");
+        } catch (err: any) {
+          message.error(typeof err?.detail === "string" ? err.detail : err?.message || "Failed to delete jobs");
           console.error(err);
         }
       },
@@ -277,8 +277,8 @@ export default function JobsList() {
               try {
                 await deleteJobAction(record.id);
                 message.success("Job deleted successfully");
-              } catch (err) {
-                message.error("Failed to delete job");
+              } catch (err: any) {
+                message.error(typeof err?.detail === "string" ? err.detail : err?.message || "Failed to delete job");
                 console.error(err);
               }
             },

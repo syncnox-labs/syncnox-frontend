@@ -195,6 +195,38 @@ body {
   opacity: 0 !important;
 }
 
+/* Route view icon-only radio switcher centering */
+.view-switch-radio.ant-radio-group {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 32px !important;
+  line-height: 1 !important;
+  vertical-align: middle !important;
+}
+
+.view-switch-radio .ant-radio-button-wrapper {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 32px !important;
+  width: 40px !important;
+  min-width: 40px !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+  vertical-align: middle !important;
+}
+
+.view-switch-radio .ant-radio-button-wrapper > span:not(.ant-radio-button),
+.view-switch-radio .ant-radio-button-wrapper .ant-radio-button-label {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 100% !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+}
+
 /* Bulk Upload Modal Full Height */
 .bulk-upload-modal .ant-modal-content {
   height: 90vh;

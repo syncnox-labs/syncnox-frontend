@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import { Team } from "@/types/team.type";
+import { useJobsStore } from "@/store/jobs.store";
+import { refreshRoutesAfterDeletion } from "@/utils/refreshRoutesAfterDeletion.utils";
 import {
   fetchTeams,
   createTeam,
@@ -124,6 +126,7 @@ export const useTeamStore = create(
             state.teams = state.teams.filter((team) => team.id !== teamId);
             state.isLoading = false;
           });
+          await Promise.all([useJobsStore.getState().fetchAllJobs(), refreshRoutesAfterDeletion()]);
         } catch (error) {
           set((state) => {
             state.isLoading = false;
@@ -146,6 +149,7 @@ export const useTeamStore = create(
             state.teams = state.teams.filter((team) => !ids.includes(team.id));
             state.isLoading = false;
           });
+          await Promise.all([useJobsStore.getState().fetchAllJobs(), refreshRoutesAfterDeletion()]);
         } catch (error) {
           set((state) => {
             state.isLoading = false;

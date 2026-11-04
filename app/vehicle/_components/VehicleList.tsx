@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { Button, Spin, Modal, Dropdown, message } from "antd";
-import { Search, Truck, FileSpreadsheet, Plus, Trash2, Download } from "lucide-react";
+import { Search, Truck, Upload, Plus, Trash2, Download } from "lucide-react";
 import { Vehicle } from "@/types/vehicle.type";
 import { useVehicleStore } from "@/store/vehicle.store";
 import { exportVehicles } from "@/apis/vehicle.api";
@@ -119,7 +119,8 @@ const VehicleList = () => {
     }
   };
 
-  if (isLoading && vehicles.length === 0) {
+  // Keep open dialogs mounted while the first create/import request is running.
+  if (isLoading && vehicles.length === 0 && !addModalOpen && !bulkModalOpen) {
     return (
       <div className="flex items-center justify-center h-full">
         <Spin size="large" />
@@ -170,7 +171,7 @@ const VehicleList = () => {
                 loading={isExporting}
                 id="vehicle-export-btn"
               >
-                Export ({checkedIds.length})
+                Export Vehicle ({checkedIds.length})
               </Button>
             </Dropdown>
           ) : (
@@ -180,15 +181,15 @@ const VehicleList = () => {
               onClick={() => handleExport(false)}
               id="vehicle-export-btn"
             >
-              Export CSV
+              Export Vehicle
             </Button>
           )}
           <Button
-            icon={<FileSpreadsheet size={15} />}
+            icon={<Upload size={15} />}
             onClick={() => setBulkModalOpen(true)}
             id="vehicle-bulk-import-btn"
           >
-            Bulk Import
+            Import Vehicles
           </Button>
           <Button
             type="primary"
