@@ -63,6 +63,7 @@ import JobForm from "@/components/Jobs/JobForm";
 import EditJobTitle from "@/components/Jobs/EditJobTitle";
 import SwapDriverDrawer from "./SwapDriverDrawer";
 import ChangeVehicleModal from "./ChangeVehicleModal";
+import MoveTripModal from "./MoveTripModal";
 import SwapVehicleModal from "./SwapVehicleModal";
 import { Route } from "@/types/routes.type";
 import type { Job } from "@/types/job.type";
@@ -99,7 +100,6 @@ import {
   swapRouteDriver,
   reverseRoute,
   reOptimizeRoute,
-  moveRouteTrip,
   moveRouteStops,
   transferRouteStops,
   shareOptimizationRoutes,
@@ -1566,73 +1566,15 @@ const OptimizationView = ({
 
   const tripMoveInProgress = useRef(false);
   const [isMovingTrip, setIsMovingTrip] = useState(false);
+  const [tripMoveTarget, setTripMoveTarget] = useState<{ selection: TripMoveSelection; targetIndex: number } | null>(null);
   const handleMoveTrip = useCallback((selection: TripMoveSelection, targetIndex: number) => {
     if (tripMoveInProgress.current) return;
     const source = route.result?.routes[selection.sourceRouteIndex];
     const target = route.result?.routes[targetIndex];
     if (!source || !target || target.team_member_id === selection.sourceDriverId) return;
-    if (!target.vehicle_id) {
-      message.error("The destination driver needs a configured vehicle.");
-      return;
-    }
-    const vehicleName = target.vehicle_name || vehicles.find(vehicle => vehicle.id === target.vehicle_id)?.name || "the destination route's vehicle";
-    const originalVehicleName = source.vehicle_name || vehicles.find(vehicle => vehicle.id === source.vehicle_id)?.name || "the original vehicle";
-    const first = dayjs(selection.stops[0]?.arrival_time);
-    const last = dayjs(selection.stops.at(-1)?.arrival_time);
     tripMoveInProgress.current = true;
-    Modal.confirm({
-      title: "Move complete trip",
-      content: `Move ${source.team_member_name}'s ${first.format("ddd, h:mm A")}–${last.format("ddd, h:mm A")} trip to ${target.team_member_name}? The trip will keep ${originalVehicleName} if the driver has the required qualifications; otherwise it will use ${vehicleName}. Passenger times and stop order stay unchanged. Home travel will be recalculated, and driver and vehicle availability checked.`,
-      okText: "Move trip",
-      okButtonProps: { style: { backgroundColor: "#003220", borderColor: "#003220" } },
-      onCancel: () => { tripMoveInProgress.current = false; },
-      afterClose: () => { tripMoveInProgress.current = false; },
-      onOk: async () => {
-        if (useOptimizationStore.getState().currentOptimization?.id !== route.id) {
-          message.error("The route plan changed. Open the plan again before moving this trip.");
-          return;
-        }
-        setIsMovingTrip(true);
-        message.loading({ content: "Checking availability and moving trip…", key: "move_trip", duration: 0 });
-        try {
-          const response = await moveRouteTrip(route.id, selection.sourceRouteIndex, {
-            start_stop_index: selection.startStopIndex,
-            target_route_index: targetIndex,
-            expected_source_driver_id: selection.sourceDriverId,
-            expected_source_leg: selection.sourceLeg,
-            expected_target_driver_id: target.team_member_id,
-            expected_target_vehicle_id: target.vehicle_id,
-            expected_target_leg: target.leg ?? null,
-            expected_stops: selection.stops,
-          });
-          if (!response.success) throw new Error(response.message);
-          if (useOptimizationStore.getState().currentOptimization?.id === route.id) {
-            setOptimizationResult("completed", response.result);
-            setFocusedRouteIndex(null);
-            setSelectedMarkerId(null);
-            const refreshed = await Promise.allSettled([fetchJobsByIds(route.job_ids || []), refreshUndoHistory()]);
-            if (refreshed.some(item => item.status === "rejected")) message.warning("Trip moved. Refresh to update job details and undo history.");
-          }
-          message.success({ content: response.message, key: "move_trip" });
-        } catch (error: unknown) {
-          const detail = isAxiosError<{ detail?: string }>(error) ? error.response?.data?.detail
-            : (error as { detail?: string })?.detail;
-          const errorMessage = typeof detail === "string" ? detail
-            : error instanceof Error ? error.message : "Could not move the trip";
-          message.destroy("move_trip");
-          Modal.error({
-            title: "Trip could not be moved",
-            content: <div className="whitespace-pre-line break-words">{errorMessage}</div>,
-            width: 640,
-            okText: "Got it",
-            okButtonProps: { style: { backgroundColor: "#003220", borderColor: "#003220" } },
-          });
-        } finally {
-          setIsMovingTrip(false);
-        }
-      },
-    });
-  }, [route, vehicles, setOptimizationResult, fetchJobsByIds, refreshUndoHistory]);
+    setTripMoveTarget({ selection, targetIndex });
+  }, [route.result?.routes]);
 
   const handleMoveStops = useCallback((selection: StopMoveSelection, targetIndex: number) => {
     if (tripMoveInProgress.current) return;
@@ -2926,6 +2868,27 @@ const OptimizationView = ({
               fetchJobsByIds(route.job_ids || []),
               refreshUndoHistory(),
             ]);
+          }}
+        />
+      )}
+
+      {tripMoveTarget !== null && (
+        <MoveTripModal
+          optimizationId={route.id}
+          routes={route.result?.routes || []}
+          selection={tripMoveTarget.selection}
+          targetIndex={tripMoveTarget.targetIndex}
+          onBusyChange={setIsMovingTrip}
+          onClose={() => { setTripMoveTarget(null); tripMoveInProgress.current = false; }}
+          onSuccess={async () => {
+            setFocusedRouteIndex(null);
+            setSelectedMarkerId(null);
+            const refreshed = await Promise.allSettled([
+              fetchOptimization(route.id), fetchJobsByIds(route.job_ids || []), refreshUndoHistory(),
+            ]);
+            if (refreshed.some(item => item.status === "rejected")) {
+              message.warning("Trip moved. Refresh to update the plan, job details and undo history.");
+            }
           }}
         />
       )}
