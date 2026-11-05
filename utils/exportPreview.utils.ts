@@ -1,5 +1,7 @@
 import { Routes, Stop } from "@/types/routes.type";
 import { Job } from "@/types/job.type";
+import type { Vehicle } from "@/types/vehicle.type";
+import { manifestDate, manifestLocation, manifestTime } from "./shuttleManifest.utils";
 
 export interface AddressComponents {
   address: string;
@@ -17,6 +19,10 @@ export interface DriverSummary {
   distance: string;
   totalStops: number;
   expectedTravelTime: string;
+  startLocation: string;
+  endLocation: string;
+  startTime: string;
+  endTime: string;
 }
 
 export interface StopDetail {
@@ -82,18 +88,25 @@ export const formatETA = (arrivalTime: string): string => {
 export const prepareDriverSummary = (
   route: Routes,
   scheduledDate: string,
-  vehicle?: { name?: string; license_plate?: string; type?: string; capacity?: number }
+  vehicle?: Partial<Vehicle> & { capacity?: number }
 ): DriverSummary => {
+  const start = route.stops[0], end = route.stops.at(-1);
+  const capacity = route.vehicle_capacity || vehicle?.capacity || vehicle?.load_constraints?.find(item =>
+    ["capacity", "seats", "passengers", "item_count"].includes(item.constraint_type))?.max_value;
   return {
     driverName: route.team_member_name || "Unassigned",
-    vehicleName: vehicle?.name || `Vehicle ${route.vehicle_id}`,
+    vehicleName: route.vehicle_name || vehicle?.name || (route.vehicle_id ? `Vehicle ${route.vehicle_id}` : "Unassigned"),
     licensePlate: vehicle?.license_plate || undefined,
     vehicleType: vehicle?.type ? vehicle.type.replace("_", " ") : undefined,
-    seatCapacity: vehicle?.capacity ? `${vehicle.capacity} seats` : undefined,
+    seatCapacity: capacity ? `${capacity} seats` : undefined,
     routeDate: scheduledDate,
     distance: formatDistance(route.total_distance_meters),
     totalStops: route.stops.length,
     expectedTravelTime: formatDuration(route.total_duration_seconds),
+    startLocation: manifestLocation(start),
+    endLocation: manifestLocation(end),
+    startTime: start?.arrival_time ? `${manifestDate(start.arrival_time)} · ${manifestTime(start.arrival_time)}` : "Not scheduled",
+    endTime: end?.arrival_time ? `${manifestDate(end.arrival_time)} · ${manifestTime(end.arrival_time)}` : "Not scheduled",
   };
 };
 
@@ -109,7 +122,7 @@ export const prepareStopsData = (stops: Stop[], jobs: Job[]): StopDetail[] => {
 
     return {
       serialNo: index + 1,
-      address: stop.address_formatted || "Unknown location",
+      address: stop.address_formatted || job?.address_formatted || job?.pickup_delivery_detail?.address_formatted || "Unknown location",
       latitude: stop.latitude,
       longitude: stop.longitude,
       eta: formatETA(stop.arrival_time),
@@ -120,7 +133,7 @@ export const prepareStopsData = (stops: Stop[], jobs: Job[]): StopDetail[] => {
       nextStopTime: stop.time_to_next_stop_seconds
         ? formatDuration(stop.time_to_next_stop_seconds)
         : "-",
-      isDepot: stop.stop_type === "depot",
+      isDepot: ["depot", "depot_start", "depot_end"].includes(stop.stop_type),
       isLastStop: index === stops.length - 1,
     };
   });
