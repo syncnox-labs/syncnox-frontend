@@ -1,0 +1,50 @@
+.manifestSection { margin-top: 24px; margin-bottom: 28px; color: #111827; }
+.sectionHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; break-after: avoid; }
+.sectionHeading h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.summary { display: grid; grid-template-columns: 1fr 1.5fr 1.5fr; gap: 16px; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 14px; margin: 0; break-inside: avoid; }
+.summary dt, .label { font-size: 11px; font-weight: 600; color: #4b5563; }
+.summary dt { margin-bottom: 4px; }
+.summary dd { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.summary p, .sectionHeading p { margin: 4px 0 0; }
+.secondary { color: #6b7280; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.detail { margin-top: 5px; }
+.phone { margin-top: 4px; font-variant-numeric: tabular-nums; }
+.journeyType { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 11px; }
+.journeyType :global(.ant-tag) { margin: 0; }
+.routeStats { margin: 10px 0; color: #6b7280; font-size: 11px; }
+.locationVisit { margin-top: 16px; }
+.locationHeading { text-align: left; }
+.locationTitle { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 13px; }
+.locationAddress { margin: 4px 0; font-weight: 600; font-size: 12px; }
+.manifestTable :global(.ant-table-cell) { vertical-align: top; white-space: normal; overflow-wrap: anywhere; font-size: 12px; line-height: 1.45; }
+.manifestTable :global(.ant-table-thead) > tr > th { font-size: 11px; }
+.printContent { height: 100%; overflow: auto; padding: 0 5px 5px; }
+.header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.notice { margin: 12px 0; }
+.loading { display: flex; gap: 8px; justify-content: center; align-items: center; padding: 24px; }
+.exportControls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.driverSelection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; text-align: left; }
+.driverSelection :global(.ant-select) { min-width: 240px; max-width: 100%; }
+@media (max-width: 640px) {
+  .summary { grid-template-columns: 1fr; gap: 12px; }
+}
+@media print {
+  .printContent { height: auto !important; overflow: visible !important; padding: 0 !important; }
+  .manifestSection { break-inside: auto; margin-top: 14px; margin-bottom: 18px; }
+  .locationVisit { margin-top: 12px; break-inside: auto; }
+  .locationTitle { font-size: 11px; }
+  .locationAddress { font-size: 10px; }
+  .sectionHeading, .summary, .routeStats { break-inside: avoid; break-after: avoid; }
+  .summary { grid-template-columns: 1fr 1.5fr 1.5fr; gap: 12px; padding: 8px 10px; }
+  .manifestTable :global(.ant-table-content), .manifestTable :global(.ant-table-body),
+  .manifestTable :global(.ant-table-container) { overflow: visible !important; }
+  .manifestTable :global(table) { width: 100% !important; min-width: 0 !important; table-layout: fixed !important; }
+  .manifestTable :global(thead) { display: table-header-group; break-inside: avoid; break-after: avoid; }
+  /* Ant Design's zero-height sizing row must not count as the first printed passenger. */
+  .manifestTable :global(.ant-table-measure-row) { display: none; }
+  .manifestTable :global(tr) { break-inside: avoid; page-break-inside: avoid; }
+  .manifestTable :global(.ant-table-cell) { padding: 6px !important; font-size: 10px !important; }
+  .manifestTable :global(.ant-table-thead) > tr > th { font-size: 10px !important; }
+  .secondary, .label, .journeyType { font-size: 9px; }
+  .notice, .loading { display: none !important; }
+}

@@ -2135,13 +2135,13 @@ const OptimizationView = ({
                     label: "Export",
                     onClick: handleExportRoutes,
                   },
-                  {
-                    key: "share",
-                    icon: isSharing ? <LoadingOutlined /> : <ShareAltOutlined />,
-                    label: isSharing ? "Sharing…" : "Share to App",
-                    disabled: isSharing || isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued",
-                    onClick: handleShareToApp,
-                  },
+                  // {
+                  //   key: "share",
+                  //   icon: isSharing ? <LoadingOutlined /> : <ShareAltOutlined />,
+                  //   label: isSharing ? "Sharing…" : "Share to App",
+                  //   disabled: isSharing || isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued",
+                  //   onClick: handleShareToApp,
+                  // },
                 ] }}
               >
                 <Button icon={<MenuOutlined />} aria-label="Route actions" aria-haspopup="menu" aria-busy={isSharing} title="Route actions" className="shrink-0" />
