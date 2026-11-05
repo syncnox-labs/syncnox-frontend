@@ -424,11 +424,19 @@ export interface MoveTripPayload {
   target_route_index: number;
   expected_source_driver_id: number;
   expected_target_driver_id: number;
-  expected_target_vehicle_id: number;
+  expected_target_vehicle_id: number | null;
+  vehicle_id?: number;
   expected_source_leg: string | null;
   expected_target_leg: string | null;
   expected_stops: TripStopSnapshot[];
 }
+
+export const getMoveTripVehicleOptions = async (
+  id: number, routeIndex: number, payload: MoveTripPayload,
+): Promise<{ vehicles: VehicleReplacementOption[] }> => {
+  const response = await apiClient.post(`optimization/requests/${id}/routes/${routeIndex}/move-trip-vehicle-options`, payload);
+  return response.data;
+};
 
 export const moveRouteTrip = async (id: number, routeIndex: number, payload: MoveTripPayload): Promise<{
   success: boolean; message: string; result: Route["result"]; affected_route_indices: number[];
