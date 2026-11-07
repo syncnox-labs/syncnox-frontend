@@ -26,6 +26,22 @@ const { generateMapMarkers } = load("optimizationView.utils.ts", {
 });
 const { buildMapSearchIndex, filterMapSearchResults } = helpers;
 
+test("both activities in a mixed visit share the timeline number and map marker", () => {
+  const pickup = { job_id: 100, stop_type: "pickup", leg: "RETURN", latitude: 45.5, longitude: -73.5,
+    arrival_time: "2026-11-06T00:00:00", candidate_name: "Mixed visit passenger" };
+  const dropoff = { ...pickup, stop_type: "dropoff" };
+  const routes = [{ team_member_name: "Driver Example", stops: [pickup, dropoff] }];
+  const results = buildMapSearchIndex(routes, []);
+  assert.deepEqual(results.map(result => [result.stopIndex, result.displayStopNumber, result.markerId]), [
+    [0, 1, "0-0"], [1, 1, "0-0"],
+  ]);
+  const markers = generateMapMarkers({ result: { routes } }, []);
+  assert.equal(markers.length, 1);
+  assert.equal(markers[0].sequenceNumber, 1);
+  assert.equal(markers[0].stopType, "pickup_dropoff");
+  assert.equal(markers[0].label.text, "1", "one candidate is not counted twice on the map");
+});
+
 const fields = {
   candidate_name: "Jane Example",
   candidate_phone: "+1 (514) 555-0123",

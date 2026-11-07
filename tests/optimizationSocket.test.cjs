@@ -138,6 +138,20 @@ test("an already combined result replaces the previous combined view without dup
   assert.equal(updated.routes.length, 2);
 });
 
+test("a consolidated result removes transferred neighboring bookings from the live view", () => {
+  const state = store(async () => {});
+  const plan = combinedPlan();
+  state.currentOptimization = plan;
+  const neighbor = plan.result.routes[1];
+  const updated = {
+    routes: [{ ...plan.result.routes[0], stops: [...plan.result.routes[0].stops, ...neighbor.stops] }],
+    consolidation: { affected_plan_ids: [1, neighbor.source_optimization_id], accepted: 1 },
+  };
+  state.setOptimizationResult("completed", updated);
+  assert.equal(state.currentOptimization.result.routes.length, 1);
+  assert.equal(state.currentOptimization.result, updated);
+});
+
 test("own-plan socket updates keep neighbors visible and reconcile the complete view once", async () => {
   let respond, fetches = 0;
   const state = store(() => { fetches++; return new Promise(resolve => { respond = resolve; }); });

@@ -51,6 +51,7 @@ export interface BulkResolveRowResponse {
   resolved_fields: Record<string, any>;
   geocode_result: GeocodeResult;
   warnings: string[];
+  location_errors?: string[];
 }
 
 export interface JobCreate {

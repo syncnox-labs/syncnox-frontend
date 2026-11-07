@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { Button, Spin, Modal, Dropdown, message } from "antd";
+import { Button, Spin, Modal, message } from "antd";
 import { Search, Users, Upload, Plus, Trash2, Download } from "lucide-react";
 import { Team } from "@/types/team.type";
 import { useTeamStore } from "@/store/team.store";
@@ -84,24 +84,17 @@ const TeamList = () => {
     });
   };
 
-  const handleExport = async (selectedOnly: boolean = false) => {
+  const handleExport = async () => {
     try {
       setIsExporting(true);
-      const targetIds = selectedOnly && checkedIds.length > 0 ? checkedIds : undefined;
-      const count = targetIds ? targetIds.length : teams.length;
-      
+      const count = teams.length;
+
       try {
-        await exportTeamMembers(targetIds);
+        await exportTeamMembers();
       } catch (apiErr) {
         // Fallback to client-side CSV generation if backend endpoint is unavailable
-        const membersToExport = targetIds
-          ? teams.filter((t) => targetIds.includes(t.id))
-          : teams;
-        const csv = generateTeamMembersCsv(membersToExport);
-        triggerDownload(
-          targetIds ? `drivers_selected_${targetIds.length}.csv` : "drivers_export.csv",
-          csv
-        );
+        const csv = generateTeamMembersCsv(teams);
+        triggerDownload("drivers_export.csv", csv);
       }
       message.success(`Successfully exported ${count} driver(s) to CSV`);
     } catch (err: any) {
@@ -149,41 +142,14 @@ const TeamList = () => {
               Delete ({checkedIds.length})
             </Button>
           )}
-          {checkedIds.length > 0 ? (
-            <Dropdown
-              menu={{
-                items: [
-                  {
-                    key: "selected",
-                    label: `Export Selected (${checkedIds.length})`,
-                    onClick: () => handleExport(true),
-                  },
-                  {
-                    key: "all",
-                    label: `Export All (${teams.length})`,
-                    onClick: () => handleExport(false),
-                  },
-                ],
-              }}
-            >
-              <Button
-                icon={<Download size={15} />}
-                loading={isExporting}
-                id="team-export-btn"
-              >
-                Export Team Member ({checkedIds.length})
-              </Button>
-            </Dropdown>
-          ) : (
-            <Button
-              icon={<Download size={15} />}
-              loading={isExporting}
-              onClick={() => handleExport(false)}
-              id="team-export-btn"
-            >
-              Export Team Member
-            </Button>
-          )}
+          <Button
+            icon={<Download size={15} />}
+            loading={isExporting}
+            onClick={handleExport}
+            id="team-export-btn"
+          >
+            Export
+          </Button>
           <Button
             icon={<Upload size={15} />}
             onClick={() => setBulkModalOpen(true)}

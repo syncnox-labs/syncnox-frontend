@@ -6,10 +6,12 @@ import { Sparkles as SparklesIcon } from "lucide-react";
  * Pure SVG presentation component for rendering a directional stop arrow.
  * - UP arrow for Pickup
  * - DOWN arrow for Drop-off
+ * - BOTH ends for a shared drop-off and pickup visit
  * Displays the stop number centered inside the arrow shaft.
  */
 interface StopArrowSvgProps {
   isPickup: boolean;
+  isMixed?: boolean;
   displayIndex: number | string;
   fill: string;
   stroke: string;
@@ -20,6 +22,7 @@ interface StopArrowSvgProps {
 
 export const StopArrowSvg: React.FC<StopArrowSvgProps> = ({
   isPickup,
+  isMixed = false,
   displayIndex,
   fill,
   stroke,
@@ -30,41 +33,12 @@ export const StopArrowSvg: React.FC<StopArrowSvgProps> = ({
   const textStr = String(displayIndex ?? "");
   const fontSize = textStr.length >= 3 ? "9" : textStr.length === 2 ? "11" : "12";
 
-  if (isPickup) {
-    // UP Arrow (Pickup): tip at top (y=2), shaft to bottom (y=36), center at y=19
-    return (
-      <svg
-        width="32"
-        height="38"
-        viewBox="0 0 32 38"
-        className="overflow-visible pointer-events-none"
-      >
-        <path
-          d="M 16 2 L 31 13 L 26 13 L 26 36 L 6 36 L 6 13 L 1 13 Z"
-          fill={fill}
-          stroke={stroke}
-          strokeWidth={strokeWidth}
-          strokeDasharray={strokeDasharray}
-          strokeLinejoin="miter"
-          strokeMiterlimit={4}
-        />
-        <text
-          x="16"
-          y="19"
-          textAnchor="middle"
-          dominantBaseline="central"
-          fontFamily="system-ui, -apple-system, sans-serif"
-          fontWeight="800"
-          fontSize={fontSize}
-          fill={textColor}
-        >
-          {displayIndex}
-        </text>
-      </svg>
-    );
-  }
+  const path = isMixed
+    ? "M 16 2 L 31 11 L 24 11 L 24 27 L 31 27 L 16 36 L 1 27 L 8 27 L 8 11 L 1 11 Z"
+    : isPickup
+      ? "M 16 2 L 31 13 L 26 13 L 26 36 L 6 36 L 6 13 L 1 13 Z"
+      : "M 6 2 L 26 2 L 26 25 L 31 25 L 16 36 L 1 25 L 6 25 Z";
 
-  // DOWN Arrow (Drop-off): flat top (y=2), shaft to y=25, wings and tip at bottom (y=36), center at y=19
   return (
     <svg
       width="32"
@@ -73,7 +47,7 @@ export const StopArrowSvg: React.FC<StopArrowSvgProps> = ({
       className="overflow-visible pointer-events-none"
     >
       <path
-        d="M 6 2 L 26 2 L 26 25 L 31 25 L 16 36 L 1 25 L 6 25 Z"
+        d={path}
         fill={fill}
         stroke={stroke}
         strokeWidth={strokeWidth}
@@ -100,6 +74,8 @@ export const StopArrowSvg: React.FC<StopArrowSvgProps> = ({
 export interface TimelineStopArrowProps {
   /** True for pickup (UP arrow), false for drop-off (DOWN arrow) */
   isPickup: boolean;
+  /** One physical visit containing both drop-offs and pickups. */
+  isMixed?: boolean;
   /** Stop number displayed inside the arrow body (e.g. 1, 2, 6) */
   displayIndex: number | string;
   /**
@@ -135,7 +111,7 @@ export interface TimelineStopArrowProps {
  * TimelineStopArrow
  * Dedicated modular component for rendering worker shuttle stops on the timeline track.
  * Maintains consistent leg color across both pickups and drop-offs while clearly
- * communicating stop direction (UP for pickup, DOWN for dropoff).
+ * communicating pickup, drop-off, or both activities at a shared visit.
  * Wrapped in forwardRef to support Ant Design Tooltip and other parent wrappers.
  */
 export const TimelineStopArrow = React.forwardRef<
@@ -144,6 +120,7 @@ export const TimelineStopArrow = React.forwardRef<
 >((props, ref) => {
   const {
     isPickup,
+    isMixed = false,
     displayIndex,
     routeColor,
     isStopDone = false,
@@ -263,9 +240,10 @@ export const TimelineStopArrow = React.forwardRef<
         </div>
       )}
 
-      {/* Directional Arrow SVG (UP for pickup, DOWN for dropoff) with number centered */}
+      {/* One directional arrow per physical visit, with its number centered. */}
       <StopArrowSvg
         isPickup={isPickup}
+        isMixed={isMixed}
         displayIndex={displayIndex}
         fill={arrowFill}
         stroke={arrowStroke}

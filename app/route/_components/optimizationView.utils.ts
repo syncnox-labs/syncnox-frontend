@@ -181,7 +181,7 @@ export const generateMapMarkers = (
               ? "end"
               : "depot"
           : undefined,
-        stopType: stop.stop_type,
+        stopType: group.hasPickup && group.hasDropoff ? "pickup_dropoff" : stop.stop_type,
         color: color,
         routeIndex: index,
         isNew: isNew,

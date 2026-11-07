@@ -50,6 +50,8 @@ export interface WorkingTimeExtension {
 }
 
 export interface Routes {
+  consolidated?: boolean;
+  booking_origins?: Record<string, { plan_id: number; service_date: string }>;
   route_id?: number;
   operational_route_ids?: number[];
   name?: string;
@@ -101,6 +103,14 @@ export interface UnassignedJob {
 }
 
 interface RouteResult {
+  consolidation?: {
+    status: "completed" | "timed_out";
+    attempted: number;
+    accepted: number;
+    matrix_builds: number;
+    distance_saved_meters: number;
+    affected_plan_ids: number[];
+  };
   added_job_ids?: number[];
   manual_job_creations?: Record<string, { fingerprint: string; job_ids: number[] }>;
   routes: Routes[];

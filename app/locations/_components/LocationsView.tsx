@@ -9,6 +9,7 @@ import {
   Trash2,
   FileSpreadsheet,
   Building,
+  Download,
 } from "lucide-react";
 import { useDepotStore } from "@/store/depots.store";
 import { useLocationMappingStore } from "@/store/location-mapping.store";
@@ -25,6 +26,11 @@ import LocationMappingForm from "@/app/location-mapping/_components/LocationMapp
 import AddLocationMappingModal from "@/app/location-mapping/_components/AddLocationMappingModal";
 import BulkImportModal from "@/components/BulkImport/BulkImportModal";
 import { DepotPayload } from "@/apis/depots.api";
+import {
+  generateDepotsCsv,
+  generateLocationMappingsCsv,
+  triggerDownload,
+} from "@/utils/exportCsv.utils";
 import { useSearchParams, useRouter } from "next/navigation";
 
 type LocationTab = "depots" | "additional-locations";
@@ -359,6 +365,16 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                 </Button>
               )}
               <Button
+                icon={<Download size={15} />}
+                disabled={depots.length === 0}
+                onClick={() => {
+                  triggerDownload("depots_export.csv", generateDepotsCsv(depots));
+                  message.success(`Successfully exported ${depots.length} depot(s) to CSV`);
+                }}
+              >
+                Export
+              </Button>
+              <Button
                 type="primary"
                 icon={<Plus size={15} />}
                 onClick={() => setIsCreateDepotModalOpen(true)}
@@ -383,6 +399,19 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                 onClick={() => setBulkImportModalOpen(true)}
               >
                 Bulk Import
+              </Button>
+              <Button
+                icon={<Download size={15} />}
+                disabled={locationMappings.length === 0}
+                onClick={() => {
+                  triggerDownload(
+                    "locations_export.csv",
+                    generateLocationMappingsCsv(locationMappings)
+                  );
+                  message.success(`Successfully exported ${locationMappings.length} location(s) to CSV`);
+                }}
+              >
+                Export
               </Button>
               <Button
                 type="primary"

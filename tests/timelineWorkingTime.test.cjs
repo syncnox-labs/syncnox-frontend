@@ -28,7 +28,9 @@ let renderedTracks = [];
 let renderedStops = [];
 let renderedMergeButtons = [];
 let renderedRouteMenus = [];
+let renderedStopTooltips = [];
 function recordElement(factory, type, props, key) {
+  if (String(key).startsWith("stop-")) renderedStopTooltips.push(props.title);
   if (type === "button" && /^Merge .*waiting time$/.test(props["aria-label"] || "")) renderedMergeButtons.push(props);
   if (type === "div" && props["data-driver-key"]) renderedRows.push(props);
   if (type === "div" && props["data-timeline-driver-track"]) renderedTracks.push(props);
@@ -350,4 +352,49 @@ test("rendered timeline numbers and clicks match search and map for shared passe
   assert.equal(clicked[0][2], result.displayStopNumber, "the details card gets the visible arrow number");
   const marker = generateMapMarkers({ result: { routes: [selectedRoute] } }, []).find(marker => marker.id === result.markerId);
   assert.equal(marker.sequenceNumber, arrow.displayIndex);
+});
+
+test("a shared pickup/drop-off visit renders one double arrow and drop-off details first", () => {
+  const pickup = { ...route.stops[0], job_id: 2, leg: "RETURN", candidate_name: "Shared passenger",
+    arrival_time: "2026-09-30T00:00:00", address_formatted: "Pickup address", status: "in_transit" };
+  const dropoff = { ...pickup, stop_type: "dropoff", address_formatted: "Drop-off address", service_duration_seconds: 120 };
+  const selectedRoute = { ...route, stops: [...route.stops, pickup, dropoff] };
+  const originalStops = [...selectedRoute.stops];
+  const clicked = [];
+  const removed = [];
+  renderedStops = [];
+  renderedStopTooltips = [];
+  const html = renderToStaticMarkup(React.createElement(TimelineView, {
+    routes: [selectedRoute], scheduledDate: "2026-09-29", showDriverWorkingTime: false,
+    onStopClick: (...args) => clicked.push(args), onRemoveStop: (...args) => removed.push(args),
+  }));
+  assert.match(html, /3 stops/);
+  assert.equal(renderedStops.length, 3);
+  const arrow = renderedStops[2];
+  assert.equal(arrow.displayIndex, 3);
+  assert.equal(arrow.isMixed, true);
+  assert.equal(arrow.isStopDone, false, "a pending drop-off keeps the combined visit incomplete");
+  assert.equal(arrow["aria-label"], "Stop 3: Drop-off and pickup");
+  const tooltip = renderedStopTooltips[2];
+  const tooltipHtml = renderToStaticMarkup(tooltip);
+  assert.ok(tooltipHtml.indexOf("Drop-off address") < tooltipHtml.indexOf("Pickup address"));
+  assert.match(tooltipHtml, /data-stop-activity="dropoff"/);
+  assert.match(tooltipHtml, /data-stop-activity="pickup"/);
+  assert.equal((tooltipHtml.match(/Shared passenger/g) || []).length, 4, "both activities retain candidate name and title");
+  assert.doesNotMatch(tooltipHtml, /×2 candidates/);
+  assert.match(tooltipHtml, /Occupancy:.*?>0<\/strong>/);
+  assert.match(tooltipHtml, /Service Duration: 2 min/);
+  assert.match(tooltipHtml, /Departure: 12:02 AM/);
+
+  function walk(node, predicate) {
+    if (!React.isValidElement(node)) return [];
+    return [...(predicate(node) ? [node] : []), ...React.Children.toArray(node.props.children).flatMap(child => walk(child, predicate))];
+  }
+  const rows = walk(tooltip, node => node.type === "div" && node.props.className?.includes("group/jobrow"));
+  rows.forEach(row => row.props.onClick({ stopPropagation() {} }));
+  assert.deepEqual(clicked.map(call => call[0]), [dropoff, pickup]);
+  const buttons = walk(tooltip, node => node.type === "button" && node.props.title === "Remove job from route");
+  buttons.forEach(button => button.props.onClick({ stopPropagation() {} }));
+  assert.deepEqual(removed, [[0, 2, "dropoff"], [0, 2, "pickup"]]);
+  assert.deepEqual(selectedRoute.stops, originalStops);
 });

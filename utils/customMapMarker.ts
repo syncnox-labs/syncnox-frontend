@@ -121,7 +121,14 @@ export const createCustomMarkerIcon = (
 
   let badgeSvg = "";
   if (!isDepot && !isAdditionalLocation && stopType) {
-    if (stopType === "pickup") {
+    if (stopType === "pickup_dropoff") {
+      badgeSvg = `
+        <circle cx="26" cy="4" r="7" fill="#ffffff" stroke="${baseColor}" stroke-width="1.5"/>
+        <g transform="translate(19, -3) scale(0.6)" stroke="${baseColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+          <path d="m7 7 5-5 5 5M12 2v20m-5-5 5 5 5-5"/>
+        </g>
+      `;
+    } else if (stopType === "pickup") {
       badgeSvg = `
         <!-- Pickup Badge (Emerald) -->
         <circle cx="26" cy="4" r="7" fill="#ffffff" stroke="#10b981" stroke-width="1.5"/>

@@ -1,5 +1,7 @@
 import { Team } from "@/types/team.type";
 import { Vehicle } from "@/types/vehicle.type";
+import { Depot } from "@/types/depots.type";
+import { LocationMapping } from "@/apis/location-mapping.api";
 
 export function csvEscape(val: any): string {
   if (val === null || val === undefined) return "";
@@ -115,3 +117,43 @@ export function triggerDownload(filename: string, content: string) {
   window.URL.revokeObjectURL(url);
 }
 
+
+export function generateDepotsCsv(depots: Depot[]): string {
+  const headers = ["Name", "Address", "Street", "City", "State", "Zip Code", "Country", "Latitude", "Longitude"];
+  const rows = depots.map((d) =>
+    [
+      d.name,
+      d.address?.formatted_address,
+      d.address?.street,
+      d.address?.city,
+      d.address?.state,
+      d.address?.zip_code,
+      d.address?.country,
+      d.location?.lat,
+      d.location?.lng,
+    ]
+      .map(csvEscape)
+      .join(",")
+  );
+  return [headers.join(","), ...rows].join("\n");
+}
+
+export function generateLocationMappingsCsv(mappings: LocationMapping[]): string {
+  const headers = ["Name", "Type", "Aliases", "Address", "City", "Country", "Latitude", "Longitude", "Active"];
+  const rows = mappings.map((m) =>
+    [
+      m.name,
+      m.location_type || m.type,
+      Array.isArray(m.aliases) ? m.aliases.join(" | ") : "",
+      m.address,
+      m.city,
+      m.country,
+      m.latitude,
+      m.longitude,
+      m.is_active ? "Yes" : "No",
+    ]
+      .map(csvEscape)
+      .join(",")
+  );
+  return [headers.join(","), ...rows].join("\n");
+}

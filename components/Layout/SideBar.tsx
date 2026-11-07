@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useState, useCallback } from "react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { Avatar, Modal, Popover, Typography } from "antd";
+import { Avatar, Modal, Popover, Tooltip, Typography } from "antd";
 import {
   LogoutOutlined,
   MailOutlined,
@@ -14,6 +14,7 @@ import {
   SettingOutlined,
   DownOutlined,
 } from "@ant-design/icons";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { TabKey, useIndexStore } from "@/store/index.store";
 import { useOnboardingStore } from "@/store/onboarding.store";
 import { useTeamStore } from "@/store/team.store";
@@ -42,8 +43,14 @@ const getInitials = (name: string) => {
 const SideBar = () => {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, clearUser, setCurrentTab, setSidebarNavigation } =
-    useIndexStore();
+  const {
+    user,
+    clearUser,
+    setCurrentTab,
+    setSidebarNavigation,
+    sidebarCollapsed,
+    toggleSidebar,
+  } = useIndexStore();
   const { onboarding } = useOnboardingStore();
   const { teams } = useTeamStore();
   const { vehicles } = useVehicleStore();
@@ -95,6 +102,15 @@ const SideBar = () => {
 
   const [showStatsInPopover, setShowStatsInPopover] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [collapsedSettingsOpen, setCollapsedSettingsOpen] = useState(false);
+
+  const handleToggleSidebar = useCallback(() => {
+    toggleSidebar();
+    setCollapsedSettingsOpen(false);
+    setTimeout(() => {
+      window.dispatchEvent(new Event("resize"));
+    }, 220);
+  }, [toggleSidebar]);
 
   const userPopoverContent = (
     <div className="w-[260px] p-3 font-sans space-y-3">
@@ -218,28 +234,75 @@ const SideBar = () => {
   };
 
   return (
-    <aside className="h-screen bg-white flex flex-col border-r overflow-hidden shrink-0 w-48">
+    <aside
+      className={`h-screen bg-white flex flex-col border-r overflow-hidden shrink-0 transition-[width] duration-200 ease-in-out ${
+        sidebarCollapsed ? "w-14" : "w-48"
+      }`}
+    >
       {/* Logo Section */}
-      <div className="pt-3 px-3 mb-2 h-14 flex items-center">
-        <Link
-          href="/dashboard"
-          onClick={() => handleNavigation("/dashboard", "dashboard")}
-        >
-          <div className="flex items-center cursor-pointer">
-            <Image
-              src="/syncnox.svg"
-              alt="SYNCNOX"
-              width={125}
-              height={34}
-              priority
-            />
-          </div>
-        </Link>
-      </div>
+      {sidebarCollapsed ? (
+        <div className="h-14 px-2 mb-2 flex items-center justify-center shrink-0">
+          <Tooltip title="Open sidebar" placement="right" mouseEnterDelay={0.15}>
+            <button
+              type="button"
+              onClick={handleToggleSidebar}
+              aria-label="Open sidebar"
+              aria-expanded={false}
+              className="w-10 h-10 flex items-center justify-center rounded-none text-gray-600 hover:text-primary hover:bg-emerald-50 transition-colors cursor-pointer group"
+            >
+              <Image
+                src="/logo.svg"
+                alt="SYNCNOX"
+                width={22}
+                height={22}
+                className="block group-hover:hidden group-focus-visible:hidden"
+                priority
+              />
+              <ChevronRight
+                size={18}
+                strokeWidth={2}
+                className="hidden group-hover:block group-focus-visible:block"
+              />
+            </button>
+          </Tooltip>
+        </div>
+      ) : (
+        <div className="h-14 px-3 mb-2 flex items-center justify-between shrink-0">
+          <Link
+            href="/dashboard"
+            onClick={() => handleNavigation("/dashboard", "dashboard")}
+            className="flex items-center min-w-0"
+          >
+            <div className="flex items-center cursor-pointer">
+              <Image
+                src="/syncnox.svg"
+                alt="SYNCNOX"
+                width={116}
+                height={32}
+                className="h-7 w-auto object-contain"
+                priority
+              />
+            </div>
+          </Link>
+          <Tooltip title="Close sidebar" placement="right" mouseEnterDelay={0.15}>
+            <button
+              type="button"
+              onClick={handleToggleSidebar}
+              aria-label="Close sidebar"
+              aria-expanded={true}
+              className="w-8 h-8 flex items-center justify-center rounded-none text-gray-500 hover:text-primary hover:bg-emerald-50 transition-colors cursor-pointer shrink-0"
+            >
+              <ChevronLeft size={18} strokeWidth={2} />
+            </button>
+          </Tooltip>
+        </div>
+      )}
 
       {/* Main Menu Items */}
       <nav
-        className="flex-1 px-2 overflow-y-auto overflow-x-hidden"
+        className={`flex-1 overflow-y-auto overflow-x-hidden ${
+          sidebarCollapsed ? "px-1.5" : "px-2"
+        }`}
         style={{
           scrollbarWidth: "thin",
           scrollbarColor: "#E5E7EB transparent",
@@ -251,110 +314,218 @@ const SideBar = () => {
           const active = isActive(item.path) || activeSub;
           const Icon = item.icon;
 
+          if (sidebarCollapsed) {
+            return (
+              <div key={item.path} className="mb-1 flex justify-center">
+                {hasSubItems ? (
+                  <Popover
+                    placement="rightTop"
+                    trigger={["hover", "click"]}
+                    arrow={false}
+                    open={
+                      item.label === "Settings" ? collapsedSettingsOpen : undefined
+                    }
+                    onOpenChange={
+                      item.label === "Settings"
+                        ? setCollapsedSettingsOpen
+                        : undefined
+                    }
+                    styles={{
+                      container: { padding: 6, borderRadius: 0, minWidth: 185 },
+                    }}
+                    content={
+                      <div className="flex flex-col gap-0.5">
+                        <div className="px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 mb-1">
+                          {item.label}
+                        </div>
+                        {item.subItems!.map((subItem) => {
+                          const SubIcon = subItem.icon;
+                          const subActive = isActive(subItem.path);
+                          return (
+                            <Link
+                              key={subItem.path}
+                              href={subItem.path}
+                              onClick={() => {
+                                handleNavigation(subItem.path, subItem.tabKey);
+                                setCollapsedSettingsOpen(false);
+                              }}
+                            >
+                              <div
+                                className={`flex items-center py-1.5 px-2.5 text-xs rounded-none cursor-pointer transition-colors ${
+                                  subActive
+                                    ? "bg-primary text-white font-medium"
+                                    : "hover:bg-emerald-50 text-gray-700"
+                                }`}
+                              >
+                                <SubIcon
+                                  className={`mr-2 text-xs shrink-0 ${
+                                    subActive ? "text-white" : "text-gray-500"
+                                  }`}
+                                />
+                                <span className="truncate">{subItem.label}</span>
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    }
+                  >
+                    <button
+                      type="button"
+                      aria-label={item.label}
+                      className={`w-10 h-10 flex items-center justify-center rounded-none transition-all duration-200 cursor-pointer ${
+                        activeSub
+                          ? "bg-gray-100 text-primary font-medium"
+                          : "text-gray-700 hover:bg-emerald-50 hover:text-primary"
+                      }`}
+                    >
+                      <Icon
+                        className={`text-base ${
+                          active ? "text-primary" : "text-gray-700"
+                        }`}
+                      />
+                    </button>
+                  </Popover>
+                ) : (
+                  <Tooltip
+                    title={item.label}
+                    placement="right"
+                    mouseEnterDelay={0.1}
+                  >
+                    <Link
+                      href={item.path}
+                      onClick={() => handleNavigation(item.path, item.tabKey)}
+                    >
+                      <button
+                        type="button"
+                        aria-label={item.label}
+                        className={`w-10 h-10 flex items-center justify-center rounded-none transition-all duration-200 cursor-pointer ${
+                          active
+                            ? "bg-primary text-white"
+                            : "text-gray-700 hover:bg-emerald-50 hover:text-primary"
+                        }`}
+                      >
+                        <Icon
+                          className={`text-base ${
+                            active ? "text-white" : "text-gray-700"
+                          }`}
+                        />
+                      </button>
+                    </Link>
+                  </Tooltip>
+                )}
+              </div>
+            );
+          }
+
           return (
             <div key={item.path} className="mb-1">
-{hasSubItems ? (
-  item.label === "Settings" ? (
-    <>
-      <div
-        className={getMenuItemClasses(item.path, activeSub)}
-        onClick={() => setSettingsOpen(!settingsOpen)}
-      >
-        <div className="w-5 h-5 flex items-center justify-center shrink-0">
-          <Icon
-            className={`text-base ${
-              active ? "text-primary" : "text-gray-700"
-            }`}
-          />
-        </div>
-        <span className="ml-2.5 text-sm font-medium whitespace-nowrap overflow-hidden">
-          {item.label}
-        </span>
-        <DownOutlined
-          className={`ml-auto transition-transform ${
-            settingsOpen ? "rotate-180" : ""
-          }`}
-          style={{ fontSize: 12 }}
-        />
-      </div>
-      {settingsOpen && (
-        <div className="mt-1 mb-1 space-y-0.5">
-          {item.subItems!.map((subItem) => {
-            const SubIcon = subItem.icon;
-            const subActive = isActive(subItem.path);
-            return (
-              <Link
-                key={subItem.path}
-                href={subItem.path}
-                onClick={() => handleNavigation(subItem.path, subItem.tabKey)}
-              >
-                <div
-                  className={`flex items-center py-1.5 pl-8 pr-2.5 text-xs rounded-none cursor-pointer transition-colors ${
-                    subActive
-                      ? "bg-primary text-white font-medium"
-                      : "hover:bg-emerald-50 text-gray-600"
-                  }`}
-                >
-                  <SubIcon
-                    className={`mr-2 text-xs shrink-0 ${
-                      subActive ? "text-white" : "text-gray-500"
-                    }`}
-                  />
-                  <span className="truncate">{subItem.label}</span>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-    </>
-  ) : (
-    <>
-      <div className={getMenuItemClasses(item.path, activeSub)}>
-        <div className="w-5 h-5 flex items-center justify-center shrink-0">
-          <Icon
-            className={`text-base ${
-              active ? "text-primary" : "text-gray-700"
-            }`}
-          />
-        </div>
-        <span className="ml-2.5 text-sm font-medium whitespace-nowrap overflow-hidden">
-          {item.label}
-        </span>
-      </div>
+              {hasSubItems ? (
+                item.label === "Settings" ? (
+                  <>
+                    <div
+                      className={getMenuItemClasses(item.path, activeSub)}
+                      onClick={() => setSettingsOpen(!settingsOpen)}
+                    >
+                      <div className="w-5 h-5 flex items-center justify-center shrink-0">
+                        <Icon
+                          className={`text-base ${
+                            active ? "text-primary" : "text-gray-700"
+                          }`}
+                        />
+                      </div>
+                      <span className="ml-2.5 text-sm font-medium whitespace-nowrap overflow-hidden">
+                        {item.label}
+                      </span>
+                      <DownOutlined
+                        className={`ml-auto transition-transform ${
+                          settingsOpen ? "rotate-180" : ""
+                        }`}
+                        style={{ fontSize: 12 }}
+                      />
+                    </div>
+                    {settingsOpen && (
+                      <div className="mt-1 mb-1 space-y-0.5">
+                        {item.subItems!.map((subItem) => {
+                          const SubIcon = subItem.icon;
+                          const subActive = isActive(subItem.path);
+                          return (
+                            <Link
+                              key={subItem.path}
+                              href={subItem.path}
+                              onClick={() =>
+                                handleNavigation(subItem.path, subItem.tabKey)
+                              }
+                            >
+                              <div
+                                className={`flex items-center py-1.5 pl-8 pr-2.5 text-xs rounded-none cursor-pointer transition-colors ${
+                                  subActive
+                                    ? "bg-primary text-white font-medium"
+                                    : "hover:bg-emerald-50 text-gray-600"
+                                }`}
+                              >
+                                <SubIcon
+                                  className={`mr-2 text-xs shrink-0 ${
+                                    subActive ? "text-white" : "text-gray-500"
+                                  }`}
+                                />
+                                <span className="truncate">{subItem.label}</span>
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className={getMenuItemClasses(item.path, activeSub)}>
+                      <div className="w-5 h-5 flex items-center justify-center shrink-0">
+                        <Icon
+                          className={`text-base ${
+                            active ? "text-primary" : "text-gray-700"
+                          }`}
+                        />
+                      </div>
+                      <span className="ml-2.5 text-sm font-medium whitespace-nowrap overflow-hidden">
+                        {item.label}
+                      </span>
+                    </div>
 
-      {/* Sub-items (always open) */}
-      <div className="mt-1 mb-1 space-y-0.5">
-        {item.subItems!.map((subItem) => {
-          const SubIcon = subItem.icon;
-          const subActive = isActive(subItem.path);
-          return (
-            <Link
-              key={subItem.path}
-              href={subItem.path}
-              onClick={() => handleNavigation(subItem.path, subItem.tabKey)}
-            >
-              <div
-                className={`flex items-center py-1.5 pl-8 pr-2.5 text-xs rounded-none cursor-pointer transition-colors ${
-                  subActive
-                    ? "bg-primary text-white font-medium"
-                    : "hover:bg-emerald-50 text-gray-600"
-                }`}
-              >
-                <SubIcon
-                  className={`mr-2 text-xs shrink-0 ${
-                    subActive ? "text-white" : "text-gray-500"
-                  }`}
-                />
-                <span className="truncate">{subItem.label}</span>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
-    </>
-  )
-) : (
+                    {/* Sub-items (always open) */}
+                    <div className="mt-1 mb-1 space-y-0.5">
+                      {item.subItems!.map((subItem) => {
+                        const SubIcon = subItem.icon;
+                        const subActive = isActive(subItem.path);
+                        return (
+                          <Link
+                            key={subItem.path}
+                            href={subItem.path}
+                            onClick={() =>
+                              handleNavigation(subItem.path, subItem.tabKey)
+                            }
+                          >
+                            <div
+                              className={`flex items-center py-1.5 pl-8 pr-2.5 text-xs rounded-none cursor-pointer transition-colors ${
+                                subActive
+                                  ? "bg-primary text-white font-medium"
+                                  : "hover:bg-emerald-50 text-gray-600"
+                              }`}
+                            >
+                              <SubIcon
+                                className={`mr-2 text-xs shrink-0 ${
+                                  subActive ? "text-white" : "text-gray-500"
+                                }`}
+                              />
+                              <span className="truncate">{subItem.label}</span>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </>
+                )
+              ) : (
                 // Regular menu item with navigation
                 <Link
                   href={item.path}
@@ -384,50 +555,95 @@ const SideBar = () => {
       </nav>
 
       {/* Bottom Section - User Profile & Logout */}
-      <footer className="border-t pt-2.5 pb-3 px-2 flex flex-col gap-1">
+      <footer
+        className={`border-t pt-2.5 pb-3 flex flex-col gap-1 ${
+          sidebarCollapsed ? "px-1.5 items-center" : "px-2"
+        }`}
+      >
         {/* User Profile */}
         <Popover
           content={userPopoverContent}
           trigger="click"
-          placement="top"
+          placement={sidebarCollapsed ? "rightBottom" : "top"}
           overlayClassName="user-profile-popover"
           arrow={false}
-          styles={{ container: { padding: 2, borderRadius: 10, marginLeft: 30 } }}
+          styles={{
+            container: sidebarCollapsed
+              ? { padding: 2, borderRadius: 10 }
+              : { padding: 2, borderRadius: 10, marginLeft: 30 },
+          }}
         >
-          <div className="flex items-center px-1 py-1.5 cursor-pointer rounded hover:bg-emerald-50 transition-colors group">
-            <Avatar
-              size={34}
-              style={{ backgroundColor: "#003220", color: "#ffffff" }}
-              className="font-bold text-xs shrink-0 shadow-sm flex items-center justify-center"
-              icon={!hasCompanyName ? <UserOutlined /> : undefined}
+          {sidebarCollapsed ? (
+            <Tooltip
+              title={businessName}
+              placement="right"
+              mouseEnterDelay={0.15}
             >
-              {hasCompanyName ? initials : null}
-            </Avatar>
-            <div className="ml-2 overflow-hidden truncate">
-              <p
-                className="text-xs font-semibold text-gray-800 truncate group-hover:text-primary transition-colors"
-                title={businessName}
+              <div className="w-10 h-10 flex items-center justify-center cursor-pointer rounded hover:bg-emerald-50 transition-colors">
+                <Avatar
+                  size={34}
+                  style={{ backgroundColor: "#003220", color: "#ffffff" }}
+                  className="font-bold text-xs shrink-0 shadow-sm flex items-center justify-center"
+                  icon={!hasCompanyName ? <UserOutlined /> : undefined}
+                >
+                  {hasCompanyName ? initials : null}
+                </Avatar>
+              </div>
+            </Tooltip>
+          ) : (
+            <div className="flex items-center px-1 py-1.5 cursor-pointer rounded hover:bg-emerald-50 transition-colors group">
+              <Avatar
+                size={34}
+                style={{ backgroundColor: "#003220", color: "#ffffff" }}
+                className="font-bold text-xs shrink-0 shadow-sm flex items-center justify-center"
+                icon={!hasCompanyName ? <UserOutlined /> : undefined}
               >
-                {businessName}
-              </p>
+                {hasCompanyName ? initials : null}
+              </Avatar>
+              <div className="ml-2 overflow-hidden truncate">
+                <p
+                  className="text-xs font-semibold text-gray-800 truncate group-hover:text-primary transition-colors"
+                  title={businessName}
+                >
+                  {businessName}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </Popover>
 
         {/* Logout Button */}
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-none text-red-600 hover:bg-red-50 transition-all duration-200 cursor-pointer text-xs font-semibold"
-        >
-          <Image
-            src="/logout.svg"
-            alt="Logout"
-            width={16}
-            height={16}
-          />
-          <span>Log out</span>
-        </button>
+        {sidebarCollapsed ? (
+          <Tooltip title="Log out" placement="right" mouseEnterDelay={0.15}>
+            <button
+              type="button"
+              onClick={handleLogout}
+              aria-label="Log out"
+              className="w-10 h-9 flex items-center justify-center rounded-none text-red-600 hover:bg-red-50 transition-all duration-200 cursor-pointer"
+            >
+              <Image
+                src="/logout.svg"
+                alt="Logout"
+                width={16}
+                height={16}
+              />
+            </button>
+          </Tooltip>
+        ) : (
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-none text-red-600 hover:bg-red-50 transition-all duration-200 cursor-pointer text-xs font-semibold"
+          >
+            <Image
+              src="/logout.svg"
+              alt="Logout"
+              width={16}
+              height={16}
+            />
+            <span>Log out</span>
+          </button>
+        )}
       </footer>
     </aside>
   );
