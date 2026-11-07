@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { Button, Spin, Modal, Dropdown, message } from "antd";
+import { Button, Spin, Modal, message } from "antd";
 import { Search, Truck, Upload, Plus, Trash2, Download } from "lucide-react";
 import { Vehicle } from "@/types/vehicle.type";
 import { useVehicleStore } from "@/store/vehicle.store";
@@ -92,24 +92,17 @@ const VehicleList = () => {
     });
   };
 
-  const handleExport = async (selectedOnly: boolean = false) => {
+  const handleExport = async () => {
     try {
       setIsExporting(true);
-      const targetIds = selectedOnly && checkedIds.length > 0 ? checkedIds : undefined;
-      const count = targetIds ? targetIds.length : vehicles.length;
+      const count = vehicles.length;
 
       try {
-        await exportVehicles(targetIds);
+        await exportVehicles();
       } catch (apiErr) {
         // Fallback to client-side CSV generation if backend endpoint is unavailable
-        const vehiclesToExport = targetIds
-          ? vehicles.filter((v) => targetIds.includes(v.id))
-          : vehicles;
-        const csv = generateVehiclesCsv(vehiclesToExport);
-        triggerDownload(
-          targetIds ? `vehicles_selected_${targetIds.length}.csv` : "vehicles_export.csv",
-          csv
-        );
+        const csv = generateVehiclesCsv(vehicles);
+        triggerDownload("vehicles_export.csv", csv);
       }
       message.success(`Successfully exported ${count} vehicle(s) to CSV`);
     } catch (err: any) {
@@ -149,41 +142,14 @@ const VehicleList = () => {
               Delete ({checkedIds.length})
             </Button>
           )}
-          {checkedIds.length > 0 ? (
-            <Dropdown
-              menu={{
-                items: [
-                  {
-                    key: "selected",
-                    label: `Export Selected (${checkedIds.length})`,
-                    onClick: () => handleExport(true),
-                  },
-                  {
-                    key: "all",
-                    label: `Export All (${vehicles.length})`,
-                    onClick: () => handleExport(false),
-                  },
-                ],
-              }}
-            >
-              <Button
-                icon={<Download size={15} />}
-                loading={isExporting}
-                id="vehicle-export-btn"
-              >
-                Export Vehicle ({checkedIds.length})
-              </Button>
-            </Dropdown>
-          ) : (
-            <Button
-              icon={<Download size={15} />}
-              loading={isExporting}
-              onClick={() => handleExport(false)}
-              id="vehicle-export-btn"
-            >
-              Export Vehicle
-            </Button>
-          )}
+          <Button
+            icon={<Download size={15} />}
+            loading={isExporting}
+            onClick={handleExport}
+            id="vehicle-export-btn"
+          >
+            Export
+          </Button>
           <Button
             icon={<Upload size={15} />}
             onClick={() => setBulkModalOpen(true)}

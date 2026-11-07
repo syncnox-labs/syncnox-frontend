@@ -450,6 +450,10 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
         updateGeocodedRow(rowIndex, {
           original_data: updatedOriginal,
           geocode_result: resolved.geocode_result,
+          validation_errors: [
+            ...(latest.validation_errors || []).filter(error => !error.startsWith("Unresolved location:")),
+            ...(resolved.location_errors || []),
+          ],
           is_duplicate: false,
         });
 
@@ -593,7 +597,9 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
 
       // An edited address needs its coordinates resolved again — the ones on
       // the row belong to the address that was there a moment ago.
-      if (field && LOCATION_SOURCE_FIELDS.has(field)) {
+      const hasManualCoordinate = (field === "lat" || field === "lng") &&
+        updatedRow.geocode_result.lat != null && updatedRow.geocode_result.lng != null;
+      if (field && (LOCATION_SOURCE_FIELDS.has(field) || hasManualCoordinate)) {
         void reResolveRow(rowIndex);
       }
     },

@@ -48,7 +48,7 @@ import TimelineTooltip, { TimelineTooltipProvider } from "./TimelineTooltip";
 import { getTimelineSegment } from "./timelineSegment.utils";
 import { waitingMergeButtonLayout, waitingMergeCandidates } from "./routeWaiting.utils";
 import { isRedundantLeaderClientStart } from "./leaderRoute.utils";
-import { getRouteStopDisplay, type GroupedStop as DisplayStopGroup } from "./stopDisplay.utils";
+import { getRouteStopDisplay, getStopTooltipStops, type GroupedStop as DisplayStopGroup } from "./stopDisplay.utils";
 import {
   calculateTimeRange,
   generateTimeMarkers,
@@ -2722,6 +2722,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               return groupedStops.map((group, groupIndex) => {
                                 const stop = group.representative;
                                 const count = group.candidateCount;
+                                const isMixed = group.hasPickup && group.hasDropoff;
                                 
                                 const fallbackArrivalTime = groupIndex > 0
                                   ? dayjs(groupedStops[groupIndex - 1].representative.arrival_time || startTime.toISOString()).add(30, 'minute')
@@ -2731,8 +2732,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   ? dayjs(stop.arrival_time)
                                   : fallbackArrivalTime;
                                 
-                                const serviceDuration =
-                                  stop.service_duration_minutes || 0;
+                                // Service is charged once per visit; it may be recorded on its last event.
+                                const serviceDuration = group.rawStops.reduce((duration: number, s: any) =>
+                                  Math.max(duration, s.service_duration_minutes ?? (s.service_duration_seconds ?? 0) / 60), 0,
+                                );
                                 
                                 const departureTime = arrivalTime.add(
                                   serviceDuration,
@@ -2810,19 +2813,17 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     stop.status ||
                                     "assigned";
                                 }
+                                const isStopDone = isJob && group.rawStops.every((s: any) => {
+                                  const status = jobsMap.get(Number(s.job_id)) || s.job?.status || s.status || "assigned";
+                                  return status === "completed" || status === "success" ||
+                                    (s.stop_type === "pickup" && status === "in_transit");
+                                });
 
                                 let blockBgColor = routeColor;
                                 let blockBorderColor = routeColor;
                                 let blockTextColor = "white";
 
                                 if (isJob) {
-                                  const isStopDone = isPickup
-                                    ? jobStatus === "in_transit" ||
-                                      jobStatus === "completed" ||
-                                      jobStatus === "success"
-                                    : jobStatus === "completed" ||
-                                      jobStatus === "success";
-
                                   if (isStopDone) {
                                     blockBgColor = routeColor;
                                     blockBorderColor = routeColor;
@@ -2857,7 +2858,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                                 const lastRawIndex =
                                   group.firstRawIndex +
-                                  group.candidateCount -
+                                  group.rawStops.length -
                                   1;
                                 const currentOccupancy =
                                   occupancyMap.get(lastRawIndex) ?? 0;
@@ -2884,7 +2885,11 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   <div className="pointer-events-auto select-text p-1 space-y-2.5 w-[310px] text-slate-800">
                                     {/* Header Badge Row */}
                                     <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200 select-none">
-                                      {isPickup ? (
+                                      {isMixed ? (
+                                        <span className="inline-flex items-center justify-center gap-1.5 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wider bg-indigo-100 text-indigo-900 border border-indigo-400">
+                                          <UserDeleteOutlined /> DROP-OFF + <UserAddOutlined /> PICKUP
+                                        </span>
+                                      ) : isPickup ? (
                                         <span className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-400">
                                           <UserAddOutlined className="text-emerald-700 font-bold" />
                                           PICKUP
@@ -2949,7 +2954,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     )}
 
                                     {/* Location / Address Row */}
-                                    <div className="flex items-start gap-2.5 py-0.5">
+                                    {!isMixed && <div className="flex items-start gap-2.5 py-0.5">
                                       {isDepot ? (
                                         stop.stop_type === "depot_end" ? (
                                           <Flag className="text-amber-600 text-base shrink-0 mt-0.5" />
@@ -2999,7 +3004,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           {formattedAddr}
                                         </span>
                                       </div>
-                                    </div>
+                                    </div>}
 
                                     {/* Passengers / Job List */}
                                     {isJob && group.rawStops.length > 0 && (
@@ -3014,8 +3019,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             </span>
                                           )}
                                         </div>
-                                        <div className="text-xs max-h-36 overflow-y-auto space-y-1.5 custom-scrollbar pr-0.5">
-                                          {group.rawStops.map((s: any, i: number) => {
+                                        <div className={`text-xs ${isMixed ? "max-h-64" : "max-h-36"} overflow-y-auto space-y-1.5 custom-scrollbar pr-0.5`}>
+                                          {getStopTooltipStops(group).map((s: any, i: number) => {
                                             const candName = getCandidateName(s);
                                             const rawJobId = s.job_id || s.id || s.job?.id;
                                             const numJobId = rawJobId ? Number(rawJobId) : null;
@@ -3024,82 +3029,96 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             const isCompleted = status === "COMPLETED";
                                             const isFailed = status === "FAILED";
                                             const isFinished = isCompleted || isFailed;
+                                            const activityDetails = isMixed && (
+                                              <div className="mb-1 space-y-0.5" data-stop-activity={s.stop_type}>
+                                                <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600">
+                                                  {s.stop_type === "pickup" ? "Pickup" : "Drop-off"}
+                                                </div>
+                                                <div className="text-xs font-semibold text-slate-900 break-words">
+                                                  {s.address_formatted || `#${s.job_id || numJobId}`}
+                                                </div>
+                                              </div>
+                                            );
 
                                             if (isPendingDelete) {
                                               return (
-                                                <div
-                                                  key={i}
-                                                  className="bg-red-50 text-red-800 border border-dashed border-red-300 px-2 py-1.5 transition-all flex items-center justify-between text-xs font-semibold overflow-hidden opacity-75"
-                                                >
-                                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                                    <FileTextOutlined className="text-red-500 text-xs shrink-0" />
-                                                    <span className="font-bold text-red-900 shrink-0">#{s.job_id || numJobId}</span>
-                                                    {candName && (
-                                                      <span className="text-red-700 font-medium truncate shrink" title={candName}>({candName})</span>
+                                                <React.Fragment key={i}>
+                                                  {activityDetails}
+                                                  <div
+                                                    className="bg-red-50 text-red-800 border border-dashed border-red-300 px-2 py-1.5 transition-all flex items-center justify-between text-xs font-semibold overflow-hidden opacity-75"
+                                                  >
+                                                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                                      <FileTextOutlined className="text-red-500 text-xs shrink-0" />
+                                                      <span className="font-bold text-red-900 shrink-0">#{s.job_id || numJobId}</span>
+                                                      {candName && (
+                                                        <span className="text-red-700 font-medium truncate shrink" title={candName}>({candName})</span>
+                                                      )}
+                                                      <span className="ml-1 text-[10px] font-extrabold uppercase bg-red-100 text-red-700 px-1 py-0.2 border border-red-300 shrink-0">
+                                                        Pending Delete
+                                                      </span>
+                                                    </div>
+                                                    {onUndoDeleteJob && numJobId && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          onUndoDeleteJob(numJobId);
+                                                        }}
+                                                        className="ml-2 text-xs font-bold text-red-700 hover:text-red-900 hover:bg-red-100 px-1.5 py-0.5 border border-red-300 transition-colors flex items-center gap-1 shrink-0 cursor-pointer bg-white"
+                                                        title="Undo staged deletion"
+                                                      >
+                                                        <UndoOutlined /> Undo
+                                                      </button>
                                                     )}
-                                                    <span className="ml-1 text-[10px] font-extrabold uppercase bg-red-100 text-red-700 px-1 py-0.2 border border-red-300 shrink-0">
-                                                      Pending Delete
-                                                    </span>
                                                   </div>
-                                                  {onUndoDeleteJob && numJobId && (
-                                                    <button
-                                                      type="button"
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        onUndoDeleteJob(numJobId);
-                                                      }}
-                                                      className="ml-2 text-xs font-bold text-red-700 hover:text-red-900 hover:bg-red-100 px-1.5 py-0.5 border border-red-300 transition-colors flex items-center gap-1 shrink-0 cursor-pointer bg-white"
-                                                      title="Undo staged deletion"
-                                                    >
-                                                      <UndoOutlined /> Undo
-                                                    </button>
-                                                  )}
-                                                </div>
+                                                </React.Fragment>
                                               );
                                             }
 
                                             return (
-                                              <div
-                                                key={i}
-                                                className={`cursor-pointer text-slate-800 border px-2 py-1.5 transition-all flex items-center justify-between text-xs font-semibold overflow-hidden group/jobrow ${
-                                                  isCompleted
-                                                    ? "bg-green-50 border-green-200 hover:bg-green-100 hover:border-green-300"
-                                                    : isFailed
-                                                      ? "bg-red-50 border-red-200 hover:bg-red-100 hover:border-red-300"
-                                                      : "bg-slate-50 hover:bg-emerald-50 hover:text-emerald-900 border-slate-200 hover:border-emerald-400"
-                                                }`}
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  onStopClick?.(s, routeIndex, displayIndex);
-                                                }}
-                                              >
-                                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                                  <FileTextOutlined className="text-slate-500 text-xs shrink-0" />
-                                                  <span className="font-bold text-slate-900 shrink-0">#{s.job_id || numJobId}</span>
-                                                  {candName && (
-                                                    <span className="text-slate-600 font-medium truncate shrink" title={candName}>({candName})</span>
-                                                  )}
-                                                  {Boolean(s.is_edited || s.time_edited) && (
-                                                    <span className="ml-1 text-[10px] font-bold uppercase bg-purple-100 text-purple-800 px-1 py-0.2 border border-purple-300 shrink-0 flex items-center gap-0.5">
-                                                      <ClockCircleOutlined className="text-[9px]" /> Edited
-                                                    </span>
+                                              <React.Fragment key={i}>
+                                                {activityDetails}
+                                                <div
+                                                  className={`cursor-pointer text-slate-800 border px-2 py-1.5 transition-all flex items-center justify-between text-xs font-semibold overflow-hidden group/jobrow ${
+                                                    isCompleted
+                                                      ? "bg-green-50 border-green-200 hover:bg-green-100 hover:border-green-300"
+                                                      : isFailed
+                                                        ? "bg-red-50 border-red-200 hover:bg-red-100 hover:border-red-300"
+                                                        : "bg-slate-50 hover:bg-emerald-50 hover:text-emerald-900 border-slate-200 hover:border-emerald-400"
+                                                  }`}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onStopClick?.(s, routeIndex, displayIndex);
+                                                  }}
+                                                >
+                                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                                    <FileTextOutlined className="text-slate-500 text-xs shrink-0" />
+                                                    <span className="font-bold text-slate-900 shrink-0">#{s.job_id || numJobId}</span>
+                                                    {candName && (
+                                                      <span className="text-slate-600 font-medium truncate shrink" title={candName}>({candName})</span>
+                                                    )}
+                                                    {Boolean(s.is_edited || s.time_edited) && (
+                                                      <span className="ml-1 text-[10px] font-bold uppercase bg-purple-100 text-purple-800 px-1 py-0.2 border border-purple-300 shrink-0 flex items-center gap-0.5">
+                                                        <ClockCircleOutlined className="text-[9px]" /> Edited
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  {!isFinished && onRemoveStop && numJobId && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setOpenStopTooltipKey(null);
+                                                        onRemoveStop(routeIndex, numJobId, s.stop_type);
+                                                      }}
+                                                      className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors border-none bg-transparent flex items-center shrink-0 cursor-pointer opacity-80 group-hover/jobrow:opacity-100"
+                                                      title="Remove job from route"
+                                                    >
+                                                      <DeleteOutlined className="text-xs" />
+                                                    </button>
                                                   )}
                                                 </div>
-                                                {!isFinished && onRemoveStop && numJobId && (
-                                                  <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      setOpenStopTooltipKey(null);
-                                                      onRemoveStop(routeIndex, numJobId, s.stop_type);
-                                                    }}
-                                                    className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors border-none bg-transparent flex items-center shrink-0 cursor-pointer opacity-80 group-hover/jobrow:opacity-100"
-                                                    title="Remove job from route"
-                                                  >
-                                                    <DeleteOutlined className="text-xs" />
-                                                  </button>
-                                                )}
-                                              </div>
+                                              </React.Fragment>
                                             );
                                           })}
                                         </div>
@@ -3318,13 +3337,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   const isShuttleArrow = isWorkerShuttle && !isDepot && (isPickup || isDropoff);
 
                                   if (isShuttleArrow) {
-                                    const isStopDone = isPickup
-                                      ? jobStatus === "in_transit" ||
-                                        jobStatus === "completed" ||
-                                        jobStatus === "success"
-                                      : jobStatus === "completed" ||
-                                        jobStatus === "success";
-
                                     return (
                                       <TimelineTooltip
                                         popupScope="viewport"
@@ -3347,6 +3359,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       >
                                         <TimelineStopArrow
                                           isPickup={isPickup}
+                                          isMixed={isMixed}
+                                          aria-label={`Stop ${displayIndex}: ${isMixed ? "Drop-off and pickup" : stopTypeLabel}`}
                                           displayIndex={displayIndex}
                                           routeColor={routeColor}
                                           isStopDone={isStopDone}

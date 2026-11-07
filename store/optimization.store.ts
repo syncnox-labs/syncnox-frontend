@@ -14,7 +14,11 @@ import { formatOptimizationError } from "@/utils/optimizationError.utils";
 // Live updates contain persisted own-plan routes; GET also adds neighboring
 // plans. Keep those visible until a fresh GET reconciles the combined view.
 function preserveNeighborRoutes(current: Route["result"], incoming: Route["result"]): Route["result"] {
-  const neighbors = current?.routes?.filter(route => route.source_optimization_id != null) || [];
+  const changedPlans = new Set(incoming?.consolidation?.affected_plan_ids || []);
+  const incomingJobs = new Set(incoming?.routes?.flatMap(route => route.stops?.map(stop => stop.job_id) || []) || []);
+  const neighbors = current?.routes?.filter(route => route.source_optimization_id != null
+    && !changedPlans.has(route.source_optimization_id)
+    && !route.stops.some(stop => stop.job_id != null && incomingJobs.has(stop.job_id))) || [];
   if (!neighbors.length || !Array.isArray(incoming?.routes)
     || incoming.routes.some(route => route.source_optimization_id != null)) return incoming;
   const routes = [...incoming.routes, ...neighbors];

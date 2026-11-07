@@ -1842,7 +1842,7 @@ const OptimizationView = ({
       content:
         (pendingDeletedJobIds.size > 0 ? `${pendingDeletedJobIds.size} job(s) will be removed from routes. ` : "") +
         (isWorkerShuttle
-          ? "This will rebuild all routes using current jobs, drivers and vehicles. Drivers and stop times you chose manually may change, and some jobs may become unassigned. Continue?"
+          ? "This will rebuild automatic routes and look for better merges with overlapping unpublished trips from other plans. Merged bookings move into this plan. Manual trips, edited times and dispatched routes are kept. Continue?"
           : "This will re-run the full optimization with updated job and driver data. Old routes will be replaced. Continue?"),
       okText: "Reoptimize All Routes",
       okButtonProps: { style: { backgroundColor: "#003220", borderColor: "#003220" } },

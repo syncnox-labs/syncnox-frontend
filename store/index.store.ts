@@ -30,12 +30,15 @@ interface UserState {
   isAuthenticated: boolean;
   currentTab: TabKey;
   sidebarNavigation: boolean;
+  sidebarCollapsed: boolean;
   activeJobTemplate: string | null;
   setUser: (user: User) => void;
   clearUser: () => void;
   setCurrentTab: (tab: TabKey) => void;
   resetTab: (defaultTab: TabKey) => void;
   setSidebarNavigation: (value: boolean) => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebar: () => void;
   setActiveJobTemplate: (template: string) => void;
   updateActiveJobTemplate: (template: string) => Promise<void>;
   fetchTenant: () => Promise<void>;
@@ -48,12 +51,16 @@ export const useIndexStore = create<UserState>()(
       isAuthenticated: false,
       currentTab: "dashboard",
       sidebarNavigation: false,
+      sidebarCollapsed: false,
       activeJobTemplate: null,
       setUser: (user) => set({ user, isAuthenticated: true }),
       clearUser: () => set({ user: null, isAuthenticated: false }),
       setCurrentTab: (tab) => set({ currentTab: tab }),
       resetTab: (defaultTab) => set({ currentTab: defaultTab }),
       setSidebarNavigation: (value) => set({ sidebarNavigation: value }),
+      setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+      toggleSidebar: () =>
+        set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       setActiveJobTemplate: (template) => set({ activeJobTemplate: template }),
       updateActiveJobTemplate: async (template) => {
         try {
@@ -85,6 +92,7 @@ export const useIndexStore = create<UserState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
         currentTab: state.currentTab,
+        sidebarCollapsed: state.sidebarCollapsed,
         activeJobTemplate: state.activeJobTemplate,
       }),
     }
