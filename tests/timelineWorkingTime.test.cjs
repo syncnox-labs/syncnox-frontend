@@ -398,3 +398,25 @@ test("a shared pickup/drop-off visit renders one double arrow and drop-off detai
   assert.deepEqual(removed, [[0, 2, "dropoff"], [0, 2, "pickup"]]);
   assert.deepEqual(selectedRoute.stops, originalStops);
 });
+
+test("a shared pickup shows the driver's earlier arrival and waiting after a drop-off", () => {
+  const pickup = { ...route.stops[0], leg: "GO", arrival_time: "2026-09-29T15:59:20",
+    driver_arrival_time: "2026-09-29T15:30:32", service_duration_seconds: 0 };
+  const second = { ...pickup, job_id: 2, service_duration_seconds: 120 };
+  const dropoff = { ...route.stops[1], arrival_time: "2026-09-29T16:20:00",
+    waiting_position: "left", waiting_time_to_next_stop_seconds: 170 };
+  const selectedRoute = { ...route, stops: [pickup, second, dropoff] };
+  renderedStops = [];
+  renderedStopTooltips = [];
+  renderToStaticMarkup(React.createElement(TimelineView, {
+    routes: [selectedRoute], scheduledDate: "2026-09-29", showDriverWorkingTime: false,
+  }));
+  assert.equal(renderedStops.length, 2, "passengers boarding together share a single stop");
+  assert.equal(renderedStops[0].displayIndex, 1);
+  const pickupHtml = renderToStaticMarkup(renderedStopTooltips[0]);
+  assert.match(pickupHtml, /Driver arrived: 03:30 PM/);
+  assert.match(pickupHtml, /Departure: 04:01 PM/);
+  const dropoffHtml = renderToStaticMarkup(renderedStopTooltips[1]);
+  assert.match(dropoffHtml, /Departure: 04:22 PM/);
+  assert.match(dropoffHtml, /Waiting after stop: 2.8 min/);
+});
