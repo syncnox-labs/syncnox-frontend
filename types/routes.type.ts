@@ -17,6 +17,7 @@ export interface Stop {
   job_id: number | null;
   stop_type: string;
   arrival_time: string;
+  driver_arrival_time?: string;
   latitude: number;
   longitude: number;
   address_formatted: string;

@@ -2737,10 +2737,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   Math.max(duration, s.service_duration_minutes ?? (s.service_duration_seconds ?? 0) / 60), 0,
                                 );
                                 
+                                const finalEvent = group.rawStops[group.rawStops.length - 1];
+                                const waitingAfterStop = finalEvent?.waiting_position === "left"
+                                  ? (finalEvent.waiting_time_to_next_stop_seconds || 0) / 60 : 0;
                                 const departureTime = arrivalTime.add(
-                                  serviceDuration,
+                                  serviceDuration + waitingAfterStop,
                                   "minute",
                                 );
+                                const driverArrival = stop.driver_arrival_time ? dayjs(stop.driver_arrival_time) : null;
 
                                 const computedArrivalTimeString = stop.arrival_time || arrivalTime.toISOString();
 
@@ -3154,10 +3158,18 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       </div>
                                     </div>
 
-                                    {serviceDuration > 0 && (
+                                    {driverArrival?.isValid() && driverArrival.isBefore(arrivalTime) && (
+                                      <div className="text-[11px] text-slate-500 text-center pt-1 border-t border-slate-100">
+                                        Driver arrived: {driverArrival.format("hh:mm A")}
+                                        {driverArrival.format("YYYY-MM-DD") !== arrivalTime.format("YYYY-MM-DD") &&
+                                          ` (${driverArrival.format("ddd, MMM D")})`}
+                                      </div>
+                                    )}
+                                    {(serviceDuration > 0 || waitingAfterStop > 0) && (
                                       <div className="text-[11px] text-slate-500 text-center pt-1 space-y-0.5 border-t border-slate-100">
                                         <div>Departure: {departureTime.isValid() ? departureTime.format("hh:mm A") : "--:--"}</div>
-                                        <div>Service Duration: {serviceDuration} min</div>
+                                        {serviceDuration > 0 && <div>Service Duration: {serviceDuration} min</div>}
+                                        {waitingAfterStop > 0 && <div>Waiting after stop: {Math.round(waitingAfterStop * 10) / 10} min</div>}
                                       </div>
                                     )}
                                   </div>
