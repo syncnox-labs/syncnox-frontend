@@ -67,6 +67,11 @@ const TimelineView = load("app/route/_components/TimelineView.tsx", {
     return React.createElement("span", { "data-test": "route-stop" });
   },
   "./timelineSegment.utils": load("app/route/_components/timelineSegment.utils.ts"),
+  "./optimizationShortcuts.utils": load("app/route/_components/optimizationShortcuts.utils.ts"),
+  "./useTimelineZoom": load("app/route/_components/useTimelineZoom.ts", {
+    "./optimizationShortcuts.utils": load("app/route/_components/optimizationShortcuts.utils.ts"),
+    "@/utils/timeline.utils": load("utils/timeline.utils.ts", { "./app.utils": load("utils/app.utils.ts") }),
+  }),
   "./routeWaiting.utils": load("app/route/_components/routeWaiting.utils.ts"),
   "./TimelineTooltip": timelineTooltip,
   "./TimelineTravelSegment": load("app/route/_components/TimelineTravelSegment.tsx", { "./TimelineTooltip": timelineTooltip }),

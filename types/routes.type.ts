@@ -111,6 +111,14 @@ interface RouteResult {
     matrix_builds: number;
     distance_saved_meters: number;
     affected_plan_ids: number[];
+    skipped_candidates?: Array<{
+      driver_id: number;
+      driver_name?: string;
+      last_dropoff: string;
+      next_pickup: string;
+      reason: string;
+      detail?: string;
+    }>;
   };
   added_job_ids?: number[];
   manual_job_creations?: Record<string, { fingerprint: string; job_ids: number[] }>;

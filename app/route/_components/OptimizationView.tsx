@@ -654,6 +654,14 @@ const OptimizationView = ({
     triggerMapResize();
   }, [mapViewState, triggerMapResize]);
 
+  const revealMapSearch = useCallback(() => {
+    if (mapViewState !== "collapsed") return;
+    mapPanelRef.current?.resize(60);
+    timelinePanelRef.current?.resize(40);
+    setMapViewState("normal");
+    triggerMapResize();
+  }, [mapViewState, triggerMapResize]);
+
   const handlePanelLayout = useCallback((sizes: number[]) => {
     if (!sizes || sizes.length < 2) return;
     const mapSize = sizes[0];
@@ -2256,6 +2264,41 @@ const OptimizationView = ({
         </div>
       </nav>
 
+      {/* Trip merge diagnostics banner disabled for now; keep for future use.
+      {isWorkerShuttle && route.result?.consolidation &&
+        (route.result.consolidation.status === "timed_out" || !!route.result.consolidation.skipped_candidates?.length) && (
+        <details className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-950">
+          <summary className="cursor-pointer font-semibold">
+            {route.result.consolidation.status === "timed_out"
+              ? "Trip merge search reached its time limit"
+              : "Some possible trip merges were skipped"}
+          </summary>
+          {route.result.consolidation.status === "timed_out" &&
+            <p className="mt-2">Some trips may not have been checked. Review the routes or reoptimize again.</p>}
+          {!!route.result.consolidation.skipped_candidates?.length && (
+            <ul className="mt-2 max-h-32 list-disc space-y-1 overflow-y-auto pl-5">
+              {route.result.consolidation.skipped_candidates.map((candidate, index) => {
+                const reasons: Record<string, string> = {
+                  protected_trip: "The trip is protected by a manual, shared or in-progress change.",
+                  trip_data_unavailable: "The trip is incomplete, outside the planning period, or its saved data cannot be verified.",
+                  break_or_idle: "A recorded break or idle block needs to be preserved.",
+                  locked_vehicle: "The later trip has a different locked vehicle.",
+                  driver_or_vehicle_unavailable: "The driver or first vehicle is unavailable or incompatible.",
+                  capacity_or_booking_constraints: "The first vehicle or booking constraints do not permit this merge.",
+                  road_data_unavailable: "Road travel could not be verified.",
+                  constraints_or_conflict: "The combined schedule could not be verified.",
+                };
+                return <li key={`${candidate.driver_id}-${candidate.last_dropoff}-${candidate.next_pickup}-${index}`}>
+                  {candidate.driver_name || `Driver #${candidate.driver_id}`}: {dayjs(candidate.last_dropoff).format("D MMM h:mm A")}
+                  {" → "}{dayjs(candidate.next_pickup).format("D MMM h:mm A")}. {candidate.detail || reasons[candidate.reason] || "The merge could not be verified."}
+                </li>;
+              })}
+            </ul>
+          )}
+        </details>
+      )}
+      */}
+
       {/* Error Banner */}
       {error && !isIssueMinimized && (
         <OptimizationIssueBanner error={error} onMinimize={() => setMinimizedIssue(issueKey)} />
@@ -2627,6 +2670,7 @@ const OptimizationView = ({
 
                 {/* In-map expandable candidate search + Add Candidate button */}
                 <MapSearch
+                  onReveal={revealMapSearch}
                   candidates={candidateIndex}
                   onSelect={handleSelectCandidate}
                   onOpenAddJob={() => setIsAddJobOpen(true)}

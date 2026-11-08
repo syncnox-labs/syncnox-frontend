@@ -46,6 +46,8 @@ import TimelineStopArrow from "./TimelineStopArrow";
 import TimelineTravelSegment from "./TimelineTravelSegment";
 import TimelineTooltip, { TimelineTooltipProvider } from "./TimelineTooltip";
 import { getTimelineSegment } from "./timelineSegment.utils";
+import { TIMELINE_INTERVALS } from "./optimizationShortcuts.utils";
+import { useTimelineZoom } from "./useTimelineZoom";
 import { waitingMergeButtonLayout, waitingMergeCandidates } from "./routeWaiting.utils";
 import { isRedundantLeaderClientStart } from "./leaderRoute.utils";
 import { getRouteStopDisplay, getStopTooltipStops, type GroupedStop as DisplayStopGroup } from "./stopDisplay.utils";
@@ -131,15 +133,7 @@ interface TimelineViewProps {
   ) => Promise<void> | void;
 }
 
-const INTERVAL_OPTIONS = [
-  { value: 5, label: "5 min" },
-  { value: 10, label: "10 min" },
-  { value: 15, label: "15 min" },
-  { value: 20, label: "20 min" },
-  { value: 25, label: "25 min" },
-  { value: 30, label: "30 min" },
-  { value: 60, label: "60 min" },
-];
+const INTERVAL_OPTIONS = TIMELINE_INTERVALS.map(value => ({ value, label: `${value} min` }));
 
 const formatDurationSeconds = (seconds: number): string => {
   if (!seconds || seconds <= 0) return "";
@@ -431,7 +425,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   onMoveStops,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [intervalMinutes, setIntervalMinutes] = useState(30);
   const [shiftOverrides, setShiftOverrides] = useState<Record<string, DriverShift>>({});
   const [shiftDrag, setShiftDrag] = useState<ShiftDragState | null>(null);
   const shiftDragValueRef = useRef<DriverShift | null>(null);
@@ -779,6 +772,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     vehicles.forEach(v => map.set(v.id, v));
     return map;
   }, [vehicles]);
+
+  const { intervalMinutes, changeInterval, skipSelectionScrollRef } = useTimelineZoom(
+    containerRef, DRIVER_COLUMN_WIDTH, Boolean(shiftDrag || draggedStopInfo || draggedTrip),
+  );
 
   // Dynamic pixels per minute based on interval - smaller intervals get more spread
   const pixelsPerMinute = getPixelsPerMinute(intervalMinutes);
@@ -1513,6 +1510,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
   // Auto-scroll timeline to selected marker / stop position whenever selectedMarkerId changes
   useEffect(() => {
+    if (skipSelectionScrollRef.current) {
+      skipSelectionScrollRef.current = false;
+      return;
+    }
     if (!selectedMarkerId || !containerRef.current) return;
 
     const [rIdxStr, sIdxStr] = String(selectedMarkerId).split("-");
@@ -1578,7 +1579,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         behavior: "smooth",
       });
     }
-  }, [selectedMarkerId, routes, startTime, pixelsPerMinute]);
+  }, [selectedMarkerId, routes, startTime, pixelsPerMinute, skipSelectionScrollRef]);
 
   const getRouteMenuItems = (routeIndex: number): MenuProps["items"] => [
     ...(onEditRoute ? [{ key: "edit-route", label: "Edit route, jobs & timing…", onClick: () => onEditRoute(routeIndex) }] : []),
@@ -1762,8 +1763,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                 </div>
               )}
               <Select
+                aria-label="Timeline zoom interval"
+                title="Zoom timeline: Ctrl + mouse wheel"
                 value={intervalMinutes}
-                onChange={setIntervalMinutes}
+                onChange={value => changeInterval(value)}
                 options={INTERVAL_OPTIONS}
                 size="small"
                 style={{ width: 78 }}
