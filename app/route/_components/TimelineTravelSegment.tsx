@@ -32,10 +32,18 @@ export default function TimelineTravelSegment({
   segment, left, width, pixelsPerMinute, routeColor,
   vehicleName, vehicleCapacity, isDimmed = false, isDragging = false, onEditWaiting,
 }: TimelineTravelSegmentProps) {
-  const waitingWidth = Math.min(width, Math.max(0, (segment.waitingSeconds ?? 0) / 60 * pixelsPerMinute));
+  let waitingWidth = Math.min(width, Math.max(0, (segment.waitingSeconds ?? 0) / 60 * pixelsPerMinute));
   const waitOnLeft = segment.waitingPosition === "left";
   const leftServiceWidth = waitOnLeft && waitingWidth > 0
     ? Math.min(width - waitingWidth, Math.max(0, (segment.serviceSeconds ?? 0) / 60 * pixelsPerMinute)) : 0;
+  if ((segment.travelSeconds ?? 0) > 0 && waitingWidth > 0) {
+    // Stop markers cover the ends of the connector. Keep both parts reachable
+    // when a short drive or wait would otherwise sit entirely under a marker.
+    // Only the visual split changes; timestamps and tooltip durations stay exact.
+    const availableWidth = width - leftServiceWidth;
+    const minimumPartWidth = Math.min(22 + 12, availableWidth / 2);
+    waitingWidth = Math.min(availableWidth - minimumPartWidth, Math.max(minimumPartWidth, waitingWidth));
+  }
   const travelWidth = Math.max(0, width - waitingWidth - leftServiceWidth);
   const interactive = onEditWaiting && !isDragging;
   const handleKeyDown = (event: React.KeyboardEvent) => {

@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { Search, X, MapPin, Phone, User, ChevronRight, Plus } from "lucide-react";
 import { Tooltip } from "antd";
 import { filterMapSearchResults, type MapSearchResult } from "./mapSearch.utils";
+import { installMapSearchShortcut } from "./optimizationShortcuts.utils";
 
 interface MapSearchProps {
   /** Full candidate index built by OptimizationView */
@@ -18,6 +19,8 @@ interface MapSearchProps {
   /** Called when the user selects a result */
   onSelect: (item: MapSearchResult) => void;
   onOpenAddJob?: () => void;
+  /** Reveal a collapsed map before focusing its search field. */
+  onReveal?: () => void;
 }
 
 
@@ -46,6 +49,7 @@ const MapSearch: React.FC<MapSearchProps> = ({
   candidates,
   onSelect,
   onOpenAddJob,
+  onReveal,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -53,6 +57,7 @@ const MapSearch: React.FC<MapSearchProps> = ({
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>();
@@ -79,10 +84,23 @@ const MapSearch: React.FC<MapSearchProps> = ({
 
   // ── Open / close logic ────────────────────────────────────────────────────
   const open = useCallback(() => {
+    onReveal?.();
     setIsOpen(true);
     setRecentSearches(getRecent());
-    setTimeout(() => inputRef.current?.focus(), 50);
-  }, []);
+    inputRef.current?.focus({ preventScroll: true });
+    inputRef.current?.select();
+  }, [onReveal]);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    inputRef.current?.focus({ preventScroll: true });
+    inputRef.current?.select();
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    return installMapSearchShortcut(containerRef.current, open);
+  }, [open]);
 
   const close = useCallback(() => {
     setIsOpen(false);
@@ -109,7 +127,10 @@ const MapSearch: React.FC<MapSearchProps> = ({
   // ── Keyboard navigation ───────────────────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
       close();
+      toggleRef.current?.focus({ preventScroll: true });
       return;
     }
     if (flatResults.length === 0) return;
@@ -206,9 +227,12 @@ const MapSearch: React.FC<MapSearchProps> = ({
         >
           {/* Search icon button */}
           <button
+            ref={toggleRef}
             type="button"
             aria-label="Search jobs and candidates"
-            onClick={() => (isOpen ? undefined : open())}
+            aria-keyshortcuts="Control+f Meta+f"
+            title="Search jobs and candidates (Ctrl+F / ⌘F)"
+            onClick={open}
             className={`
               flex items-center justify-center shrink-0 transition-colors cursor-pointer
               ${isOpen

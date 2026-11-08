@@ -104,6 +104,46 @@ test("merging waiting left moves its bar before the drive", () => {
   assert.equal(travel.target.props.style.width, 96);
 });
 
+test("Mohamed's short drive between stops 4 and 5 remains visible outside the stop markers", () => {
+  for (const pixelsPerMinute of [3, 4, 6, 12]) {
+    const width = 20 * pixelsPerMinute;
+    const [travel, waiting] = render({
+      latitude: 45.4080111, longitude: -74.048607,
+      travel_time_to_next_stop_seconds: 113,
+      waiting_time_to_next_stop_seconds: 1087,
+      distance_to_next_stop_meters: 598,
+      waiting_position: "left",
+    }, { width, pixelsPerMinute }, 20);
+    assert.match(travel.text, /Travel: 2 min/);
+    assert.match(travel.text, /0\.60 km/);
+    assert.match(waiting.text, /Waiting: 18 min/);
+    const travelStyle = travel.target.props.style;
+    const waitingStyle = waiting.target.props.style;
+    assert.ok(travelStyle.left < 100 + width - 22, "travel starts before the next marker's edge");
+    assert.ok(waitingStyle.left + waitingStyle.width > 100 + 22, "waiting extends past the first marker");
+    assert.equal(waitingStyle.left + waitingStyle.width, travelStyle.left);
+    assert.equal(travelStyle.left + travelStyle.width, 100 + width);
+  }
+});
+
+test("short travel and short waiting stay reachable on either side without changing the total width", () => {
+  for (const waiting_position of ["left", "right"]) {
+    for (const travelSeconds of [113, 1087]) {
+      const [travel, waiting] = render({
+        travel_time_to_next_stop_seconds: travelSeconds,
+        waiting_time_to_next_stop_seconds: 1200 - travelSeconds,
+        waiting_position,
+      }, {}, 20);
+      const parts = [travel, waiting].sort((a, b) => a.target.props.style.left - b.target.props.style.left);
+      assert.equal(parts[0].target.props.style.left, 100);
+      assert.ok(parts[0].target.props.style.width >= 34);
+      assert.ok(parts[1].target.props.style.width >= 34);
+      assert.equal(parts[0].target.props.style.width + parts[1].target.props.style.width, 80);
+      assert.equal(parts[1].target.props.style.left + parts[1].target.props.style.width, 180);
+    }
+  }
+});
+
 test("left waiting starts after alighting and before driving", () => {
   const parts = render({ travel_time_to_next_stop_seconds: 1440, service_duration_seconds: 300,
     waiting_time_to_next_stop_seconds: 720, waiting_position: "left" });
