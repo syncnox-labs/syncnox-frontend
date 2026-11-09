@@ -4,12 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Checkbox, InputNumber, Modal, Radio, Select, Spin, message } from "antd";
 import { ArrowLeft, ArrowRight, Clock3 } from "lucide-react";
 import type { Route } from "@/types/routes.type";
-import { commitManualRouting, getManualRoutingContext, previewManualRouting, type ManualRoutingContext, type ManualRoutingPreview } from "@/apis/manualRouting.api";
+import { commitManualRouting, getManualRoutingContext, previewManualRouting, previewCrossPlanWaiting, commitCrossPlanWaiting, type ManualRoutingContext, type ManualRoutingPreview } from "@/apis/manualRouting.api";
 import { useOptimizationStore } from "@/store/optimization.store";
 import { useJobsStore } from "@/store/jobs.store";
 import { formatRouteClock, manualRouteLabel, manualRoutingError } from "./manualRouting.utils";
 import { getTimelineSegment } from "./timelineSegment.utils";
-import { sameWaitingRoute, waitingMergeCandidates, waitingPlanIssue, type WaitingSelection } from "./routeWaiting.utils";
+import { crossPlanWaitingReferences, sameWaitingRoute, waitingMergeCandidates, waitingPlanIssue, type WaitingSelection } from "./routeWaiting.utils";
 import styles from "./RouteWaitingModal.module.css";
 
 export default function RouteWaitingModal({ plan, selection, onClose }: {
@@ -27,6 +27,7 @@ export default function RouteWaitingModal({ plan, selection, onClose }: {
   const abort = useRef<AbortController | null>(null);
   const requestToken = useRef("");
   const saving = useRef(false);
+  const crossPlan = useRef<ReturnType<typeof crossPlanWaitingReferences>>(null);
   const source = selection ? context?.result.routes[selection.routeIndex] : undefined;
   const stop = selection?.afterStopIndex === undefined ? undefined : source?.stops[selection.afterStopIndex];
   const merging = selection?.afterStopIndex === undefined || stop?.stop_type === "depot_end";
@@ -37,11 +38,36 @@ export default function RouteWaitingModal({ plan, selection, onClose }: {
     const current = ++session.current;
     setBusy("load"); setContext(null); setPreview(null); setError(undefined);
     setTarget(undefined); setSeconds(null); setDurationEdited(false); setSide("right");
+    crossPlan.current = null;
     const snapshot = plan.result;
     const planIssue = waitingPlanIssue(snapshot.routes, plan.id, selection);
     if (planIssue) {
       setError(planIssue);
       setBusy(null);
+      return () => { session.current = current + 1; abort.current?.abort(); };
+    }
+    try {
+      crossPlan.current = crossPlanWaitingReferences(snapshot.routes, plan.id, selection);
+    } catch (reason) {
+      setError(manualRoutingError(reason)); setBusy(null);
+      return () => { session.current = current + 1; abort.current?.abort(); };
+    }
+    if (crossPlan.current) {
+      const references = crossPlan.current;
+      Promise.all(references.map(ref => getManualRoutingContext(ref.plan_id))).then(results => {
+        if (current !== session.current) return;
+        const indices = [selection.routeIndex, selection.mergeRouteIndex!];
+        const combined = [...snapshot.routes];
+        references.forEach((ref, i) => {
+          const fresh = results[i].result.routes[ref.route_index];
+          if (!sameWaitingRoute(snapshot.routes[indices[i]], fresh)) throw new Error("The selected trips changed, or one is part of a combined route. Refresh and select complete trips again.");
+          combined[indices[i]] = fresh;
+        });
+        const root = results[references.findIndex(ref => ref.plan_id === plan.id)];
+        setContext({ ...root, result: { ...root.result, routes: combined } });
+        setTarget(selection.mergeRouteIndex);
+      }).catch(reason => { if (current === session.current) setError(manualRoutingError(reason)); })
+        .finally(() => { if (current === session.current) setBusy(null); });
       return () => { session.current = current + 1; abort.current?.abort(); };
     }
     getManualRoutingContext(plan.id).then(data => {
@@ -78,7 +104,16 @@ export default function RouteWaitingModal({ plan, selection, onClose }: {
     const current = session.current;
     abort.current = new AbortController();
     try {
-      const checked = await previewManualRouting(plan.id, {
+      let checked: ManualRoutingPreview;
+      if (crossPlan.current) {
+        const [first, second] = crossPlan.current;
+        const result = await previewCrossPlanWaiting(plan.id, { first, second,
+          waiting_seconds: durationEdited ? seconds ?? undefined : undefined, waiting_side: side }, abort.current.signal);
+        const routes = [...context.result.routes];
+        routes[selection.routeIndex] = result.candidate;
+        checked = { ...result, success: true, revision: context.revision, message: "",
+          result: { ...context.result, routes }, affected_route_indices: [selection.routeIndex], deleted_route_indices: [], updates_drivers: false };
+      } else checked = await previewManualRouting(plan.id, {
         action: "waiting", route_index: selection.routeIndex, job_ids: [],
         merge_route_index: selection.afterStopIndex === undefined ? target : undefined,
         waiting_after_stop_index: selection.afterStopIndex,
@@ -94,6 +129,18 @@ export default function RouteWaitingModal({ plan, selection, onClose }: {
     if (!preview || busy || saving.current) return;
     saving.current = true; setBusy("save"); setError(undefined);
     try {
+      if (crossPlan.current) {
+        const saved = await commitCrossPlanWaiting(plan.id, preview.preview_token, requestToken.current);
+        message.success(saved.message);
+        onClose();
+        const refs = crossPlan.current;
+        const refreshed = await Promise.allSettled([
+          useOptimizationStore.getState().fetchOptimization(plan.id),
+          useJobsStore.getState().fetchJobsByIds([...new Set(refs.flatMap(ref => ref.job_ids))]),
+        ]);
+        if (refreshed.some(item => item.status === "rejected")) message.warning("Trips merged. Refresh the plan to see the latest details.");
+        return;
+      }
       const saved = await commitManualRouting(plan.id, preview.preview_token, requestToken.current);
       useOptimizationStore.setState(state => state.currentOptimization?.id === plan.id
         ? { currentOptimization: { ...state.currentOptimization, result: saved.result, status: "completed", error_message: null }, error: null } : {});
@@ -133,7 +180,7 @@ export default function RouteWaitingModal({ plan, selection, onClose }: {
         </div>
         {selection?.afterStopIndex === undefined && <div className={styles.field}>
           <label htmlFor="waiting-merge-route" className={styles.label}>Merge with</label>
-          <Select id="waiting-merge-route" className={styles.select} value={target} disabled={Boolean(busy)} placeholder="Choose a consecutive route" onChange={setTarget}
+          <Select id="waiting-merge-route" className={styles.select} value={target} disabled={Boolean(busy) || Boolean(crossPlan.current)} placeholder="Choose a consecutive route" onChange={setTarget}
             options={candidates.map(index => {
               const route = context!.result.routes[index];
               return { value: index, label: manualRouteLabel(route, index) };

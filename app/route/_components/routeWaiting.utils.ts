@@ -1,4 +1,5 @@
 import type { Routes } from "@/types/routes.type";
+import type { CrossPlanTripReference } from "@/apis/manualRouting.api";
 
 export interface WaitingSelection {
   routeIndex: number;
@@ -13,14 +14,29 @@ export function waitingPlanIssue(routes: Routes[], planId: number, selection: Wa
     .map(index => routes[index]);
   if (selected.some(route => !route)) return null; // The usual stale-selection check handles missing trips.
   const owners = new Set(selected.map(route => route.source_optimization_id ?? planId));
-  if (owners.size > 1) {
-    return "These trips belong to different plans. Merging trips across plans is not supported yet. No changes were made.";
-  }
+  if (owners.size > 1 && owners.has(planId) && selection.mergeRouteIndex !== undefined) return null;
+  if (owners.size > 1) return "Open one of the selected plans before merging these trips.";
   if (!owners.has(planId)) {
     const name = selected[0].source_route_name;
     return `This trip belongs to ${name ? `the plan “${name}”` : "another plan"}. Open that plan to edit it. No changes were made.`;
   }
   return null;
+}
+
+export function crossPlanWaitingReferences(routes: Routes[], planId: number, selection: WaitingSelection): [CrossPlanTripReference, CrossPlanTripReference] | null {
+  if (selection.mergeRouteIndex === undefined) return null;
+  const indices = [selection.routeIndex, selection.mergeRouteIndex];
+  const selected = indices.map(index => routes[index]);
+  if (selected.some(route => !route)) return null;
+  const owners = selected.map(route => route.source_optimization_id ?? planId);
+  if (owners[0] === owners[1] || !owners.includes(planId)) return null;
+  return selected.map((route, position) => {
+    const routeIndex = owners[position] === planId ? indices[position] : route.source_route_index;
+    const jobIds = [...new Set(route.stops.flatMap(stop => stop.job_id == null ? [] : [stop.job_id]))].sort((a, b) => a - b);
+    if (routeIndex === undefined || !route.team_member_id || !route.vehicle_id || !jobIds.length) throw new Error("Trip details are incomplete. Refresh the plan and select the trips again.");
+    return { plan_id: owners[position], route_index: routeIndex, driver_id: route.team_member_id,
+      vehicle_id: route.vehicle_id, job_ids: jobIds };
+  }) as [CrossPlanTripReference, CrossPlanTripReference];
 }
 
 /** Fit a compact control between the icons, including the home's visual offset. */

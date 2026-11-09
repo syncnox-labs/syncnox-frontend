@@ -70,3 +70,20 @@ export const commitManualRouting = async (id: number, previewToken: string, requ
   });
   return data;
 };
+
+export interface CrossPlanTripReference {
+  plan_id: number; route_index: number; driver_id: number; vehicle_id: number; job_ids: number[];
+}
+export const previewCrossPlanWaiting = async (id: number, payload: {
+  first: CrossPlanTripReference; second: CrossPlanTripReference;
+  waiting_seconds?: number; waiting_side: "left" | "right";
+}, signal?: AbortSignal): Promise<{ preview_token: string; explanation: string; candidate: Route["result"]["routes"][number] }> => {
+  const { data } = await apiClient.post(`optimization/requests/${id}/cross-plan-waiting/preview`, payload, { signal });
+  return data;
+};
+export const commitCrossPlanWaiting = async (id: number, previewToken: string, requestToken: string): Promise<{ success: boolean; message: string }> => {
+  const { data } = await apiClient.post(`optimization/requests/${id}/cross-plan-waiting/commit`, {
+    preview_token: previewToken, request_token: requestToken,
+  });
+  return data;
+};
