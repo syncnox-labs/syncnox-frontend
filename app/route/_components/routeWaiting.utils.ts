@@ -6,6 +6,23 @@ export interface WaitingSelection {
   mergeRouteIndex?: number;
 }
 
+/** The manual editor loads the current plan, while the timeline also shows trips from other plans. */
+export function waitingPlanIssue(routes: Routes[], planId: number, selection: WaitingSelection): string | null {
+  const selected = [selection.routeIndex, selection.mergeRouteIndex]
+    .filter((index): index is number => index !== undefined)
+    .map(index => routes[index]);
+  if (selected.some(route => !route)) return null; // The usual stale-selection check handles missing trips.
+  const owners = new Set(selected.map(route => route.source_optimization_id ?? planId));
+  if (owners.size > 1) {
+    return "These trips belong to different plans. Merging trips across plans is not supported yet. No changes were made.";
+  }
+  if (!owners.has(planId)) {
+    const name = selected[0].source_route_name;
+    return `This trip belongs to ${name ? `the plan “${name}”` : "another plan"}. Open that plan to edit it. No changes were made.`;
+  }
+  return null;
+}
+
 /** Fit a compact control between the icons, including the home's visual offset. */
 export function waitingMergeButtonLayout(endPosition: number, startPosition: number, nextStopPosition?: number) {
   const homePosition = nextStopPosition !== undefined && nextStopPosition - startPosition < 36

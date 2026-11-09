@@ -9,7 +9,7 @@ import { useOptimizationStore } from "@/store/optimization.store";
 import { useJobsStore } from "@/store/jobs.store";
 import { formatRouteClock, manualRouteLabel, manualRoutingError } from "./manualRouting.utils";
 import { getTimelineSegment } from "./timelineSegment.utils";
-import { sameWaitingRoute, waitingMergeCandidates, type WaitingSelection } from "./routeWaiting.utils";
+import { sameWaitingRoute, waitingMergeCandidates, waitingPlanIssue, type WaitingSelection } from "./routeWaiting.utils";
 import styles from "./RouteWaitingModal.module.css";
 
 export default function RouteWaitingModal({ plan, selection, onClose }: {
@@ -38,6 +38,12 @@ export default function RouteWaitingModal({ plan, selection, onClose }: {
     setBusy("load"); setContext(null); setPreview(null); setError(undefined);
     setTarget(undefined); setSeconds(null); setDurationEdited(false); setSide("right");
     const snapshot = plan.result;
+    const planIssue = waitingPlanIssue(snapshot.routes, plan.id, selection);
+    if (planIssue) {
+      setError(planIssue);
+      setBusy(null);
+      return () => { session.current = current + 1; abort.current?.abort(); };
+    }
     getManualRoutingContext(plan.id).then(data => {
       if (current !== session.current) return;
       const indices = [selection.routeIndex, ...(selection.mergeRouteIndex === undefined ? [] : [selection.mergeRouteIndex])];

@@ -7,7 +7,17 @@ const source = fs.readFileSync(path.join(__dirname, "../app/route/_components/ro
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
 const utils = {};
 new Function("exports", compiled)(utils);
-const { sameWaitingRoute, waitingMergeCandidates, waitingMergeButtonLayout } = utils;
+const { sameWaitingRoute, waitingMergeCandidates, waitingMergeButtonLayout, waitingPlanIssue } = utils;
+
+test("cross-plan trips show the actual merge limitation instead of a stale-trip error", () => {
+  const routes = [{ ...trip("17:12", "17:55"), team_member_name: "Sablond" },
+    { ...trip("14:57", "16:34"), team_member_name: "Sablond", source_optimization_id: 259, source_route_name: "Nov 5 AM" }];
+  assert.match(waitingPlanIssue(routes, 261, { routeIndex: 1, mergeRouteIndex: 0 }), /different plans/);
+  assert.match(waitingPlanIssue(routes, 261, { routeIndex: 1, mergeRouteIndex: 0 }), /not supported/);
+  assert.match(waitingPlanIssue(routes, 261, { routeIndex: 1, afterStopIndex: 0 }), /Nov 5 AM/);
+  assert.equal(waitingPlanIssue(routes, 261, { routeIndex: 0, afterStopIndex: 0 }), null);
+  assert.equal(waitingPlanIssue(routes, 261, { routeIndex: 0, mergeRouteIndex: 5 }), null);
+});
 
 test("long gaps use a small centered merge button instead of a full-gap overlay", () => {
   const layout = waitingMergeButtonLayout(100, 1500);
