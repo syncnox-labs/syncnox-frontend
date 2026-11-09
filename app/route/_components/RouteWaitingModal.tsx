@@ -122,7 +122,7 @@ export default function RouteWaitingModal({ plan, selection, onClose }: {
       {source && !preview && <>
         <div className={styles.routeSummary} aria-label={manualRouteLabel(source, selection!.routeIndex)}>
           <span className={styles.eyebrow}>Selected route</span>
-          <div className={styles.routeHeading}><strong>{source.name || `Route ${selection!.routeIndex + 1}`}</strong>{source.leg && <span className={styles.leg}>{source.leg}</span>}</div>
+          <div className={styles.routeHeading}><strong>{source.name || "Selected trip"}</strong>{source.leg && <span className={styles.leg}>{source.leg === "GO" ? "Outbound" : source.leg === "RETURN" ? "Return" : source.leg === "COMBINED" ? "Outbound and return" : source.leg}</span>}</div>
           <div className={styles.routeDetails}><span>{source.team_member_name}</span><span className={styles.tripTime}><Clock3 size={14} aria-hidden="true" />{tripTimes(source)}</span></div>
         </div>
         {selection?.afterStopIndex === undefined && <div className={styles.field}>
@@ -130,7 +130,7 @@ export default function RouteWaitingModal({ plan, selection, onClose }: {
           <Select id="waiting-merge-route" className={styles.select} value={target} disabled={Boolean(busy)} placeholder="Choose a consecutive route" onChange={setTarget}
             options={candidates.map(index => {
               const route = context!.result.routes[index];
-              return { value: index, label: `${route.name || `Route ${index + 1}`}${route.leg ? ` · ${route.leg}` : ""} · ${tripTimes(route)}` };
+              return { value: index, label: manualRouteLabel(route, index) };
             })} />
           {!candidates.length && <span className={styles.emptyHint}>No consecutive route uses this driver and vehicle. Match their assignments before merging.</span>}
         </div>}

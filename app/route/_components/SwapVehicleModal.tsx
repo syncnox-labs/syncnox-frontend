@@ -5,6 +5,7 @@ import { Alert, Button, Empty, Modal, Select, Spin, message } from "antd";
 import { isAxiosError } from "axios";
 import { getVehicleSwapOptions, swapRouteVehicles, type VehicleSwapPreview } from "@/apis/routes.api";
 import type { Routes } from "@/types/routes.type";
+import { tripLabel } from "./tripLabel.utils";
 
 interface Props {
   optimizationId: number;
@@ -18,8 +19,6 @@ const errorText = (error: unknown) => {
   const detail = isAxiosError(error) ? error.response?.data?.detail : (error as { detail?: unknown } | null)?.detail;
   return typeof detail === "string" ? detail : "Unable to swap vehicles. Please try again.";
 };
-
-const legLabel = (leg?: string | null) => leg === "COMBINED" ? "GO + RETURN" : leg || "Trip";
 
 export default function SwapVehicleModal({ optimizationId, routeIndex, routes, onClose, onSuccess }: Props) {
   const [targetIndex, setTargetIndex] = useState<number | null>(null);
@@ -71,7 +70,7 @@ export default function SwapVehicleModal({ optimizationId, routeIndex, routes, o
     <div className="flex flex-col gap-4 pt-1">
       <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
         <p className="m-0 font-semibold">{source?.team_member_name || "Selected driver"}</p>
-        <p className="mb-0 mt-1 text-gray-600">{legLabel(source?.leg)} · {source?.vehicle_name || `Vehicle #${source?.vehicle_id}`}</p>
+        <p className="mb-0 mt-1 text-gray-600">{tripLabel(source, { driver: false, vehicle: true })}</p>
       </div>
       <p className="m-0 text-sm text-gray-600">Exchange vehicles with another route. Stops and passenger times stay the same. Both drivers and vehicles are checked before the swap.</p>
       {candidates.length ? <div className="flex flex-col gap-1.5">
@@ -80,7 +79,7 @@ export default function SwapVehicleModal({ optimizationId, routeIndex, routes, o
           value={targetIndex ?? undefined} disabled={saving}
           onChange={value => { setPreview(null); setError(null); setTargetIndex(value); }}
           options={candidates.map(({ route, index }) => ({ value: index,
-            label: `${route.team_member_name} · ${legLabel(route.leg)} · ${route.vehicle_name || `Vehicle #${route.vehicle_id}`} · Route ${index + 1}` }))} />
+            label: tripLabel(route, { vehicle: true }) }))} />
       </div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No other route has a different vehicle to exchange." />}
       {loading && <div className="py-4 text-center"><Spin /></div>}
       {error && <Alert type="error" showIcon title={error}

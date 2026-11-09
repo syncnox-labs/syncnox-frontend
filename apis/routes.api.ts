@@ -251,6 +251,7 @@ export interface VehicleSwapRoute {
   leg: string | null;
   route_indices: number[];
   is_team_leader: boolean;
+  plan_id?: number | null;
 }
 
 export interface VehicleSwapPreview {
@@ -278,6 +279,8 @@ export const swapRouteVehicles = async (optimizationId: number, routeIndex: numb
       expected_target_driver_id: preview.target.driver_id,
       expected_target_vehicle_id: preview.target.vehicle_id,
       expected_target_leg: preview.target.leg,
+      ...(preview.source.plan_id != null ? { expected_source_plan_id: preview.source.plan_id } : {}),
+      ...(preview.target.plan_id != null ? { expected_target_plan_id: preview.target.plan_id } : {}),
     },
   );
   return response.data;

@@ -50,6 +50,8 @@ interface JobDetailsCardProps {
   onEditJob?: (job: Job) => void;
   onShowLocation?: (kind: "pickup" | "dropoff") => void;
   onEditETA?: (kind: "pickup" | "dropoff" | "arrival", arrival: string) => void;
+  onEditVehicle?: () => void;
+  vehicleName?: string | null;
   isFullscreen?: boolean;
 }
 
@@ -162,6 +164,8 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   onEditJob,
   onShowLocation,
   onEditETA,
+  onEditVehicle,
+  vehicleName,
   isFullscreen = false,
 }) => {
   const { patchJobLocally, updateJobAction, jobs } = useJobsStore();
@@ -605,6 +609,10 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
         </div>
       </div>
 
+      {onEditVehicle && <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-3.5 py-3">
+        <div><div className="font-bold text-gray-900">Vehicle</div><div className="mt-1 text-gray-600">{vehicleName || "Unassigned"}</div></div>
+        <Button size="small" onClick={onEditVehicle}>Edit vehicle</Button>
+      </div>}
       {/* Scrollable Key-Value Grid / Edit Form */}
       <div className="p-3.5 space-y-3 flex-1 overflow-y-auto custom-scrollbar">
         {isEditing ? (

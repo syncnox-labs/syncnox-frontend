@@ -152,7 +152,7 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
 
   const driverName =
     routeData?.team_member_name ||
-    (routeIndex !== null ? `Driver ${routeIndex + 1}` : "Driver");
+    "Driver name unavailable";
   const routeColor = routeIndex !== null ? getRouteColor(routeIndex) : "#003220";
 
   // Check if order has changed from initial

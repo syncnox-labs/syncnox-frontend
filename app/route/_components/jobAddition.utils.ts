@@ -25,7 +25,7 @@ export function getPendingDriverRoutes(routes: Partial<Routes>[] = [], pendingDe
     const key = route.team_member_id != null ? `driver-id-${route.team_member_id}`
       : route.team_member_name ? `driver-name-${route.team_member_name.trim().toLowerCase()}` : `driver-index-${index}`;
     const driver = drivers.get(key) || {
-      key, driverName: route.team_member_name || `Driver ${route.team_member_id ?? index + 1}`, routeIndices: [],
+      key, driverName: route.team_member_name || (route.team_member_id != null ? `Driver ${route.team_member_id}` : "Driver name unavailable"), routeIndices: [],
     };
     driver.routeIndices.push(index);
     drivers.set(key, driver);

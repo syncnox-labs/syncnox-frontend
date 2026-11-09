@@ -32,7 +32,7 @@ export function buildMapSearchIndex(routes: Routes[], jobs: Job[]): MapSearchRes
   const results: MapSearchResult[] = [];
 
   routes.forEach((route, routeIndex) => {
-    const driverName = route.team_member_name || `Driver ${routeIndex + 1}`;
+    const driverName = route.team_member_name || "Driver name unavailable";
     const { byRawIndex } = getRouteStopDisplay(route);
     route.stops?.forEach((stop, stopIndex) => {
       const group = byRawIndex.get(stopIndex);

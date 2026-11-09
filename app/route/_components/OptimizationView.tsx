@@ -109,6 +109,7 @@ import {
 } from "@/apis/routes.api";
 
 import JobDetailsCard from "./JobDetailsCard";
+import { tripLabel } from "./tripLabel.utils";
 
 const { Title, Text } = Typography;
 
@@ -701,7 +702,7 @@ const OptimizationView = ({
 
     const indices = new Set<number>();
     route.result.routes.forEach((routeItem, index) => {
-      const driverName = routeItem.team_member_name || `Driver ${index + 1}`;
+      const driverName = routeItem.team_member_name || "Driver name unavailable";
       if (isDriverMatch(driverName, driverSearch, exactMatch)) {
         indices.add(index);
       }
@@ -1160,7 +1161,7 @@ const OptimizationView = ({
     // Find corresponding job object
     const jobId = stop.job_id || stop.id;
     const matchedJob = jobs.find((j) => j.id === jobId) || stop.job || (targetMarker?.jobData as Job) || null;
-    const driverName = routeItem?.team_member_name || `Driver ${routeIndex + 1}`;
+    const driverName = routeItem?.team_member_name || "Driver name unavailable";
 
     setSelectedDrawerJob({
       stopData: stop,
@@ -1212,7 +1213,7 @@ const OptimizationView = ({
     setSelectedDrawerJob({
       stopData: stop,
       job: matchedJob,
-      driverName: routeItem.team_member_name || `Driver ${routeIndex + 1}`,
+      driverName: routeItem.team_member_name || "Driver name unavailable",
       leg: routeItem.leg,
       routeIndex,
       stopIndex: displayStopNumber,
@@ -1655,7 +1656,7 @@ const OptimizationView = ({
 
       const sourceRoute = route.result?.routes?.[sourceRouteIndex];
       const targetRoute = route.result?.routes?.[targetRouteIndex];
-      const targetDriverName = targetRoute?.team_member_name || `Driver #${targetRouteIndex + 1}`;
+      const targetDriverName = targetRoute?.team_member_name || "selected driver";
 
       let transferSaved = false;
       try {
@@ -2632,7 +2633,7 @@ const OptimizationView = ({
                   onChange={(value) => setMoveAreaTargetIndex(value)}
                   options={(route.result?.routes || []).map((r: any, idx: number) => ({
                     value: idx,
-                    label: `${r.team_member_name || `Driver ${idx + 1}`} (${getGroupedStopsCount(r.stops)} stops)`,
+                    label: `${tripLabel(r)} (${getGroupedStopsCount(r.stops)} stops)`,
                   }))}
                 />
               </Modal>
@@ -2649,8 +2650,7 @@ const OptimizationView = ({
                       }}
                     />
                     <span className="text-xs font-semibold text-gray-800 max-w-[180px] truncate">
-                      {focusedRoute?.team_member_name ||
-                        `Driver ${focusedRouteIndex + 1}`}
+                      {focusedRoute?.team_member_name || "Driver name unavailable"}
                     </span>
                     <span className="text-[11px] text-gray-400">
                       {getGroupedStopsCount(focusedRoute?.stops)} stops
@@ -2788,6 +2788,15 @@ const OptimizationView = ({
             leg={selectedDrawerJob.leg}
             isUnassigned={selectedDrawerJob.isUnassigned}
             isFullscreen={mapViewState === "fullscreen"}
+            vehicleName={selectedDrawerJob.routeIndex !== undefined ? route.result?.routes?.[selectedDrawerJob.routeIndex]?.vehicle_name : undefined}
+            onEditVehicle={isWorkerShuttle && (route.status === "completed" || route.status === "failed")
+              && selectedDrawerJob.routeIndex !== undefined && !selectedDrawerJob.isUnassigned
+              && (() => {
+                const stops = route.result?.routes?.[selectedDrawerJob.routeIndex!]?.stops || [];
+                const selected = selectedDrawerJob.stopData;
+                const index = stops.indexOf(selected);
+                return index >= 0 && (selected.stop_type === "depot_start" || (index === 0 && selected.stop_type !== "depot_end"));
+              })() ? () => setChangeVehicleRouteIndex(selectedDrawerJob.routeIndex!) : undefined}
             onShowLocation={handleShowJobLocation}
             onEditETA={selectedDrawerJob.routeIndex !== undefined && !selectedDrawerJob.isUnassigned
               && route.status !== "processing" && route.status !== "queued" ? (kind, arrival) => {
@@ -2965,7 +2974,7 @@ const OptimizationView = ({
           }
           currentDriverName={
             getRouteData(swapDriverRouteIndex)?.team_member_name ||
-            `Driver ${swapDriverRouteIndex + 1}`
+            "Driver name unavailable"
           }
           allDrivers={teams}
           optimizationDriverIds={route.team_member_ids || []}
