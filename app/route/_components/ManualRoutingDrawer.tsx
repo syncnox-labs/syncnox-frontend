@@ -231,7 +231,7 @@ export default function ManualRoutingDrawer({ plan }: { plan: Route }) {
           const route = preview.result.routes[index];
           const stops = route.stops.filter(stop => stop.job_id != null);
           return <section key={index} className="rounded-lg border border-slate-200 overflow-hidden">
-            <div className="p-3 bg-slate-50"><strong>{route.name || `Route ${index + 1}`}</strong><p className="text-sm text-slate-600 mt-1 mb-0">{route.team_member_name} · {route.vehicle_name} · {routeJobIds(route).length} jobs</p>
+            <div className="p-3 bg-slate-50"><strong>{route.name || "Trip"}</strong><p className="text-sm text-slate-600 mt-1 mb-0">{route.team_member_name} · {route.vehicle_name} · {routeJobIds(route).length} jobs</p>
               {route.stops.length > 0 && <p className="text-xs text-slate-500 mt-2 mb-0">Trip: {formatRouteClock(route.stops[0].arrival_time)}–{formatRouteClock(route.stops[route.stops.length - 1].arrival_time)}</p>}
             </div>
             {stops.length ? <ol className="m-0 p-0 list-none divide-y divide-slate-100">

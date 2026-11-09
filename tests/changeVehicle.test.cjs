@@ -50,8 +50,10 @@ test("a vehicle conflict reaches the dialog without an automatic retry", async (
 });
 
 const Null = () => null;
+const tripLabels = load("app/route/_components/tripLabel.utils.ts", {});
 const modal = load("app/route/_components/ChangeVehicleModal.tsx", {
-  "./vehicleTripChoices.utils": load("app/route/_components/vehicleTripChoices.utils.ts", {}),
+  "./vehicleTripChoices.utils": load("app/route/_components/vehicleTripChoices.utils.ts", { "./tripLabel.utils": tripLabels }),
+  "./tripLabel.utils": tripLabels,
   "@/apis/routes.api": {},
   antd: {
     Modal: ({ title, children, footer }) => React.createElement("section", null, React.createElement("h1", null, title), children, footer),
@@ -72,8 +74,8 @@ test("driver dialog offers a clear choice between trips and all trips", () => {
   }));
   assert.match(html, /Change vehicle/);
   assert.match(html, /Driver Example/);
-  assert.match(html, /GO · Van 1/);
-  assert.match(html, /RETURN · Car 2/);
+  assert.match(html, /Outbound trip · Time not set · Van 1/);
+  assert.match(html, /Return trip · Time not set · Car 2/);
   assert.match(html, /All trips for this driver/);
   assert.doesNotMatch(html, /Empty vehicle/);
   assert.match(html, /disabled=""/);
@@ -95,9 +97,9 @@ test("one combined row with the same vehicle offers independent GO and RETURN ch
     routes: [{ team_member_id: 15, team_member_name: "Vikas Singh", vehicle_name: "32_Dodge Grand Caravan",
       leg: "COMBINED", is_team_leader: false, stops: [{ job_id: 6666 }, { job_id: 6665 }] }],
   }));
-  assert.match(html, /GO only · 32_Dodge Grand Caravan/);
-  assert.match(html, /RETURN only · 32_Dodge Grand Caravan/);
-  assert.match(html, /GO \+ RETURN · 32_Dodge Grand Caravan/);
+  assert.match(html, /Outbound trip · Time not set · 32_Dodge Grand Caravan/);
+  assert.match(html, /Return trip · Time not set · 32_Dodge Grand Caravan/);
+  assert.match(html, /Outbound and return trips · Time not set · 32_Dodge Grand Caravan/);
 });
 
 test("direction-specific options and save keep the selected leg explicit", async () => {

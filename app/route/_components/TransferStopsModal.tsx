@@ -28,6 +28,7 @@ import type { Job } from "@/types/job.type";
 import { formatTime12h } from "@/utils/app.utils";
 import { getRouteColor } from "@/utils/timeline.utils";
 import { legJobIds, type TransferSelection } from "./transferStops.utils";
+import { tripLabel } from "./tripLabel.utils";
 
 export interface TransferStopItem {
   key: string;
@@ -354,12 +355,12 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
                   Source Driver
                 </div>
                 <div className="text-sm font-bold text-slate-900 truncate">
-                  {sourceRoute?.team_member_name || `Driver #${(sourceRouteIndex ?? 0) + 1}`}
+                  {sourceRoute?.team_member_name || "Driver name unavailable"}
                 </div>
                 <Select aria-label="Source trip" size="small" className="w-full mt-1" value={activeSourceIndex}
                   disabled={isSubmitting} onChange={setSelectedSourceIndex}
                   options={routes.map((trip, index) => ({ trip, index })).filter(({trip}) => trip.team_member_id === sourceRoute?.team_member_id)
-                    .map(({trip,index}) => ({ value: index, label: `${trip.leg || "Route"} · ${new Set((trip.stops || []).filter((stop: any) => stop.job_id).map((stop: any) => stop.job_id)).size} jobs` }))} />
+                    .map(({trip,index}) => ({ value: index, label: tripLabel(trip, { driver: false, vehicle: true }) }))} />
                 <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
                   <span>{stopsList.length} stops</span>
                   {sourceRoute?.vehicle_name && (
@@ -406,8 +407,7 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
                       label: (
                         <div className="flex items-center justify-between text-xs py-0.5">
                           <span className={`font-semibold ${idx === sourceRouteIndex ? "text-slate-400" : "text-slate-800"}`}>
-                            {r.team_member_name || `Driver #${idx + 1}`}
-                            {r.leg ? ` · ${r.leg}` : ""}
+                            {tripLabel(r)}
                             {idx === sourceRouteIndex && " (Source)"}
                           </span>
                           <span className="text-[10px] text-slate-400 ml-2">
@@ -432,7 +432,7 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
             ))}
           </div>
           {scope === "leg" && <Select value={transferLeg} onChange={setTransferLeg} size="small" disabled={isSubmitting}
-            options={(["GO", "RETURN"] as const).map(leg => ({ value: leg, label: `${leg === "GO" ? "GO" : "RETURN"} (${legJobIds(sourceRoute, jobs, leg).length} jobs)`,
+            options={(["GO", "RETURN"] as const).map(leg => ({ value: leg, label: `${leg === "GO" ? "Outbound trip" : "Return trip"} (${legJobIds(sourceRoute, jobs, leg).length} jobs)`,
               disabled: legJobIds(sourceRoute, jobs, leg).length === 0 }))} />}
           <span className="text-xs text-slate-500">Pickup and drop-off always move together.</span>
         </div>
@@ -682,7 +682,7 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
               icon={<SwapOutlined />}
             >
               Transfer {effectiveJobIds.size > 0 ? `${effectiveJobIds.size} Job(s)` : "Stops"}
-              {targetRoute ? ` to ${targetRoute.team_member_name || `Driver #${targetRouteIndex! + 1}`}` : ""}
+              {targetRoute ? ` to ${targetRoute.team_member_name || "selected driver"}` : ""}
             </Button>
           </div>
         </div>

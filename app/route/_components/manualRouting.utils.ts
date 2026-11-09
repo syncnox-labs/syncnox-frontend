@@ -2,12 +2,11 @@ import type { Job } from "@/types/job.type";
 import type { Routes, Stop } from "@/types/routes.type";
 import type { ManualJobSummary } from "@/apis/manualRouting.api";
 import { assignmentErrorInfo } from "./assignmentError.utils";
+import { tripLabel } from "./tripLabel.utils";
 
 export const routeJobIds = (route?: Routes): number[] => [...new Set((route?.stops || []).map(stop => stop.job_id).filter((id): id is number => typeof id === "number"))];
-export function manualRouteLabel(route: Routes, index: number): string {
-  const times = (route.stops || []).map(stop => stop.arrival_time).filter(Boolean).sort();
-  const time = times.length ? ` · Trip ${formatRouteClock(times[0])}–${formatRouteClock(times[times.length - 1])}${times[0].slice(0, 10) !== times[times.length - 1].slice(0, 10) ? " (+1 day)" : ""}` : " · Empty route";
-  return `${route.name || `Route ${index + 1}`} · ${route.team_member_name}${route.leg ? ` · ${route.leg}` : ""}${time}`;
+export function manualRouteLabel(route: Routes | undefined, _index: number): string {
+  return tripLabel(route, { vehicle: true });
 }
 export function manualJobLabel(job: Job | ManualJobSummary): string {
   if ("name" in job && job.name) return job.name;

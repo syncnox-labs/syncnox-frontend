@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Empty, Input, Modal, Select, Spin, message } from "antd";
 import { Car, Check, Search } from "lucide-react";
 import { isAxiosError } from "axios";
-import { changeRouteVehicle, getRouteVehicleOptions, type VehicleReplacementOptions } from "@/apis/routes.api";
+import { changeRouteVehicle, getRouteVehicleOptions, getVehicleSwapOptions, swapRouteVehicles, type VehicleReplacementOptions, type VehicleSwapPreview } from "@/apis/routes.api";
 import type { Routes } from "@/types/routes.type";
 import { vehicleTripChoices } from "./vehicleTripChoices.utils";
+import { tripLabel, vehicleAvailabilityMessage } from "./tripLabel.utils";
 
 interface Props {
   optimizationId: number;
@@ -30,6 +31,10 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [swapPreviews, setSwapPreviews] = useState<VehicleSwapPreview[]>([]);
+  const [swapFailures, setSwapFailures] = useState<{ index: number; reason: string }[]>([]);
+  const [swapTarget, setSwapTarget] = useState<number | null>(null);
+  const [checkingSwaps, setCheckingSwaps] = useState(false);
   const driverId = routes[routeIndex]?.team_member_id;
   const trips = routes.map((route, index) => ({ route, index })).filter(item =>
     item.route.team_member_id === driverId && item.route.stops?.length);
@@ -55,6 +60,37 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
     return () => { active = false; };
   }, [optimizationId, selectedIndex, scope, leg, current?.team_member_id, current?.vehicle_id, current?.leg]);
 
+  const selectedVehicle = options?.vehicles.find(vehicle => vehicle.id === selectedId);
+  useEffect(() => {
+    let active = true;
+    setSwapPreviews([]);
+    setSwapFailures([]);
+    setSwapTarget(null);
+    if (!selectedVehicle || selectedVehicle.available || scope !== "route" || leg) {
+      setCheckingSwaps(false);
+      return;
+    }
+    const targets = routes.map((route, index) => ({ route, index })).filter(({ route, index }) =>
+      index !== selectedIndex && route.vehicle_id === selectedVehicle.id && route.stops?.some(stop => stop.job_id));
+    setCheckingSwaps(true);
+    Promise.allSettled(targets.map(({ index }) => getVehicleSwapOptions(optimizationId, selectedIndex, index)))
+      .then(results => {
+        if (active) {
+          setSwapPreviews(results.flatMap(result => result.status === "fulfilled" ? [result.value] : []));
+          setSwapFailures(results.flatMap((result, i) => {
+            if (result.status !== "rejected") return [];
+            const detail = isAxiosError(result.reason) ? result.reason.response?.data?.detail : result.reason?.detail;
+            return typeof detail === "string" ? [{ index: targets[i].index, reason: detail }] : [];
+          }));
+          if (results.some(result => result.status === "rejected" && !(isAxiosError(result.reason)
+            ? result.reason.response?.status === 409 : typeof result.reason?.detail === "string"))) {
+            setError("Some swap options could not be checked. Please close and reopen this dialog to try again.");
+          }
+        }
+      }).finally(() => { if (active) setCheckingSwaps(false); });
+    return () => { active = false; };
+  }, [optimizationId, selectedIndex, selectedId, selectedVehicle?.available, scope, leg, routes]);
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return options?.vehicles.filter(vehicle =>
@@ -66,15 +102,26 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
     setSaving(true);
     setError(null);
     try {
-      await changeRouteVehicle(optimizationId, selectedIndex, {
+      if (!selectedVehicle?.available) {
+        const preview = swapPreviews.find(item => item.target.route_index === swapTarget);
+        if (!preview) return;
+        const response = await swapRouteVehicles(optimizationId, selectedIndex, preview);
+        if (!response.success) throw { detail: response.message };
+        message.success(response.message);
+      } else {
+      const response = await changeRouteVehicle(optimizationId, selectedIndex, {
         vehicle_id: selectedId, expected_driver_id: options.driver_id,
         expected_vehicle_id: options.current_vehicle_id, expected_leg: options.leg, scope, ...(leg ? { leg } : {}),
       });
+      if (!response.success) throw { detail: response.message };
       message.success("Vehicle changed. Stops and pickup times stay the same.");
+      }
       onSuccess();
       onClose();
     } catch (error) {
       setError(errorText(error));
+      setSwapPreviews([]);
+      setSwapTarget(null);
     } finally {
       setSaving(false);
     }
@@ -87,8 +134,8 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
       footer={[
         <Button key="cancel" onClick={onClose} disabled={saving}>Cancel</Button>,
         <Button key="save" type="primary" onClick={save} loading={saving}
-          disabled={loading || !selectedId || !options?.vehicles.some(vehicle => vehicle.id === selectedId && vehicle.available)}>
-          Change vehicle
+          disabled={loading || checkingSwaps || !selectedVehicle || (!selectedVehicle.available && !swapPreviews.some(item => item.target.route_index === swapTarget))}>
+          {selectedVehicle && !selectedVehicle.available ? "Swap vehicles" : "Change vehicle"}
         </Button>,
       ]}
     >
@@ -126,21 +173,38 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
             <div role="radiogroup" aria-label="Replacement vehicle" className="max-h-[320px] overflow-y-auto flex flex-col gap-2">
               {filtered.map(vehicle => (
                 <button key={vehicle.id} type="button" role="radio" aria-checked={selectedId === vehicle.id}
-                  disabled={!vehicle.available || saving} onClick={() => setSelectedId(vehicle.id)}
+                  disabled={saving || vehicle.id === options.current_vehicle_id} onClick={() => { setError(null); setSelectedId(vehicle.id); }}
                   className={`flex items-center gap-3 rounded border p-3 text-left transition-colors ${
-                    !vehicle.available ? "border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed"
-                      : selectedId === vehicle.id ? "border-[#003220] bg-emerald-50 cursor-pointer" : "border-gray-200 hover:border-emerald-700 cursor-pointer"}`}>
+                    selectedId === vehicle.id ? "border-[#003220] bg-emerald-50 cursor-pointer" : "border-gray-200 hover:border-emerald-700 cursor-pointer"}`}>
                   <Car size={20} className="shrink-0" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{vehicle.name}</span>
                     <span className="block text-xs text-gray-500 mt-0.5">{vehicle.capacity} {vehicle.capacity === 1 ? "seat" : "seats"}{vehicle.license_plate ? ` · ${vehicle.license_plate}` : ""}</span>
-                    {vehicle.reason && <span className="block text-xs text-gray-600 mt-1">{vehicle.reason}</span>}
+                    {vehicle.reason && <span className="block text-xs text-gray-600 mt-1">{vehicleAvailabilityMessage(vehicle.reason)}</span>}
                   </span>
                   {selectedId === vehicle.id && <Check size={18} className="text-[#003220] shrink-0" />}
                 </button>
               ))}
               {!filtered.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No matching vehicles" />}
             </div>
+            {selectedVehicle && !selectedVehicle.available && <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+              <p className="mt-0">Choose a compatible trip to exchange vehicles. Both drivers keep their scheduled stops and times.</p>
+              {checkingSwaps ? <p className="mb-0">Checking possible swaps…</p> : swapPreviews.length ? <>
+                <label htmlFor="replacement-swap-target" className="block mb-2 font-medium">Swap with a trip</label>
+                <Select id="replacement-swap-target" className="w-full" placeholder="Choose a compatible trip" value={swapTarget ?? undefined}
+                  onChange={setSwapTarget} disabled={saving} options={swapPreviews.map(preview => {
+                    const target = routes[preview.target.route_index];
+                    return { value: preview.target.route_index, label: tripLabel(target ? { ...target, team_member_name: preview.target.driver_name } : undefined) };
+                  })} />
+                {swapTarget !== null && <p className="mb-0 mt-2">{options.driver_name} receives {selectedVehicle.name}; {swapPreviews.find(item => item.target.route_index === swapTarget)?.target.driver_name} receives {options.current_vehicle_name}. Stops and passenger times stay the same.</p>}
+              </> : <p className="mb-0">{scope !== "route" || leg ? "Select a whole trip to check possible swaps." : "No compatible trip is available to swap with."}</p>}
+              {!checkingSwaps && swapFailures.length > 0 && <details className="mt-2 text-xs text-gray-600">
+                <summary className="cursor-pointer">Why were other trips unavailable?</summary>
+                <ul className="mb-0 pl-4">{swapFailures.map(({ index, reason }) => <li key={index} className="mt-1">
+                  {tripLabel(routes[index])}: {reason}
+                </li>)}</ul>
+              </details>}
+            </div>}
             {!options.vehicles.some(vehicle => vehicle.available) && <p className="m-0 text-xs text-gray-500">No suitable replacement is available for these trip times.</p>}
           </>
         )}

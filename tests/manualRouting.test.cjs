@@ -12,7 +12,8 @@ function load(relative, dependencies = {}) {
   } }).outputText;
   const exports = {};
   runInNewContext(compiled, { exports, require: name => dependencies[name] || (name === "./assignmentError.utils"
-    ? load("app/route/_components/assignmentError.utils.ts") : require(name)),
+    ? load("app/route/_components/assignmentError.utils.ts") : name === "./tripLabel.utils"
+      ? load("app/route/_components/tripLabel.utils.ts") : require(name)),
     setTimeout: callback => { callback(); return 0; }, Date, encodeURIComponent });
   return exports;
 }
@@ -24,7 +25,8 @@ test("manual route labels distinguish three trips by name, driver, direction and
     { arrival_time: `2026-10-26T${String(hour + 1).padStart(2, "0")}:00:00` },
   ] }, index));
   assert.equal(new Set(labels).size, 3);
-  assert.match(labels[2], /Route 3.*Robin.*GO.*Trip 3:00 PM/);
+  assert.match(labels[2], /Robin.*Outbound trip.*Oct 26, 2026, 3:00 PM–4:00 PM/);
+  assert.doesNotMatch(labels[2], /Route 3/);
 });
 
 test("job membership counts each booking once across pickup and drop-off", () => {

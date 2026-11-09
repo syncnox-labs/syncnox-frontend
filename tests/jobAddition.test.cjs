@@ -59,7 +59,7 @@ test("drivers sharing a display name are kept separate and old plans without IDs
   const route = { team_member_name: "Alliance Driver", stops: [{ job_id: 10, is_new: true }] };
   const pending = helpers.getPendingDriverRoutes([{ ...route, team_member_id: 1 }, { ...route, team_member_id: 2 }, route, { stops: route.stops }]);
   assert.deepEqual(pending.map(driver => driver.routeIndices), [[0], [1], [2], [3]]);
-  assert.equal(pending[3].driverName, "Driver 4");
+  assert.equal(pending[3].driverName, "Driver name unavailable");
 });
 
 

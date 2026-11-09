@@ -39,6 +39,16 @@ test("preview is read-only and swap sends stale-screen guards for BOTH routes", 
   ]);
 });
 
+test("cross-plan swaps send both plan identities", async () => {
+  const calls = [];
+  const api = load("apis/routes.api.ts", { "@/config/apiClient.config": {
+    post: async (...args) => { calls.push(args); return { data: { success: true } }; },
+  } });
+  await api.swapRouteVehicles(236, 0, { source: { ...preview.source, plan_id: 236 }, target: { ...preview.target, plan_id: 237 } });
+  assert.equal(calls[0][1].expected_source_plan_id, 236);
+  assert.equal(calls[0][1].expected_target_plan_id, 237);
+});
+
 function harness(api) {
   const state = [], effects = [], queued = [], ui = {};
   let cursor = 0, closed = 0, refreshed = 0;
@@ -58,6 +68,7 @@ function harness(api) {
       },
     },
     "@/apis/routes.api": api,
+    "./tripLabel.utils": load("app/route/_components/tripLabel.utils.ts", {}),
     antd: {
       Modal: p => { ui.modal = p; return React.createElement("section", null, p.title, p.children, p.footer); },
       Select: p => { ui.select = p; return React.createElement("select", null, p.options.map(o => React.createElement("option", { key: o.value }, o.label))); },

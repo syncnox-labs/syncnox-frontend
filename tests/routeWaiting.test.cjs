@@ -4,10 +4,25 @@ const path = require("node:path");
 const { test } = require("node:test");
 const ts = require("typescript");
 const source = fs.readFileSync(path.join(__dirname, "../app/route/_components/routeWaiting.utils.ts"), "utf8");
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
 const utils = {};
 new Function("exports", compiled)(utils);
-const { sameWaitingRoute, waitingMergeCandidates, waitingMergeButtonLayout } = utils;
+const { sameWaitingRoute, waitingMergeCandidates, waitingMergeButtonLayout, waitingPlanIssue, crossPlanWaitingReferences } = utils;
+
+test("cross-plan merge resolves real plan and trip identities", () => {
+  const routes = [{ ...trip("17:12", "17:55"), team_member_name: "Sablond" },
+    { ...trip("14:57", "16:34"), team_member_name: "Sablond", source_optimization_id: 259, source_route_index: 9, source_route_name: "Nov 5 AM" }];
+  routes[0].stops.splice(1, 0, { job_id: 2 });
+  routes[1].stops.splice(1, 0, { job_id: 1 });
+  assert.equal(waitingPlanIssue(routes, 261, { routeIndex: 1, mergeRouteIndex: 0 }), null);
+  assert.deepEqual(crossPlanWaitingReferences(routes, 261, { routeIndex: 1, mergeRouteIndex: 0 }), [
+    { plan_id: 259, route_index: 9, driver_id: 1, vehicle_id: 1, job_ids: [1] },
+    { plan_id: 261, route_index: 0, driver_id: 1, vehicle_id: 1, job_ids: [2] },
+  ]);
+  assert.match(waitingPlanIssue(routes, 261, { routeIndex: 1, afterStopIndex: 0 }), /Nov 5 AM/);
+  assert.equal(waitingPlanIssue(routes, 261, { routeIndex: 0, afterStopIndex: 0 }), null);
+  assert.equal(waitingPlanIssue(routes, 261, { routeIndex: 0, mergeRouteIndex: 5 }), null);
+});
 
 test("long gaps use a small centered merge button instead of a full-gap overlay", () => {
   const layout = waitingMergeButtonLayout(100, 1500);

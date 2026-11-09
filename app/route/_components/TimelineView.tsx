@@ -567,7 +567,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     if (!driverSearch.trim()) return indexed;
     return indexed.filter(({ route, originalIndex }) => {
       const driverName = String(
-        route.team_member_name || `Driver ${originalIndex + 1}`
+        route.team_member_name || "Driver name unavailable"
       );
       return isDriverMatch(driverName, driverSearch, exactMatch);
     });
@@ -585,7 +585,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
           : `driver-index-${originalIndex}`;
 
       const driverName =
-        route.team_member_name || `Driver ${route.team_member_id || originalIndex + 1}`;
+        route.team_member_name || "Driver name unavailable";
 
       if (!groupsMap.has(key)) {
         groupsMap.set(key, {
@@ -3600,7 +3600,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               {selectedStopJobIds.size} Job(s) Selected
             </span>
             <span className="text-[11px] text-emerald-200">
-              from {routes[selectionSourceRouteIndex]?.team_member_name || `Driver #${selectionSourceRouteIndex + 1}`}
+              from {routes[selectionSourceRouteIndex]?.team_member_name || "the selected driver"}
             </span>
           </div>
 
