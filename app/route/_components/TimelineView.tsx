@@ -32,6 +32,7 @@ import {
   MenuOutlined,
   LoadingOutlined,
   CheckOutlined,
+  ShareAltOutlined,
 } from "@ant-design/icons";
 import {
   GripVertical,
@@ -83,7 +84,9 @@ interface TimelineViewProps {
   selectedMarkerId?: string | number | null;
   onStopClick?: (stop: any, routeIndex: number, stopIndex: number) => void;
   onAddStop?: (routeIndex: number) => void;
-  onEditRoute?: (routeIndex: number) => void;
+  onShareDriver?: (routeIndex: number) => void;
+  sharingDisabled?: boolean;
+  sharingDriverId?: number | null;
   onEditWaiting?: (routeIndex: number, afterStopIndex: number) => void;
   onMergeRoutes?: (routeIndex: number, mergeRouteIndex?: number) => void;
   onSwapDriver?: (routeIndex: number) => void;
@@ -397,7 +400,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   selectedMarkerId = null,
   onStopClick,
   onAddStop,
-  onEditRoute,
+  onShareDriver,
+  sharingDisabled = false,
+  sharingDriverId = null,
   onEditWaiting,
   onMergeRoutes,
   onSwapDriver,
@@ -1582,7 +1587,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   }, [selectedMarkerId, routes, startTime, pixelsPerMinute, skipSelectionScrollRef]);
 
   const getRouteMenuItems = (routeIndex: number): MenuProps["items"] => [
-    ...(onEditRoute ? [{ key: "edit-route", label: "Edit route, jobs & timing…", onClick: () => onEditRoute(routeIndex) }] : []),
+    ...(onShareDriver ? [{ key: "share-driver", icon: sharingDriverId === routes[routeIndex]?.team_member_id ? <LoadingOutlined /> : <ShareAltOutlined />,
+      label: sharingDriverId === routes[routeIndex]?.team_member_id ? "Sharing…" : "Share",
+      disabled: sharingDisabled || !routes[routeIndex]?.team_member_id,
+      onClick: () => onShareDriver(routeIndex) }] : []),
     ...(onMergeRoutes ? [{ key: "merge-waiting", icon: <ClockCircleOutlined />, label: "Merge routes with waiting…", onClick: () => onMergeRoutes(routeIndex) }] : []),
     ...(onEditWaiting ? routes.flatMap((route, index) => route.team_member_id !== routes[routeIndex]?.team_member_id ? []
       : (route.stops || []).flatMap((stop: any, stopIndex: number) => stop.stop_type === "depot_end" && route.stops[stopIndex + 1]?.stop_type === "depot_start" ? [{

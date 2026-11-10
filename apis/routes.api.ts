@@ -384,18 +384,22 @@ export const getRouteSharingStatus = async (id: number, signal?: AbortSignal): P
 };
 
 export interface ShareRouteResponse extends RouteSharingState {
+  skipped_drivers: Array<{ driver_id: number; driver_name: string; route_ids: number[]; reason: string }>;
   notifications_pending?: boolean;
   shared_count: number;
   driver_ids: number[];
   online_drivers: number[];
 }
 
-/** Share all routes in an optimization request to their assigned drivers. */
+/** Share ready routes, optionally only the selected driver's trips. */
 export const shareOptimizationRoutes = async (
   optimizationRequestId: number,
+  driverId?: number,
 ): Promise<ShareRouteResponse> => {
   const response = await apiClient.post(
     `optimization/${optimizationRequestId}/share`,
+    undefined,
+    driverId === undefined ? undefined : { params: { driver_id: driverId } },
   );
   return response.data;
 };

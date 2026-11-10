@@ -46,6 +46,7 @@ import VehicleAssignments from "./VehicleAssignments";
 import type { VehicleAssignment } from "./vehicleSchedule.utils";
 import OptimizationIssueBanner from "./OptimizationIssueBanner";
 import { snapshotMoveStops } from "./tripMove.utils";
+import { getDriverShareTarget } from "./routeSharing.utils";
 import type { StopMoveSelection } from "@/types/routes.type";
 import type { TripMoveSelection } from "./tripMove.utils";
 import PendingOptimizationIndicator from "./PendingOptimizationIndicator";
@@ -270,6 +271,7 @@ const OptimizationView = ({
   const [isSavingName, setIsSavingName] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [sharingDriverId, setSharingDriverId] = useState<number | null>(null);
   const [shareResult, setShareResult] = useState<ShareRouteResponse | null>(
     null,
   );
@@ -823,13 +825,16 @@ const OptimizationView = ({
   }, [route.id, route.result, route.route_name, shareResult?.last_shared_at]);
 
   const shareInFlight = useRef(false);
-  const handleShareToApp = async () => {
+  const handleShareToApp = async (driverId?: number, optimizationId = route.id) => {
     if (shareInFlight.current) return;
     shareInFlight.current = true;
     setIsSharing(true);
+    setSharingDriverId(driverId ?? null);
     try {
-      const result = await shareOptimizationRoutes(route.id);
-      setSharingState({ last_shared_at: result.last_shared_at, sharing_status: result.sharing_status });
+      const result = await shareOptimizationRoutes(optimizationId, driverId);
+      if (optimizationId === route.id) {
+        setSharingState({ last_shared_at: result.last_shared_at, sharing_status: result.sharing_status });
+      }
       setShareResult(result);
     } catch (err: any) {
       const detail =
@@ -840,7 +845,13 @@ const OptimizationView = ({
     } finally {
       shareInFlight.current = false;
       setIsSharing(false);
+      setSharingDriverId(null);
     }
+  };
+
+  const handleShareDriver = (routeIndex: number) => {
+    const target = getDriverShareTarget(route.result?.routes ?? [], routeIndex, route.id);
+    if (target) void handleShareToApp(target.driverId, target.optimizationId);
   };
 
   // Clear route focus if the focused route gets filtered out by driver search
@@ -2112,10 +2123,10 @@ const OptimizationView = ({
                   />
                 </Tooltip>
               )}
-              <Tooltip title="Send the saved plan to drivers. Optimization is optional; their current version stays unchanged until you share.">
+              <Tooltip title="Share ready driver routes. Routes with unresolved issues are skipped and listed in the result.">
                 <Button type="primary" aria-label="Share saved route to drivers" icon={<ShareAltOutlined />} loading={isSharing}
                   disabled={isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued"}
-                  onClick={handleShareToApp} className="shrink-0">
+                  onClick={() => handleShareToApp()} className="shrink-0">
                   <span className="hidden 2xl:inline">{sharingState?.last_shared_at ? sharingState.sharing_status === "shared" ? "Share again" : "Share changes" : "Share to drivers"}</span>
                 </Button>
               </Tooltip>
@@ -2718,7 +2729,9 @@ const OptimizationView = ({
                     onMoveStops={isWorkerShuttle && !isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed") ? handleMoveStops : undefined}
                     onMoveTrip={!isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed") ? handleMoveTrip : undefined}
                     onAddUnassignedJob={handleAddUnassignedJob}
-                    onEditRoute={index => useManualRoutingStore.getState().open({ planId: route.id, action: "edit", routeIndex: index })}
+                    onShareDriver={handleShareDriver}
+                    sharingDisabled={isSharing || isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued"}
+                    sharingDriverId={sharingDriverId}
                     onEditWaiting={!isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed")
                       ? (routeIndex, afterStopIndex) => setWaitingSelection({ routeIndex, afterStopIndex }) : undefined}
                     onMergeRoutes={!isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed")
@@ -3095,7 +3108,7 @@ const OptimizationView = ({
         title={
           <span className="flex items-center gap-2">
             <ShareAltOutlined className="text-green-500" />
-            Route Shared Successfully
+            {shareResult?.skipped_drivers?.length ? "Routes partially shared" : "Routes shared"}
           </span>
         }
         okText="Done"
@@ -3104,6 +3117,14 @@ const OptimizationView = ({
       >
         {shareResult && (
           <div className="space-y-4 py-2">
+            {!!shareResult.skipped_drivers?.length && <Alert type="warning" showIcon
+              title={`${shareResult.skipped_drivers.length} driver${shareResult.skipped_drivers.length === 1 ? " was" : "s were"} not shared`}
+              description={<div className="space-y-2">
+                <p>Their previously shared routes remain unchanged.</p>
+                {shareResult.skipped_drivers.map(driver => <div key={driver.driver_id}>
+                  <strong>{driver.driver_name}</strong><div>{driver.reason}</div>
+                </div>)}
+              </div>} />}
             {shareResult.notifications_pending && <Alert type="warning" showIcon
               title="Shared successfully; some live notifications are delayed"
               description="The shared version is saved. Drivers will receive it when their app refreshes or reconnects. You can share again to retry live delivery." />}
