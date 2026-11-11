@@ -26,6 +26,7 @@ function hooks() {
         return [state[index], next => { state[index] = typeof next === "function" ? next(state[index]) : next; }];
       },
       useMemo: fn => fn(),
+      useCallback: fn => fn,
       useEffect() {},
     },
     render(component, props) { cursor = 0; return component(props); },
@@ -62,6 +63,12 @@ function setup(kind, items = []) {
     [`./${isTeam ? "TeamMemberCard" : "VehicleCard"}`]: Null,
     [`./${isTeam ? "AddTeamMemberModal" : "AddVehicleModal"}`]: "add-modal",
     "@/components/BulkImport/BulkImportModal": Modal,
+    "@/components/Settings/EntityViewToggle": "entity-view-toggle",
+    "@/components/Settings/EntityRecordTable": "entity-table",
+    "@/components/Settings/SettingsPageTitle": "settings-page-title",
+    "@/store/settings-view.store": { useSettingsViewStore: select => select({ view: "form", setView() {} }) },
+    "@/utils/settingsTable.columns": { createTeamSettingsColumns: () => [], createVehicleSettingsColumns: () => [] },
+    [`@/store/${isTeam ? "vehicle" : "team"}.store`]: { [isTeam ? "useVehicleStore" : "useTeamStore"]: () => ({ vehicles: [], teams: [] }) },
   });
   return {
     store,

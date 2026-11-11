@@ -80,7 +80,7 @@ export interface FieldTemplate {
 
 export const CUSTOM_FIELDS_CHANGED_EVENT = "syncnox_custom_fields_changed";
 
-const notifyFieldChanges = (entityType?: string) => {
+export const notifyFieldChanges = (entityType?: string) => {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(CUSTOM_FIELDS_CHANGED_EVENT, { detail: { entityType } }));
   }

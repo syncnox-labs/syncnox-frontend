@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Button, Spin, Modal, message } from "antd";
 import { Search, Users, Upload, Plus, Trash2, Download } from "lucide-react";
 import { Team } from "@/types/team.type";
@@ -12,8 +12,20 @@ import AddTeamMemberModal from "./AddTeamMemberModal";
 import TeamMemberCard from "./TeamMemberCard";
 import BulkImportModal from "@/components/BulkImport/BulkImportModal";
 
+import EntityViewToggle from "@/components/Settings/EntityViewToggle";
+import { useSettingsViewStore } from "@/store/settings-view.store";
+import EntityRecordTable from "@/components/Settings/EntityRecordTable";
+import SettingsPageTitle from "@/components/Settings/SettingsPageTitle";
+import { createTeamSettingsColumns } from "@/utils/settingsTable.columns";
+import { useVehicleStore } from "@/store/vehicle.store";
+
 const TeamList = () => {
   const { isLoading, teams, bulkDeleteTeamsAction } = useTeamStore();
+
+  const view = useSettingsViewStore(state => state.view);
+  const setView = useSettingsViewStore(state => state.setView);
+  const { vehicles } = useVehicleStore();
+  const tableColumns = useMemo(() => createTeamSettingsColumns(vehicles), [vehicles]);
 
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
@@ -22,6 +34,12 @@ const TeamList = () => {
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+
+  const openTableRecord = useCallback((record: Team) => {
+    setSelectedTeam(record);
+    setMobileDetailOpen(true);
+    setView("form");
+  }, [setView]);
 
   // Auto-select first member on initial load
   useEffect(() => {
@@ -126,13 +144,12 @@ const TeamList = () => {
     <div className="responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
       {/* ── Page header ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between pb-3 shrink-0 border-b border-gray-200 mb-0">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900 m-0">Team Members</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Pick a member in the list to edit their details in the detail panel.
-          </p>
-        </div>
+        <SettingsPageTitle
+          title="Team Members"
+          description={view === "table" ? "Compare team members, filter columns, and select a name to edit." : "Pick a member in the list to edit their details in the detail panel."}
+        />
         <div className="flex items-center gap-2">
+          <EntityViewToggle value={view} onChange={setView} label="Team" />
           {checkedIds.length > 0 && (
             <Button
               danger
@@ -170,6 +187,17 @@ const TeamList = () => {
       </div>
 
       {/* ── Split layout ─────────────────────────────────────────── */}
+      <EntityRecordTable<Team>
+        active={view === "table"}
+        label="Team members"
+        records={teams}
+        columns={tableColumns}
+        checkedIds={checkedIds}
+        onCheckedIdsChange={setCheckedIds}
+        onOpenRecord={openTableRecord}
+        customFieldEntity="team_member"
+      />
+      <div className={view === "form" ? "contents" : "hidden"}>
       <div data-detail-open={mobileDetailOpen} className="responsive-entity-split flex min-h-0 min-w-0 overflow-hidden gap-0 flex-1">
         {/* LEFT — Searchable card list */}
         <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
@@ -286,6 +314,8 @@ const TeamList = () => {
             </div>
           )}
         </div>
+      </div>
+
       </div>
 
       {/* Add modal */}
