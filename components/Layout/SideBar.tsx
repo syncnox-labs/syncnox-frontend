@@ -308,7 +308,7 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
                 {hasSubItems ? (
                   <Popover
                     placement="rightTop"
-                    trigger={["hover", "click"]}
+                    trigger="click"
                     arrow={false}
                     open={
                       item.label === "Settings" ? collapsedSettingsOpen : undefined
@@ -361,6 +361,9 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
                     <button
                       type="button"
                       aria-label={item.label}
+                      aria-expanded={
+                        item.label === "Settings" ? collapsedSettingsOpen : undefined
+                      }
                       className={`w-10 h-10 flex items-center justify-center rounded-none transition-all duration-200 cursor-pointer ${
                         activeSub
                           ? "bg-gray-100 text-primary font-medium"
