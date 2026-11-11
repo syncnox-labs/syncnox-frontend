@@ -337,7 +337,7 @@ export default function DashboardView() {
                 value={selectedDate}
                 placeholder="Select Date"
                 aria-label="Filter upcoming routes by date"
-                className="min-h-11 !w-[132px] shrink-0 font-normal [&_input]:!text-base lg:[&_input]:!text-xs"
+                className="min-h-11 lg:min-h-8 !w-[132px] shrink-0 font-normal [&_input]:!text-base lg:[&_input]:!text-xs"
                 allowClear
               />
           </div>

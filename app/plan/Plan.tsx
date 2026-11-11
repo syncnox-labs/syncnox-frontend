@@ -29,17 +29,17 @@ const Plan = () => {
         <Button
           onClick={() => setIsBulkUploadOpen(true)}
           size="middle"
-          className="!h-12 flex gap-1"
+          className="!h-9 lg:!h-8 flex gap-1"
         >
-          <UploadOutlined /> <p className="text-lg">Bulk Upload Jobs</p>
+          <UploadOutlined /> <p className="text-xs">Bulk Upload Jobs</p>
         </Button>
         <Button
           onClick={() => setIsAddJobsModalOpen(true)}
           size="middle"
-          className="!h-12 flex gap-1"
+          className="!h-9 lg:!h-8 flex gap-1"
           type="primary"
         >
-          <FileAddOutlined /> <p className="text-lg">Manually Add Job</p>
+          <FileAddOutlined /> <p className="text-xs">Manually Add Job</p>
         </Button>
       </div>
       <AddJobsModal open={isAddJobsModalOpen} setOpen={setIsAddJobsModalOpen} />

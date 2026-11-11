@@ -14,7 +14,8 @@ const theme: ThemeConfig = {
     // Fix focus states
     controlOutlineWidth: 0.5,
     controlOutline: "#003220",
-    controlHeight: 38, // Increased from default
+    controlHeight: 32,
+    controlHeightLG: 36,
   },
   components: {
     Input: {
@@ -24,8 +25,11 @@ const theme: ThemeConfig = {
       activeShadow: "0 0 0 1px rgba(0, 50, 32, 0.1)",
       errorActiveShadow: "0 0 0 1px #ff4d4f",
       warningActiveShadow: "0 0 0 1px #faad14",
-      controlHeight: 38,
-      paddingBlock: 8,
+      controlHeight: 32,
+      fontSize: 12,
+    },
+    InputNumber: {
+      controlHeight: 32,
       fontSize: 12,
     },
     Select: {
@@ -37,9 +41,8 @@ const theme: ThemeConfig = {
       optionSelectedBg: "#ecfdf5",
       optionActiveBg: "#f5f5f5",
       optionSelectedColor: "#003220",
-      controlHeight: 38,
+      controlHeight: 32,
       fontSize: 12,
-      // paddingBlock: 8,
     },
     DatePicker: {
       cellWidth: 32,
@@ -47,18 +50,13 @@ const theme: ThemeConfig = {
       activeBorderColor: "#003220",
       hoverBorderColor: "#003220",
       activeShadow: "0 0 0 1px rgba(0, 50, 32, 0.1)",
-      controlHeight: 38,
-      paddingBlock: 8,
+      controlHeight: 32,
       fontSize: 12,
     },
-    // TimePicker: {
-    //   controlHeight: 38,
-    //   paddingBlock: 8,
-    // },
     Button: {
       // Ensure button styling is consistent
-      controlHeight: 38,
-      paddingBlock: 8,
+      controlHeight: 32,
+      paddingInline: 12,
       fontSize: 12,
       borderRadius: 0,
       defaultColor: "#1f2937",

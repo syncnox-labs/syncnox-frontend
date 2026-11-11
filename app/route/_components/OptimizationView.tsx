@@ -2703,7 +2703,7 @@ const OptimizationView = ({
                   <button
                     type="button"
                     onClick={handleToggleCollapse}
-                    className="min-h-11 shrink-0 px-3 py-1 bg-[#003220] hover:bg-[#002A00] text-white text-xs font-bold rounded-none border-none outline-none shadow-sm transition-all cursor-pointer"
+                    className="min-h-11 lg:min-h-8 shrink-0 px-3 py-1 bg-[#003220] hover:bg-[#002A00] text-white text-xs font-bold rounded-none border-none outline-none shadow-sm transition-all cursor-pointer"
                   >
                     Show Map
                   </button>
