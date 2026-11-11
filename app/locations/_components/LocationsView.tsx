@@ -33,7 +33,8 @@ import {
 } from "@/utils/exportCsv.utils";
 import { useSearchParams, useRouter } from "next/navigation";
 
-import EntityViewToggle, { type EntityView } from "@/components/Settings/EntityViewToggle";
+import EntityViewToggle from "@/components/Settings/EntityViewToggle";
+import { useSettingsViewStore } from "@/store/settings-view.store";
 import EntityRecordTable from "@/components/Settings/EntityRecordTable";
 import SettingsPageTitle from "@/components/Settings/SettingsPageTitle";
 import { createDepotSettingsColumns, createLocationSettingsColumns } from "@/utils/settingsTable.columns";
@@ -49,7 +50,8 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
   const router = useRouter();
 
   const tabFromUrl = searchParams.get("tab") as LocationTab | null;
-  const [view, setView] = useState<EntityView>("form");
+  const view = useSettingsViewStore(state => state.view);
+  const setView = useSettingsViewStore(state => state.setView);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<LocationTab>(
     tabFromUrl || defaultTab
@@ -340,12 +342,12 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
     setSelectedDepot(record);
     setMobileDetailOpen(true);
     setView("form");
-  }, []);
+  }, [setView]);
   const openLocationRecord = useCallback((record: LocationMapping) => {
     setSelectedMapping(record);
     setMobileDetailOpen(true);
     setView("form");
-  }, []);
+  }, [setView]);
 
   const isGlobalLoading =
     activeTab === "depots"

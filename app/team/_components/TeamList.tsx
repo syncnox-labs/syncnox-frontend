@@ -12,7 +12,8 @@ import AddTeamMemberModal from "./AddTeamMemberModal";
 import TeamMemberCard from "./TeamMemberCard";
 import BulkImportModal from "@/components/BulkImport/BulkImportModal";
 
-import EntityViewToggle, { type EntityView } from "@/components/Settings/EntityViewToggle";
+import EntityViewToggle from "@/components/Settings/EntityViewToggle";
+import { useSettingsViewStore } from "@/store/settings-view.store";
 import EntityRecordTable from "@/components/Settings/EntityRecordTable";
 import SettingsPageTitle from "@/components/Settings/SettingsPageTitle";
 import { createTeamSettingsColumns } from "@/utils/settingsTable.columns";
@@ -21,7 +22,8 @@ import { useVehicleStore } from "@/store/vehicle.store";
 const TeamList = () => {
   const { isLoading, teams, bulkDeleteTeamsAction } = useTeamStore();
 
-  const [view, setView] = useState<EntityView>("form");
+  const view = useSettingsViewStore(state => state.view);
+  const setView = useSettingsViewStore(state => state.setView);
   const { vehicles } = useVehicleStore();
   const tableColumns = useMemo(() => createTeamSettingsColumns(vehicles), [vehicles]);
 
@@ -37,7 +39,7 @@ const TeamList = () => {
     setSelectedTeam(record);
     setMobileDetailOpen(true);
     setView("form");
-  }, []);
+  }, [setView]);
 
   // Auto-select first member on initial load
   useEffect(() => {

@@ -11,7 +11,8 @@ import AddVehicleModal from "./AddVehicleModal";
 import VehicleForm from "./VehicleForm";
 import VehicleCard from "./VehicleCard";
 import BulkImportModal from "@/components/BulkImport/BulkImportModal";
-import EntityViewToggle, { type EntityView } from "@/components/Settings/EntityViewToggle";
+import EntityViewToggle from "@/components/Settings/EntityViewToggle";
+import { useSettingsViewStore } from "@/store/settings-view.store";
 import EntityRecordTable from "@/components/Settings/EntityRecordTable";
 import SettingsPageTitle from "@/components/Settings/SettingsPageTitle";
 import { createVehicleSettingsColumns } from "@/utils/settingsTable.columns";
@@ -28,7 +29,8 @@ function formatType(type: string | null): string {
 const VehicleList = () => {
   const { isLoading, vehicles, bulkDeleteVehiclesAction } = useVehicleStore();
 
-  const [view, setView] = useState<EntityView>("form");
+  const view = useSettingsViewStore(state => state.view);
+  const setView = useSettingsViewStore(state => state.setView);
   const { teams } = useTeamStore();
   const tableColumns = useMemo(() => createVehicleSettingsColumns(vehicles, teams), [vehicles, teams]);
 
@@ -44,7 +46,7 @@ const VehicleList = () => {
     setSelectedVehicle(record);
     setMobileDetailOpen(true);
     setView("form");
-  }, []);
+  }, [setView]);
 
   // Auto-select first vehicle
   useEffect(() => {

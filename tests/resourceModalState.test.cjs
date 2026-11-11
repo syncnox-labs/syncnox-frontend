@@ -66,6 +66,7 @@ function setup(kind, items = []) {
     "@/components/Settings/EntityViewToggle": "entity-view-toggle",
     "@/components/Settings/EntityRecordTable": "entity-table",
     "@/components/Settings/SettingsPageTitle": "settings-page-title",
+    "@/store/settings-view.store": { useSettingsViewStore: select => select({ view: "form", setView() {} }) },
     "@/utils/settingsTable.columns": { createTeamSettingsColumns: () => [], createVehicleSettingsColumns: () => [] },
     [`@/store/${isTeam ? "vehicle" : "team"}.store`]: { [isTeam ? "useVehicleStore" : "useTeamStore"]: () => ({ vehicles: [], teams: [] }) },
   });
