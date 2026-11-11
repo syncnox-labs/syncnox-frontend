@@ -208,7 +208,7 @@ export default function DashboardView() {
 
       {/* Title row */}
       <Flex justify="space-between" align="center" wrap gap="small">
-        <Title className="!m-0 !text-lg sm:!text-xl" level={4}>
+        <Title className="!m-0 !text-lg !font-bold sm:!text-xl" level={4}>
           Dashboard
         </Title>
         {error && <Text role="alert" className="min-w-0 break-words" type="danger">{error}</Text>}
@@ -227,7 +227,7 @@ export default function DashboardView() {
             >
               {k.icon}
             </div>
-            <span className="text-[11px] text-gray-500 font-medium">
+            <span className="text-[11px] text-gray-500 font-bold">
               {k.label}
             </span>
             <span className="mt-0.5 max-w-full break-all text-xl font-semibold leading-tight text-gray-900 tabular-nums sm:text-2xl">
@@ -251,7 +251,7 @@ export default function DashboardView() {
       <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.9fr)]">
         {/* Quick Actions */}
         <div className="min-w-0 border-[1.5px] border-gray-100 bg-white p-4">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-3">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3">
             <ThunderboltOutlined /> Quick Actions
           </div>
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -263,7 +263,7 @@ export default function DashboardView() {
                 className="flex min-h-20 min-w-0 cursor-pointer flex-col items-center justify-center gap-2 border-[1.5px] border-gray-200 bg-white px-2 py-3 font-[inherit] transition-all duration-150 hover:-translate-y-px hover:border-green-300 hover:bg-green-50 focus-visible:outline-2 focus-visible:outline-primary sm:p-3"
               >
                 <span className="text-gray-800 text-lg">{action.icon}</span>
-                <span className="text-center text-xs font-medium text-gray-600">
+                <span className="text-center text-xs font-bold text-gray-600">
                   {action.label}
                 </span>
               </button>
@@ -273,7 +273,7 @@ export default function DashboardView() {
 
         {/* Optimization Impact */}
         <div className="flex min-w-0 flex-col border-[1.5px] border-gray-100 bg-white p-4">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-3 flex-shrink-0">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3 flex-shrink-0">
             <DashboardOutlined /> Optimization Impact
           </div>
           <div className="grid flex-1 grid-cols-3 gap-2 sm:gap-3">
@@ -316,7 +316,7 @@ export default function DashboardView() {
                 <div className="max-w-full break-all text-lg font-semibold text-gray-900 tabular-nums sm:text-xl">
                   {item.value}
                 </div>
-                <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
                   {item.unit}
                 </div>
                 <div className="text-[10px] text-gray-400">{item.sub}</div>
@@ -327,7 +327,7 @@ export default function DashboardView() {
 
         {/* Upcoming */}
         <div className="flex min-w-0 flex-col border-[1.5px] border-gray-100 bg-white p-4 md:col-span-2 xl:col-span-1">
-          <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+          <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wide text-gray-500">
             <span className="flex items-center gap-1.5">
               <CalendarOutlined /> Upcoming
             </span>
@@ -406,7 +406,7 @@ export default function DashboardView() {
       <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
         {/* Recent Routes */}
         <div className="flex min-w-0 flex-col border-[1.5px] border-gray-100 bg-white p-4">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-3 flex-shrink-0">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3 flex-shrink-0">
             <CarOutlined /> Recent Routes
           </div>
           <div className="divide-y divide-gray-100 sm:hidden">
@@ -444,7 +444,7 @@ export default function DashboardView() {
                   {["Route", "Driver", "Progress", "Status"].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-2 py-1.5 border-b border-gray-200 bg-gray-50 sticky top-0"
+                      className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wide px-2 py-1.5 border-b border-gray-200 bg-gray-50 sticky top-0"
                     >
                       {h}
                     </th>
@@ -519,7 +519,7 @@ export default function DashboardView() {
 
         {/* Top Drivers */}
         <div className="flex min-w-0 flex-col border-[1.5px] border-gray-100 bg-white p-4">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-3 flex-shrink-0">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3 flex-shrink-0">
             <UserOutlined /> Top Drivers
           </div>
           <div className="custom-scrollbar max-h-80 overflow-y-auto">
