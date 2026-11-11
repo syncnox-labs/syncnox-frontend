@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Save, MessageSquare } from "lucide-react";
 import { message, Checkbox } from "antd";
+import SettingsPageTitle from "@/components/Settings/SettingsPageTitle";
 
 interface MessageSettings {
   scheduled_enabled: boolean;
@@ -38,12 +39,10 @@ export default function CustomerMessagesPage() {
     <div className="responsive-settings flex flex-col h-full min-w-0 min-h-0 overflow-hidden">
       {/* ── Page Header ─────────────────────────────────────────── */}
       <div className="responsive-toolbar flex items-center justify-between pb-4 border-b border-gray-200 shrink-0">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900 m-0">Customer Messages</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Configure the automated SMS or Email messages that are sent to your customers.
-          </p>
-        </div>
+        <SettingsPageTitle
+          title="Customer Messages"
+          description="Configure the automated SMS or Email messages that are sent to your customers."
+        />
         <button
           onClick={handleSave}
           disabled={saving}

@@ -13,6 +13,7 @@ import VehicleCard from "./VehicleCard";
 import BulkImportModal from "@/components/BulkImport/BulkImportModal";
 import EntityViewToggle, { type EntityView } from "@/components/Settings/EntityViewToggle";
 import EntityRecordTable from "@/components/Settings/EntityRecordTable";
+import SettingsPageTitle from "@/components/Settings/SettingsPageTitle";
 import { createVehicleSettingsColumns } from "@/utils/settingsTable.columns";
 import { useTeamStore } from "@/store/team.store";
 
@@ -140,12 +141,10 @@ const VehicleList = () => {
     <div className="responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
       {/* ── Page header ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between pb-3 shrink-0 border-b border-gray-200 mb-0">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900 m-0">Vehicles</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {view === "table" ? "Compare vehicles, filter columns, and select a name to edit." : "Pick a vehicle in the list to edit it. Alerts show on the tab so nothing important is hidden."}
-          </p>
-        </div>
+        <SettingsPageTitle
+          title="Vehicles"
+          description={view === "table" ? "Compare vehicles, filter columns, and select a name to edit." : "Pick a vehicle in the list to edit it. Alerts show on the tab so nothing important is hidden."}
+        />
         <div className="flex items-center gap-2">
           <EntityViewToggle value={view} onChange={setView} label="Vehicle" />
           {checkedIds.length > 0 && (

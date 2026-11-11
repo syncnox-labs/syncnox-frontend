@@ -14,6 +14,7 @@ import BulkImportModal from "@/components/BulkImport/BulkImportModal";
 
 import EntityViewToggle, { type EntityView } from "@/components/Settings/EntityViewToggle";
 import EntityRecordTable from "@/components/Settings/EntityRecordTable";
+import SettingsPageTitle from "@/components/Settings/SettingsPageTitle";
 import { createTeamSettingsColumns } from "@/utils/settingsTable.columns";
 import { useVehicleStore } from "@/store/vehicle.store";
 
@@ -141,12 +142,10 @@ const TeamList = () => {
     <div className="responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
       {/* ── Page header ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between pb-3 shrink-0 border-b border-gray-200 mb-0">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900 m-0">Team Members</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {view === "table" ? "Compare team members, filter columns, and select a name to edit." : "Pick a member in the list to edit their details in the detail panel."}
-          </p>
-        </div>
+        <SettingsPageTitle
+          title="Team Members"
+          description={view === "table" ? "Compare team members, filter columns, and select a name to edit." : "Pick a member in the list to edit their details in the detail panel."}
+        />
         <div className="flex items-center gap-2">
           <EntityViewToggle value={view} onChange={setView} label="Team" />
           {checkedIds.length > 0 && (

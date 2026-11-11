@@ -8,6 +8,7 @@ import {
 } from "@/apis/tenant-rules.api";
 import { Save, Sliders, CheckCircle2 } from "lucide-react";
 import { message, Spin, Checkbox, Select } from "antd";
+import SettingsPageTitle from "@/components/Settings/SettingsPageTitle";
 
 export default function OptimizationRulesPage() {
   const [rules, setRules] = useState<OptimizationRules>({
@@ -55,12 +56,10 @@ export default function OptimizationRulesPage() {
     <div className="responsive-settings flex flex-col h-full min-w-0 min-h-0 overflow-hidden">
       {/* ── Page Header ─────────────────────────────────────────── */}
       <div className="responsive-toolbar flex items-center justify-between pb-4 border-b border-gray-200 shrink-0">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900 m-0">Optimization Rules</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Configure custom routing constraints and parameters applied during route optimization.
-          </p>
-        </div>
+        <SettingsPageTitle
+          title="Optimization Rules"
+          description="Configure custom routing constraints and parameters applied during route optimization."
+        />
         <button
           onClick={handleSave}
           disabled={saving || loading}

@@ -35,6 +35,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 
 import EntityViewToggle, { type EntityView } from "@/components/Settings/EntityViewToggle";
 import EntityRecordTable from "@/components/Settings/EntityRecordTable";
+import SettingsPageTitle from "@/components/Settings/SettingsPageTitle";
 import { createDepotSettingsColumns, createLocationSettingsColumns } from "@/utils/settingsTable.columns";
 
 type LocationTab = "depots" | "additional-locations";
@@ -363,14 +364,13 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
     <div className="responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden font-sans">
       {/* Top Header */}
       <div className="flex items-start justify-between pb-3 shrink-0 border-b border-gray-200">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 m-0">Locations</h1>
-          <p className="text-xs text-gray-500 mt-1 m-0">
-            {activeTab === "depots"
-              ? "Your operational bases — where vehicles start, end and are stored. Pick one to edit."
-              : "Every other place your routes touch — customer sites, end-customers, pickup points, hubs. One list, filter by type."}
-          </p>
-        </div>
+        <SettingsPageTitle
+          title="Locations"
+          className="text-xl"
+          description={activeTab === "depots"
+            ? "Your operational bases — where vehicles start, end and are stored. Pick one to edit."
+            : "Every other place your routes touch — customer sites, end-customers, pickup points, hubs. One list, filter by type."}
+        />
 
         <div className="flex items-center gap-2">
           <EntityViewToggle value={view} onChange={setView} label="Location" />

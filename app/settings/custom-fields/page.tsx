@@ -32,6 +32,7 @@ import {
 import { CustomFieldFormModal } from "@/components/CustomFields/CustomFieldFormModal";
 import { FieldsSectionCard } from "@/components/CustomFields/FieldsSectionCard";
 import { useIndexStore } from "@/store/index.store";
+import SettingsPageTitle from "@/components/Settings/SettingsPageTitle";
 
 export default function CustomFieldsSettingsPage() {
   const [selectedEntity, setSelectedEntity] = useState<EntityTab>("job");
@@ -383,12 +384,10 @@ export default function CustomFieldsSettingsPage() {
     <div className="responsive-settings flex flex-col h-full min-h-0 min-w-0 overflow-hidden font-sans">
       {/* ── Page Header ─────────────────────────────────────────── */}
       <div className="responsive-toolbar flex items-center justify-between pb-4 border-b border-gray-200 shrink-0">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900 m-0">Custom Fields & Field Settings</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Configure dynamic custom fields, visibility across apps
-          </p>
-        </div>
+        <SettingsPageTitle
+          title="Custom Fields & Field Settings"
+          description="Configure dynamic custom fields, visibility across apps"
+        />
         <div className="flex items-center gap-2">
           {/* {selectedEntity === "job" && (
             <Select

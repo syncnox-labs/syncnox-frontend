@@ -65,6 +65,7 @@ function setup(kind, items = []) {
     "@/components/BulkImport/BulkImportModal": Modal,
     "@/components/Settings/EntityViewToggle": "entity-view-toggle",
     "@/components/Settings/EntityRecordTable": "entity-table",
+    "@/components/Settings/SettingsPageTitle": "settings-page-title",
     "@/utils/settingsTable.columns": { createTeamSettingsColumns: () => [], createVehicleSettingsColumns: () => [] },
     [`@/store/${isTeam ? "vehicle" : "team"}.store`]: { [isTeam ? "useVehicleStore" : "useTeamStore"]: () => ({ vehicles: [], teams: [] }) },
   });
