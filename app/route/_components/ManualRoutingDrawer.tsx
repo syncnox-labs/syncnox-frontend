@@ -15,7 +15,7 @@ import { useManualRoutingStore } from "@/store/manualRouting.store";
 import { commitManualRouting, getManualRoutingContext, previewManualRouting, type ManualJobUpdate, type ManualRoutingContext, type ManualRoutingPreview, type ManualRoutingRequest, type ManualStop } from "@/apis/manualRouting.api";
 import { formatRouteClock, hasJobProgress, localRouteTime, manualJobLabel, manualJobTrip, manualRouteLabel, manualRoutingError, routeJobIds } from "./manualRouting.utils";
 
-const inputClass = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white min-h-10";
+const inputClass = "w-full rounded-lg border border-slate-300 px-3 py-2 lg:py-1.5 text-sm lg:text-xs bg-white min-h-11 lg:min-h-8";
 const Field = ({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) => (
   <label className="block min-w-0"><span className="block text-sm font-medium text-slate-700 mb-1.5">{label}</span>{children}
     {hint && <span className="block text-xs text-slate-500 mt-1.5">{hint}</span>}

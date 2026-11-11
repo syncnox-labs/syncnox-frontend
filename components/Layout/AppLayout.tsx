@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Drawer, Spin } from "antd";
-import { Menu } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useIndexStore } from "@/store/index.store";
 import { useJobsStore } from "@/store/jobs.store";
 import { useTeamStore } from "@/store/team.store";
@@ -108,25 +108,27 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <div className="flex h-dvh min-w-0 flex-col overflow-hidden lg:flex-row">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-3 lg:hidden">
+      <header className="flex h-14 shrink-0 items-center gap-0 border-b border-gray-200 bg-white px-3 lg:hidden">
         <button
           type="button"
-          aria-label="Open navigation"
+          aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"}
           aria-controls="mobile-navigation"
           aria-expanded={mobileMenuOpen}
-          onClick={() => setMobileMenuOpen(true)}
+          onClick={() => setMobileMenuOpen((open) => !open)}
           className="flex h-11 w-11 shrink-0 items-center justify-center text-gray-700 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-primary"
         >
-          <Menu size={22} />
+          {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
-        <Link href="/dashboard" aria-label="Syncnox dashboard" className="flex min-h-11 items-center">
+        <Link href="/dashboard" aria-label="Syncnox dashboard" onClick={() => setMobileMenuOpen(false)} className="flex min-h-11 items-center">
           <Image src="/syncnox.svg" alt="Syncnox" width={116} height={32} priority />
         </Link>
       </header>
       <div className="hidden h-full shrink-0 lg:block"><SideBar /></div>
       <Drawer
         id="mobile-navigation"
-        title="Navigation"
+        aria-label="Mobile navigation"
+        closable={false}
+        rootStyle={{ top: 56, overflow: "hidden" }}
         placement="left"
         size={280}
         open={mobileMenuOpen}

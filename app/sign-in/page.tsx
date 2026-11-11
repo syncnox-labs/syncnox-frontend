@@ -88,7 +88,7 @@ export default function SignInPage() {
                 <input
                   id="si-email"
                   type="email"
-                  className="min-h-12 w-full rounded-none border border-gray-300 bg-white px-3 py-2.5 text-base text-gray-900 transition-all focus:border-[#003220] focus:outline-none focus:ring-2 focus:ring-[#ecfdf5] lg:text-sm"
+                  className="min-h-12 lg:min-h-10 w-full rounded-none border border-gray-300 bg-white px-3 py-2.5 lg:py-2 text-base text-gray-900 transition-all focus:border-[#003220] focus:outline-none focus:ring-2 focus:ring-[#ecfdf5] lg:text-sm"
                   placeholder="you@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -109,7 +109,7 @@ export default function SignInPage() {
                   <input
                     id="si-password"
                     type={showPw ? "text" : "password"}
-                    className="min-h-12 w-full rounded-none border border-gray-300 bg-white px-3 py-2.5 pr-16 text-base text-gray-900 transition-all focus:border-[#003220] focus:outline-none focus:ring-2 focus:ring-[#ecfdf5] lg:text-sm"
+                    className="min-h-12 lg:min-h-10 w-full rounded-none border border-gray-300 bg-white px-3 py-2.5 lg:py-2 pr-16 text-base text-gray-900 transition-all focus:border-[#003220] focus:outline-none focus:ring-2 focus:ring-[#ecfdf5] lg:text-sm"
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -118,7 +118,7 @@ export default function SignInPage() {
                   />
                   <button
                     type="button"
-                    className="absolute inset-y-0 right-0 flex min-h-11 w-14 cursor-pointer items-center justify-center rounded-none border-none bg-transparent text-xs font-semibold text-gray-500 hover:text-gray-900 focus-visible:outline-2 focus-visible:outline-[#003220]"
+                    className="absolute inset-y-0 right-0 flex min-h-11 lg:min-h-10 w-14 cursor-pointer items-center justify-center rounded-none border-none bg-transparent text-xs font-semibold text-gray-500 hover:text-gray-900 focus-visible:outline-2 focus-visible:outline-[#003220]"
                     onClick={() => setShowPw((v) => !v)}
                     aria-label={showPw ? "Hide password" : "Show password"}
                     aria-pressed={showPw}
@@ -140,7 +140,7 @@ export default function SignInPage() {
               type="primary"
               htmlType="submit"
               loading={loading}
-              className="mt-5 !h-12 w-full rounded-none !border-[#003220] bg-[#003220] text-sm font-semibold transition-all hover:bg-[#002a00]"
+              className="mt-5 !h-12 lg:!h-10 w-full rounded-none !border-[#003220] bg-[#003220] text-sm font-semibold transition-all hover:bg-[#002a00]"
               id="si-submit-btn"
             >
               Sign In

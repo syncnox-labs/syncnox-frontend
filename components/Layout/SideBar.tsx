@@ -229,36 +229,41 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
   return (
     <aside
       aria-label={mobile ? "Mobile navigation" : "Sidebar"}
-      className={`bg-white flex flex-col border-r overflow-hidden shrink-0 transition-[width] duration-200 ease-in-out ${
+      className={`relative z-20 bg-white flex flex-col border-r shrink-0 transition-[width] duration-200 ease-in-out ${
         mobile ? "h-full w-full [&_nav_button]:min-h-11 [&_nav_a>div]:min-h-11 [&_footer_button]:min-h-11" : `h-dvh ${sidebarCollapsed ? "w-14" : "w-48"}`
       }`}
     >
+      {!mobile && (
+        <Tooltip title={sidebarCollapsed ? "Open sidebar" : "Close sidebar"} placement="right" mouseEnterDelay={0.15}>
+          <button
+            type="button"
+            onClick={handleToggleSidebar}
+            aria-label={sidebarCollapsed ? "Open sidebar" : "Close sidebar"}
+            aria-expanded={!sidebarCollapsed}
+            className="absolute -right-3 top-4 z-30 flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-emerald-50 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-colors cursor-pointer"
+          >
+            {sidebarCollapsed ? <ChevronRight size={14} strokeWidth={2} /> : <ChevronLeft size={14} strokeWidth={2} />}
+          </button>
+        </Tooltip>
+      )}
+
       {/* Logo Section */}
-      {sidebarCollapsed ? (
+      {!mobile && (sidebarCollapsed ? (
         <div className="h-14 px-2 mb-2 flex items-center justify-center shrink-0">
-          <Tooltip title="Open sidebar" placement="right" mouseEnterDelay={0.15}>
-            <button
-              type="button"
-              onClick={handleToggleSidebar}
-              aria-label="Open sidebar"
-              aria-expanded={false}
-              className="w-10 h-10 flex items-center justify-center rounded-none text-gray-600 hover:text-primary hover:bg-emerald-50 transition-colors cursor-pointer group"
-            >
-              <Image
-                src="/logo.svg"
-                alt="SYNCNOX"
-                width={22}
-                height={22}
-                className="block group-hover:hidden group-focus-visible:hidden"
-                priority
-              />
-              <ChevronRight
-                size={18}
-                strokeWidth={2}
-                className="hidden group-hover:block group-focus-visible:block"
-              />
-            </button>
-          </Tooltip>
+          <Link
+            href="/dashboard"
+            onClick={() => handleNavigation("/dashboard", "dashboard")}
+            aria-label="Syncnox dashboard"
+            className="w-10 h-10 flex items-center justify-center hover:bg-emerald-50 transition-colors focus-visible:outline-2 focus-visible:outline-primary"
+          >
+            <Image
+              src="/logo.svg"
+              alt="SYNCNOX"
+              width={22}
+              height={22}
+              priority
+            />
+          </Link>
         </div>
       ) : (
         <div className="h-14 px-3 mb-2 flex items-center justify-between shrink-0">
@@ -278,24 +283,13 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
               />
             </div>
           </Link>
-          {!mobile && <Tooltip title="Close sidebar" placement="right" mouseEnterDelay={0.15}>
-            <button
-              type="button"
-              onClick={handleToggleSidebar}
-              aria-label="Close sidebar"
-              aria-expanded={true}
-              className="w-8 h-8 flex items-center justify-center rounded-none text-gray-500 hover:text-primary hover:bg-emerald-50 transition-colors cursor-pointer shrink-0"
-            >
-              <ChevronLeft size={18} strokeWidth={2} />
-            </button>
-          </Tooltip>}
         </div>
-      )}
+      ))}
 
       {/* Main Menu Items */}
       <nav
         className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
-          sidebarCollapsed ? "px-1.5" : "px-2"
+          mobile ? "px-2 pt-3" : sidebarCollapsed ? "px-1.5" : "px-2"
         }`}
         style={{
           scrollbarWidth: "thin",
