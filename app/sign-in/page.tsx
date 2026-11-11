@@ -49,20 +49,20 @@ export default function SignInPage() {
   };
 
   return (
-    <div className="flex h-screen max-h-screen w-screen max-w-vw overflow-hidden font-sans">
+    <div className="h-dvh w-full overflow-y-auto bg-white font-sans lg:flex">
       {/* ── Left brand panel ─────────────────────────────── */}
-      <div className="relative hidden md:flex h-screen shrink-0 items-center justify-center bg-[#003220] overflow-hidden">
+      <div className="sticky top-0 hidden h-dvh shrink-0 items-center justify-center overflow-hidden bg-[#003220] lg:flex lg:w-[44%] xl:w-1/2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/Synced for Smarter Ops_page-0001.jpg.jpeg"
           alt="Synced for Smarter Ops"
-          className="h-full w-auto object-contain block"
+          className="h-full w-full object-fill"
         />
       </div>
 
       {/* ── Right form panel ──────────────────────────────── */}
-      <div className="flex-1 bg-white flex items-center justify-center p-8 h-screen box-border overflow-y-auto">
-        <div className="max-w-[380px] w-full flex flex-col">
+      <div className="flex min-h-full min-w-0 flex-1 px-5 py-8 sm:px-8 sm:py-12 lg:px-12 lg:py-8">
+        <div className="m-auto flex w-full max-w-[380px] flex-col py-4">
           {/* Logo + title */}
           <div className="text-center mb-6 flex flex-col items-center">
             <Image
@@ -82,31 +82,34 @@ export default function SignInPage() {
             <div className="mt-6 flex flex-col gap-3.5">
               {/* Email */}
               <div>
-                <label htmlFor="si-email" className="block text-xs font-semibold text-gray-800 mb-1.5">
+                <label htmlFor="si-email" className="mb-1.5 block text-sm font-semibold text-gray-800 sm:text-xs">
                   Email <span className="text-red-600">*</span>
                 </label>
                 <input
                   id="si-email"
                   type="email"
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-none text-sm text-gray-900 bg-white focus:outline-none focus:border-[#003220] focus:ring-2 focus:ring-[#ecfdf5] transition-all"
+                  className="min-h-12 w-full rounded-none border border-gray-300 bg-white px-3 py-2.5 text-base text-gray-900 transition-all focus:border-[#003220] focus:outline-none focus:ring-2 focus:ring-[#ecfdf5] lg:text-sm"
                   placeholder="you@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  inputMode="email"
                   required
                 />
               </div>
 
               {/* Password */}
               <div>
-                <label htmlFor="si-password" className="block text-xs font-semibold text-gray-800 mb-1.5">
+                <label htmlFor="si-password" className="mb-1.5 block text-sm font-semibold text-gray-800 sm:text-xs">
                   Password <span className="text-red-600">*</span>
                 </label>
                 <div className="relative">
                   <input
                     id="si-password"
                     type={showPw ? "text" : "password"}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-none text-sm text-gray-900 bg-white focus:outline-none focus:border-[#003220] focus:ring-2 focus:ring-[#ecfdf5] transition-all pr-14"
+                    className="min-h-12 w-full rounded-none border border-gray-300 bg-white px-3 py-2.5 pr-16 text-base text-gray-900 transition-all focus:border-[#003220] focus:outline-none focus:ring-2 focus:ring-[#ecfdf5] lg:text-sm"
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -115,9 +118,10 @@ export default function SignInPage() {
                   />
                   <button
                     type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 bg-none border-none text-xs font-semibold text-gray-500 hover:text-gray-900 cursor-pointer rounded-none"
+                    className="absolute inset-y-0 right-0 flex min-h-11 w-14 cursor-pointer items-center justify-center rounded-none border-none bg-transparent text-xs font-semibold text-gray-500 hover:text-gray-900 focus-visible:outline-2 focus-visible:outline-[#003220]"
                     onClick={() => setShowPw((v) => !v)}
-                    tabIndex={-1}
+                    aria-label={showPw ? "Hide password" : "Show password"}
+                    aria-pressed={showPw}
                   >
                     {showPw ? "Hide" : "Show"}
                   </button>
@@ -126,7 +130,7 @@ export default function SignInPage() {
 
               {/* Error */}
               {error && (
-                <div className="bg-red-50 border border-red-200 rounded-none p-3 text-xs text-red-600">
+                <div role="alert" className="rounded-none border border-red-200 bg-red-50 p-3 text-sm text-red-600">
                   {error}
                 </div>
               )}
@@ -136,7 +140,7 @@ export default function SignInPage() {
               type="primary"
               htmlType="submit"
               loading={loading}
-              className="w-full h-11 bg-[#003220] hover:bg-[#002a00] !border-[#003220] rounded-none font-semibold text-sm transition-all mt-5"
+              className="mt-5 !h-12 w-full rounded-none !border-[#003220] bg-[#003220] text-sm font-semibold transition-all hover:bg-[#002a00]"
               id="si-submit-btn"
             >
               Sign In

@@ -315,10 +315,10 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
           background-color: #003220 !important;
         }
       `}</style>
-      <div className="flex flex-col max-h-[88vh] bg-white rounded-none">
+      <div className="flex flex-col max-h-[88dvh] bg-white rounded-none">
         {/* Header - Syncnox Forest Green Branding */}
-        <div className="px-6 py-4 bg-[#003220] text-white flex items-center justify-between border-b border-emerald-950 rounded-none">
-          <div className="flex items-center gap-3">
+        <div className="px-3 sm:px-6 py-4 bg-[#003220] text-white flex items-center justify-between gap-2 border-b border-emerald-950 rounded-none">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="w-10 h-10 rounded-none bg-emerald-900/60 border border-emerald-700/60 flex items-center justify-center text-emerald-300 shrink-0">
               <SwapOutlined className="text-lg" />
             </div>
@@ -334,7 +334,7 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
           <button
             onClick={onClose}
             disabled={isSubmitting}
-            className="w-8 h-8 rounded-none bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors border-none cursor-pointer outline-none"
+            className="w-11 h-11 shrink-0 rounded-none bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors border-none cursor-pointer outline-none"
             title="Close"
           >
             ✕
@@ -439,7 +439,7 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
 
         {/* Search, Filter & Quick-action Toolbar */}
         <div className="px-5 py-2.5 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 rounded-none">
-          <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+          <div className="flex items-center gap-2 flex-1 min-w-0 w-full sm:min-w-[240px]">
             <Input
               size="small"
               placeholder="Search candidate, address, or Job ID..."
@@ -649,7 +649,7 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
             </label>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap min-w-0 max-w-full items-center gap-2">
             <Button
               onClick={onClose}
               disabled={isSubmitting}
@@ -682,7 +682,7 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
               icon={<SwapOutlined />}
             >
               Transfer {effectiveJobIds.size > 0 ? `${effectiveJobIds.size} Job(s)` : "Stops"}
-              {targetRoute ? ` to ${targetRoute.team_member_name || "selected driver"}` : ""}
+              {targetRoute && <span className="hidden sm:inline">{` to ${targetRoute.team_member_name || "selected driver"}`}</span>}
             </Button>
           </div>
         </div>

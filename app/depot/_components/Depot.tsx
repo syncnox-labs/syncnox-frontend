@@ -25,6 +25,7 @@ const Depot = () => {
     fetchDepots,
   } = useDepotStore();
 
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [selectedDepot, setSelectedDepot] = useState<DepotType | undefined>(
     undefined
   );
@@ -144,13 +145,13 @@ const Depot = () => {
   }
 
   const splitContent = (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
       {/* ── Page header ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between pb-3 shrink-0 border-b border-gray-200 mb-0">
         <div>
           <h1 className="text-lg font-bold text-gray-900 m-0">Depots</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            Pick a depot on the left to edit it. Drag the pin on the map to adjust its location.
+            Pick a depot in the list to edit it. Drag the pin on the map to adjust its location.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -190,9 +191,9 @@ const Depot = () => {
       </div>
 
       {/* ── Split layout ─────────────────────────────────────────── */}
-      <div className="flex h-full overflow-hidden gap-0 flex-1">
+      <div data-detail-open={mobileDetailOpen} className="responsive-entity-split flex min-h-0 min-w-0 overflow-hidden gap-0 flex-1">
         {/* LEFT — Searchable card list */}
-        <div className="w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
+        <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
           <div className="p-3 pb-2 border-b border-gray-200 bg-gray-50/70 shrink-0">
             <div className="relative flex items-center">
               <Search className="absolute left-2.5 text-gray-400 pointer-events-none z-10" size={14} />
@@ -235,6 +236,7 @@ const Depot = () => {
                   onToggleCheck={() => toggleCheck(depot.id)}
                   onClick={() => {
                     setSelectedDepot(depot);
+                    setMobileDetailOpen(true);
                     // If map is open, fly to this depot
                     if (isMapOpen && depot.location?.lat && depot.location?.lng) {
                       setMapCenter({ lat: depot.location.lat, lng: depot.location.lng });
@@ -248,7 +250,8 @@ const Depot = () => {
         </div>
 
         {/* RIGHT — Detail / form panel */}
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-white">
+        <div className="responsive-entity-detail flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden bg-white">
+          <button type="button" className="entity-back" onClick={() => setMobileDetailOpen(false)}>← Back to list</button>
           {selectedDepot ? (
             <>
               {/* Detail header */}
@@ -302,7 +305,7 @@ const Depot = () => {
                 <MapPin size={28} />
               </div>
               <p className="text-sm text-gray-400 text-center max-w-[240px]">
-                Select a depot on the left to view and edit its details.
+                Select a depot in the list to view and edit its details.
               </p>
             </div>
           )}

@@ -146,8 +146,8 @@ const Recents = () => {
         <Panel defaultSize={60} minSize={5}>
           <div className="flex flex-col h-full p-4 bg-gray-50">
             {/* Top Bar */}
-            <Flex justify="space-between" align="center" className="mb-4">
-              <Flex gap={24} align="center">
+            <Flex justify="space-between" align="center" className="responsive-toolbar mb-3">
+              <Flex wrap gap={12} align="center">
                 <Title level={4} className="m-0 pt-2">
                   Jobs
                 </Title>
@@ -157,7 +157,7 @@ const Recents = () => {
                   draftJobDates={recentsJobDates}
                 />
               </Flex>
-              <Flex gap={8}>
+              <Flex wrap gap={8}>
                 <Link href="/plan" onClick={() => setCurrentTab("add-jobs")}>
                   <Button>Add Jobs</Button>
                 </Link>
@@ -172,7 +172,7 @@ const Recents = () => {
             </Flex>
 
             {/* Table with explicit height */}
-            <div className="flex-1 mb-2 mt-2">
+            <div className="flex-1 min-h-0 min-w-0 mb-2 mt-2">
               <BaseTable<Job>
                 columnDefs={columns}
                 rowData={draftJobs}

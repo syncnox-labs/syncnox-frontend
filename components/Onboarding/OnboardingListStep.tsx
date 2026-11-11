@@ -62,9 +62,9 @@ const OnboardingListStep = <T extends { id: number }>({
   };
 
   return (
-    <div className="flex flex-col h-screen p-6 md:p-10 w-full mx-auto overflow-hidden bg-white justify-between">
+    <div className="flex flex-col h-dvh p-4 sm:p-6 lg:p-10 w-full mx-auto overflow-hidden bg-white justify-between">
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto pr-1">
+      <div className="flex-1 min-h-0 overflow-y-auto pr-1">
         {/* Progress */}
         <div className="h-1.5 bg-gray-200 w-full mb-5 rounded-none overflow-hidden">
           <div

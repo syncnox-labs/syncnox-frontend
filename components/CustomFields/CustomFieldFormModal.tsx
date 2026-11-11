@@ -190,7 +190,7 @@ export const CustomFieldFormModal: React.FC<CustomFieldFormModalProps> = ({
           <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider mb-2">
             Visibility Across Apps
           </label>
-          <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
             <div className="flex items-center space-x-2 border border-gray-200 px-2.5 py-1.5 bg-white">
               <Checkbox
                 checked={Boolean(surfacesState.disp)}

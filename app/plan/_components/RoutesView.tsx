@@ -336,12 +336,12 @@ export default function RoutesView() {
   ];
 
   return (
-    <div className="flex flex-col h-full">
-      <Flex justify="space-between" gap={36} align="center" className="my-4">
+    <div className="flex flex-col h-full min-h-[360px] min-w-0">
+      <Flex justify="space-between" gap={36} align="center" className="plan-toolbar responsive-toolbar !mb-0 shrink-0">
         <Title level={4} className="m-0 pt-2">
           Routes
         </Title>
-        <Flex gap={8} align="center">
+        <Flex wrap gap={8} align="center">
           <Link href="/plan" onClick={() => setCurrentTab("jobs")}>
             <Button>Create New Route</Button>
           </Link>

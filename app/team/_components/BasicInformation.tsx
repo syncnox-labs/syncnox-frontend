@@ -107,7 +107,7 @@ const BasicInformation = ({
     <>
       {/* Name and Role Type */}
       <Row gutter={16}>
-        <Col span={12}>
+        <Col xs={24} sm={12}>
           <Form.Item
             label="Name"
             name="name"
@@ -116,7 +116,7 @@ const BasicInformation = ({
             <Input placeholder="Name" />
           </Form.Item>
         </Col>
-        <Col span={12}>
+        <Col xs={24} sm={12}>
           <Form.Item
             label="Role Type"
             name="role_type"
@@ -129,12 +129,12 @@ const BasicInformation = ({
 
       {/* External Identifier and Email */}
       <Row gutter={16}>
-        <Col span={12}>
+        <Col xs={24} sm={12}>
           <Form.Item label="External Identifier" name="external_identifier">
             <Input placeholder="External Identifier" />
           </Form.Item>
         </Col>
-        <Col span={12}>
+        <Col xs={24} sm={12}>
           <Form.Item
             label="Email"
             name="email"
@@ -148,7 +148,7 @@ const BasicInformation = ({
       {/* Phone Number (Optional) */}
       <Form.Item label="Phone Number (Optional)">
         <Row gutter={8}>
-          <Col span={8}>
+          <Col xs={24} sm={8}>
             <Form.Item
               name={["phone", "countryCode"]}
               noStyle
@@ -166,7 +166,7 @@ const BasicInformation = ({
               </Select>
             </Form.Item>
           </Col>
-          <Col span={16}>
+          <Col xs={24} sm={16}>
             <Form.Item
               name={["phone", "number"]}
               noStyle
@@ -181,7 +181,7 @@ const BasicInformation = ({
       {/* Start and End Location */}
       {isDriver && (
         <Row gutter={16}>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Item
               label={
                 <span>
@@ -232,7 +232,7 @@ const BasicInformation = ({
               )}
             </Form.Item>
           </Col>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Item
               label={
                 <span>
@@ -358,8 +358,8 @@ const BasicInformation = ({
                   const isEnabled = schedule.enabled !== false;
 
                   return (
-                    <Row gutter={12} align="middle" style={{ marginBottom: 8 }}>
-                      <Col span={8}>
+                    <div className="mb-3 grid grid-cols-1 items-center gap-2 xl:grid-cols-[110px_minmax(0,1fr)]">
+                      <div className="min-w-0">
                         <Space size="small">
                           <Form.Item
                             name={["day_schedules", day.key, "enabled"]}
@@ -379,12 +379,12 @@ const BasicInformation = ({
                             {day.label}
                           </Text>
                         </Space>
-                      </Col>
+                      </div>
 
-                      <Col span={16}>
+                      <div className="min-w-0">
                         {isEnabled ? (
-                          <Row gutter={8} align="middle">
-                            <Col span={11}>
+                          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                            <div className="min-w-0">
                               <Form.Item
                                 name={["day_schedules", day.key, "start_time"]}
                                 noStyle
@@ -394,15 +394,16 @@ const BasicInformation = ({
                                   size="small"
                                   format="HH:mm"
                                   placeholder="Start"
+                                  aria-label={`${day.label} work starts`}
                                   style={{ width: "100%" }}
                                   getPopupContainer={() => document.body}
                                 />
                               </Form.Item>
-                            </Col>
-                            <Col span={2} style={{ textAlign: "center" }}>
+                            </div>
+                            <div className="text-center">
                               <Text type="secondary" style={{ fontSize: 11 }}>-</Text>
-                            </Col>
-                            <Col span={11}>
+                            </div>
+                            <div className="min-w-0">
                               <Form.Item
                                 name={["day_schedules", day.key, "end_time"]}
                                 noStyle
@@ -412,19 +413,20 @@ const BasicInformation = ({
                                   size="small"
                                   format="HH:mm"
                                   placeholder="End"
+                                  aria-label={`${day.label} work ends`}
                                   style={{ width: "100%" }}
                                   getPopupContainer={() => document.body}
                                 />
                               </Form.Item>
-                            </Col>
-                          </Row>
+                            </div>
+                          </div>
                         ) : (
                           <Text type="secondary" style={{ fontSize: 12, fontStyle: "italic" }}>
                             Off / Non-working
                           </Text>
                         )}
-                      </Col>
-                    </Row>
+                      </div>
+                    </div>
                   );
                 }}
               </Form.Item>
@@ -452,7 +454,7 @@ const BasicInformation = ({
           {scheduleBreak && (
             <Form.Item label="Break must happen between">
               <Row gutter={16}>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Form.Item
                     name="break_time_start"
                     noStyle
@@ -477,7 +479,7 @@ const BasicInformation = ({
                     />
                   </Form.Item>
                 </Col>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Form.Item
                     name="break_time_end"
                     noStyle

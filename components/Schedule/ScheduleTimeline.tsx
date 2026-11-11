@@ -36,7 +36,7 @@ export default function ScheduleTimeline({
   return (
     <div className="border border-gray-200 overflow-hidden bg-white h-full">
       {/* Scrollable container */}
-      <div className="custom-scrollbar overflow-x-auto overflow-y-auto max-h-[calc(100vh-125px)]">
+      <div className="custom-scrollbar h-full overflow-auto">
         {/* Fixed header + scrollable body */}
         <div className="min-w-max">
           <TimelineHeader 

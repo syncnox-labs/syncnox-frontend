@@ -70,14 +70,15 @@ const BulkUploadModal = ({ open, templateType, onClose, onCancel }: BulkUploadMo
     >
       <div className="flex flex-col flex-1 min-h-0">
         <Steps
+          responsive={false}
           current={currentStep - 1}
           items={steps}
-          className="mb-6 shrink-0"
+          className="mb-3 shrink-0"
           size="small"
         />
 
         {/* Render only the current step */}
-        <div className="mt-6 flex-1 min-h-0 flex flex-col">
+        <div className="mt-2 flex-1 min-h-0 flex flex-col">
           {currentStep === 1 && <FileUploadStep />}
           {currentStep === 2 && (
             <ColumnMappingStep onNext={() => setCurrentStep(3)} />

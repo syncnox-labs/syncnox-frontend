@@ -604,7 +604,7 @@ const RoutePage = () => {
         <FloatingUnassignedPanel expanded={isUnassignedExpanded}>
           {isUnassignedExpanded ? (
             /* ── Expanded Panel ──────────────────────────────────────── */
-            <div className="bg-white rounded-2xl shadow-2xl shadow-slate-900/15 border border-slate-200/90 overflow-hidden flex flex-col max-h-[calc(100vh-88px)]">
+            <div className="bg-white rounded-2xl shadow-2xl shadow-slate-900/15 border border-slate-200/90 overflow-hidden flex flex-col max-h-[calc(100dvh-88px)]">
 
               {/* ── 1. Header ─────────────────────────────────────────── */}
               <div

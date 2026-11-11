@@ -1938,11 +1938,11 @@ const OptimizationView = ({
   };
 
   return (
-    <div className="flex flex-col h-full absolute inset-0">
+    <div className="route-workspace flex flex-col h-full min-w-0 absolute inset-0">
       {/* Full-screen loading overlay — shown during any async optimization op */}
       {(isOptimizing || route.status === "processing" || route.status === "queued") && (
         <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 px-10 py-8 flex flex-col items-center gap-4 min-w-[280px]">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 px-5 sm:px-10 py-6 sm:py-8 flex flex-col items-center gap-4 w-[calc(100%-24px)] max-w-sm">
             <div className="relative">
               <Spin size="large" />
               <div className="absolute inset-0 rounded-full animate-ping opacity-20 bg-emerald-400" style={{ animationDuration: "1.5s" }} />
@@ -1964,7 +1964,7 @@ const OptimizationView = ({
       )}
 
       {/* Route header */}
-      <nav className="bg-white border-b border-gray-200 px-3 shrink-0 min-h-14 py-2 grid grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2">
+      <nav className="route-header bg-white border-b border-gray-200 px-3 shrink-0 min-h-14 py-2 grid grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2">
         <div className="contents">
           {/* Left: Route details */}
           <div className="order-1 flex items-center gap-3 min-w-0">
@@ -2008,7 +2008,7 @@ const OptimizationView = ({
               )}
 
               {/* Stats below Route Name (Sample UI style) */}
-              <div className="flex flex-nowrap items-center overflow-hidden whitespace-nowrap text-xs text-gray-500 font-normal leading-tight mt-0.5 select-none">
+              <div className="flex flex-wrap items-center gap-y-1 text-xs text-gray-500 font-normal leading-tight mt-0.5 select-none">
                 {formattedRouteDate && <span>{formattedRouteDate}</span>}
                 {formattedRouteDate && <span className="mx-1 text-gray-400">·</span>}
                 <span>
@@ -2052,7 +2052,7 @@ const OptimizationView = ({
 
           {/* Right: Sharing state and actions */}
           <div className="contents xl:order-3 xl:flex xl:items-center xl:justify-end xl:gap-3 xl:min-w-0">
-            <div className="order-2 xl:order-none flex flex-col items-end justify-self-end gap-0.5 shrink-0 text-[11px] whitespace-nowrap" aria-live="polite">
+            <div className="route-sharing-state order-2 xl:order-none flex flex-col items-end justify-self-end gap-0.5 shrink-0 text-[11px] whitespace-nowrap" aria-live="polite">
               {checkingShareStatus ? (
                 <span className="text-slate-500">Checking share status…</span>
               ) : shareStatusError ? (
@@ -2087,7 +2087,7 @@ const OptimizationView = ({
                 <span className="text-slate-500">Not shared yet</span>
               )}
             </div>
-            <div className="order-4 xl:order-none flex flex-nowrap items-center justify-end gap-1 sm:gap-2 shrink-0 whitespace-nowrap">
+            <div className="route-actions order-4 xl:order-none flex flex-nowrap items-center justify-end gap-1 sm:gap-2 shrink-0 whitespace-nowrap">
               {/* Undo Button */}
               {undoStep && (
                 <Button
@@ -2127,7 +2127,7 @@ const OptimizationView = ({
                 <Button type="primary" aria-label="Share saved route to drivers" icon={<ShareAltOutlined />} loading={isSharing}
                   disabled={isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued"}
                   onClick={() => handleShareToApp()} className="shrink-0">
-                  <span className="hidden 2xl:inline">{sharingState?.last_shared_at ? sharingState.sharing_status === "shared" ? "Share again" : "Share changes" : "Share to drivers"}</span>
+                  <span className="inline lg:hidden 2xl:inline">{sharingState?.last_shared_at ? sharingState.sharing_status === "shared" ? "Share again" : "Share changes" : "Share to drivers"}</span>
                 </Button>
               </Tooltip>
               <Dropdown
@@ -2171,7 +2171,7 @@ const OptimizationView = ({
         </div>
 
         {/* Center the view switch on desktop and use a compact second row on smaller screens. */}
-        <div className="order-3 xl:order-2 flex items-center justify-start xl:justify-center min-w-0">
+        <div className="route-view-switch order-3 xl:order-2 flex items-center justify-start xl:justify-center min-w-0">
           <div className="pointer-events-auto flex items-center">
             <Radio.Group
               aria-label="Route view"
@@ -2352,7 +2352,7 @@ const OptimizationView = ({
                     open={isMapSettingsOpen}
                     onOpenChange={setIsMapSettingsOpen}
                     content={
-                      <div className="flex flex-col gap-3 min-w-[280px] max-w-[320px] text-xs">
+                      <div className="flex flex-col gap-3 w-[min(280px,calc(100vw-64px))] max-w-[320px] text-xs">
                         <button
                           type="button"
                           onClick={() => {
@@ -2395,7 +2395,7 @@ const OptimizationView = ({
                 }
                 showInfoWindow={(m) => Boolean(m.isDepot || m.isAdditionalLocation)}
                 layersDropdownExtra={
-                  <div className="flex flex-col gap-2.5 text-xs font-sans min-w-[240px] max-w-[280px]">
+                  <div className="flex flex-col gap-2.5 text-xs font-sans w-[min(240px,calc(100vw-64px))] max-w-[280px]">
                     <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
                       Map Overlays
                     </div>
@@ -2650,7 +2650,7 @@ const OptimizationView = ({
               </Modal>
 
               {/* Top-left overlay column: focus chip + in-map search stacked */}
-              <div className="absolute top-3 left-3 z-40 flex flex-col gap-1.5" style={{ maxWidth: "calc(100% - 120px)" }}>
+              <div className="route-map-overlay absolute top-3 left-3 z-40 flex flex-col gap-1.5" style={{ maxWidth: "calc(100% - 120px)" }}>
                 {/* Clear-focus chip */}
                 {focusedRouteIndex !== null && (
                   <div className="flex items-center gap-2 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-none shadow-md pl-3 pr-1.5 py-1.5 self-start">
@@ -2695,7 +2695,7 @@ const OptimizationView = ({
           <Panel ref={timelinePanelRef} defaultSize={40} minSize={0} collapsible={true}>
             <div className="flex flex-col h-full bg-gray-50 min-h-0 min-w-0">
               {mapViewState === "collapsed" && (
-                <div className="bg-[#ecfdf5] text-[#003220] px-4 py-2 flex items-center justify-between border-b border-emerald-100 shrink-0 transition-all">
+                <div className="bg-[#ecfdf5] text-[#003220] px-3 sm:px-4 py-2 flex items-center justify-between gap-2 border-b border-emerald-100 shrink-0 transition-all">
                   <div className="flex items-center gap-2 text-xs font-semibold">
                     <MapIcon size={14} className="text-[#003220]" />
                     <span>Map view is currently collapsed</span>
@@ -2703,7 +2703,7 @@ const OptimizationView = ({
                   <button
                     type="button"
                     onClick={handleToggleCollapse}
-                    className="px-3 py-1 bg-[#003220] hover:bg-[#002A00] text-white text-xs font-bold rounded-none border-none outline-none shadow-sm transition-all cursor-pointer"
+                    className="min-h-11 shrink-0 px-3 py-1 bg-[#003220] hover:bg-[#002A00] text-white text-xs font-bold rounded-none border-none outline-none shadow-sm transition-all cursor-pointer"
                   >
                     Show Map
                   </button>

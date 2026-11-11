@@ -53,7 +53,7 @@ const MarkerTooltip: React.FC<MarkerTooltipProps> = ({
     <div
       className="bg-white shadow-xl"
       style={{
-        minWidth: 220,
+        width: "min(260px, calc(100vw - 64px))",
         // maxWidth: 280,
         borderRadius: 0,
         overflow: "hidden",

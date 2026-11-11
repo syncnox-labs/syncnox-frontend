@@ -257,7 +257,7 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
   };
 
   return (
-    <div className="min-w-[270px] max-w-[320px] bg-white text-slate-800 p-1">
+    <div className="w-[min(270px,calc(100vw-64px))] max-w-full bg-white text-slate-800 p-1">
       {/* Header: Pickup / Drop-off Badge & Status */}
       <div className="mb-2 pb-1.5 border-b border-slate-200 flex items-center justify-between">
         {isPickupStop ? (

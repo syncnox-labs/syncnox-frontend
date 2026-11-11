@@ -15,6 +15,7 @@ import BulkImportModal from "@/components/BulkImport/BulkImportModal";
 const TeamList = () => {
   const { isLoading, teams, bulkDeleteTeamsAction } = useTeamStore();
 
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [checkedIds, setCheckedIds] = useState<number[]>([]);
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -122,13 +123,13 @@ const TeamList = () => {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
       {/* ── Page header ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between pb-3 shrink-0 border-b border-gray-200 mb-0">
         <div>
           <h1 className="text-lg font-bold text-gray-900 m-0">Team Members</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            Pick a member on the left to edit their details on the right.
+            Pick a member in the list to edit their details in the detail panel.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -169,9 +170,9 @@ const TeamList = () => {
       </div>
 
       {/* ── Split layout ─────────────────────────────────────────── */}
-      <div className="flex h-full overflow-hidden gap-0 flex-1">
+      <div data-detail-open={mobileDetailOpen} className="responsive-entity-split flex min-h-0 min-w-0 overflow-hidden gap-0 flex-1">
         {/* LEFT — Searchable card list */}
-        <div className="w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
+        <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
           <div className="p-3 pb-2 border-b border-gray-200 bg-gray-50/70 shrink-0">
             <div className="relative flex items-center">
               <Search className="absolute left-2.5 text-gray-400 pointer-events-none z-10" size={14} />
@@ -212,7 +213,7 @@ const TeamList = () => {
                   isSelected={selectedTeam?.id === team.id}
                   isChecked={checkedIds.includes(team.id)}
                   onToggleCheck={() => toggleCheck(team.id)}
-                  onClick={() => setSelectedTeam(team)}
+                  onClick={() => { setSelectedTeam(team); setMobileDetailOpen(true); }}
                 />
               ))
             )}
@@ -220,7 +221,8 @@ const TeamList = () => {
         </div>
 
         {/* RIGHT — Detail / form panel */}
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-white">
+        <div className="responsive-entity-detail flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden bg-white">
+          <button type="button" className="entity-back" onClick={() => setMobileDetailOpen(false)}>← Back to list</button>
           {selectedTeam ? (
             <>
               {/* Detail header */}
@@ -279,7 +281,7 @@ const TeamList = () => {
                 <Users size={28} />
               </div>
               <p className="text-sm text-gray-400 text-center max-w-[240px]">
-                Select a team member on the left to view and edit their details.
+                Select a team member in the list to view and edit their details.
               </p>
             </div>
           )}

@@ -327,10 +327,10 @@ export default function JobsList() {
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-[360px] min-w-0">
       {/* ── Top Bar (Exact same layout as RoutesView) ── */}
-      <Flex justify="space-between" gap={36} align="center" className="my-4">
-        <Flex gap={24} align="center">
+      <Flex justify="space-between" gap={36} align="center" className="plan-toolbar responsive-toolbar !mb-0 shrink-0">
+        <Flex wrap gap={12} align="center">
           <Title level={4} className="m-0 pt-2">
             Jobs
           </Title>
@@ -341,7 +341,7 @@ export default function JobsList() {
           />
         </Flex>
 
-        <Flex gap={8} align="center">
+        <Flex wrap gap={8} align="center">
           <Button
             disabled={selectedJobIds.length === 0}
             onClick={() => setShowCreateRouteModal(true)}

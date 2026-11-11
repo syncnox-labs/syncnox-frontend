@@ -9,9 +9,9 @@ interface WelcomeScreenProps {
 
 const WelcomeScreen = ({ onStart }: WelcomeScreenProps) => {
   return (
-    <div className="flex flex-col h-screen p-6 md:p-10 w-full mx-auto overflow-hidden bg-white animate-fadeIn justify-between">
+    <div className="flex flex-col h-dvh p-4 sm:p-6 lg:p-10 w-full mx-auto overflow-hidden bg-white animate-fadeIn justify-between">
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto pr-1 flex flex-col justify-center max-w-[840px]">
+      <div className="flex-1 min-h-0 overflow-y-auto pr-1 flex flex-col justify-start max-w-[840px]">
         <div className="text-[11px] font-bold tracking-widest uppercase text-[#003220] mb-2 flex items-center gap-1.5">
           <Sparkles size={13} className="text-[#003220]" /> GET STARTED
         </div>

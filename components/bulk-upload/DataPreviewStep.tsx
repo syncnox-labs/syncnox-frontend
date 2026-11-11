@@ -891,7 +891,7 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
       </div>
 
       {/* Footer Actions */}
-      <div className="flex items-center justify-between pt-4 border-t mt-4">
+      <div className="import-step-footer flex items-center justify-between pt-4 border-t mt-4">
         <span className="text-sm text-gray-500">
           {resolvingRows.size > 0
             ? `Updating locations for ${resolvingRows.size} edited row${

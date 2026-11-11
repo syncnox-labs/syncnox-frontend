@@ -145,9 +145,9 @@ const BasicInfoStep = ({ onNext, onBack }: BasicInfoStepProps) => {
   };
 
   return (
-    <div className="flex flex-col h-screen p-6 md:p-10 w-full mx-auto overflow-hidden bg-white justify-between relative">
+    <div className="flex flex-col h-dvh p-4 sm:p-6 lg:p-10 w-full mx-auto overflow-hidden bg-white justify-between relative">
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto pr-2 space-y-6">
+      <div className="flex-1 min-h-0 overflow-y-auto pr-2 space-y-6">
         {/* Header section */}
         <div>
           <div className="text-[11px] font-bold tracking-widest uppercase text-[#003220] mb-1">

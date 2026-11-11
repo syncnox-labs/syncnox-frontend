@@ -4,8 +4,8 @@ import DashboardView from "./_components/DashboardView";
 
 const Dashboard = () => {
   return (
-    <div className="h-full">
-      <div className="h-full"><DashboardView /></div>
+    <div className="min-h-full min-w-0">
+      <DashboardView />
     </div>
   );
 };

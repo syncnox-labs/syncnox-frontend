@@ -248,8 +248,8 @@ const DepotForm = ({
   return (
     <div className="flex flex-col h-full" onBlurCapture={handleBlurCapture}>
       {contextHolder}
-      <div className="flex gap-2 w-full mb-2">
-        <div className="w-1/3">
+      <div className="flex flex-col sm:flex-row gap-2 w-full mb-2">
+        <div className="w-full sm:w-1/3">
           <Input
             value={name}
             onChange={(e) => {
@@ -260,7 +260,7 @@ const DepotForm = ({
             placeholder="Enter depot name"
           />
         </div>
-        <div className="w-2/3">
+        <div className="w-full sm:w-2/3">
           <AddressAutocomplete
             value={address}
             placeholder="Search depot address..."
@@ -295,7 +295,7 @@ const DepotForm = ({
         </div>
       )}
 
-      <div className="flex-1 w-full overflow-hidden bg-gray-50">
+      <div className="flex-1 min-h-[260px] w-full overflow-hidden bg-gray-50">
         <GoogleMaps
           showMapTypeControl={true}
           showZoomControl={true}

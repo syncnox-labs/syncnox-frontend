@@ -375,9 +375,9 @@ export default function CustomFieldsSettingsPage() {
 
 
   return (
-    <div className="flex flex-col h-full overflow-hidden font-sans">
+    <div className="responsive-settings flex flex-col h-full min-h-0 min-w-0 overflow-hidden font-sans">
       {/* ── Page Header ─────────────────────────────────────────── */}
-      <div className="flex items-center justify-between pb-4 border-b border-gray-200 shrink-0">
+      <div className="responsive-toolbar flex items-center justify-between pb-4 border-b border-gray-200 shrink-0">
         <div>
           <h1 className="text-lg font-bold text-gray-900 m-0">Custom Fields & Field Settings</h1>
           <p className="text-xs text-gray-500 mt-0.5">
@@ -434,7 +434,7 @@ export default function CustomFieldsSettingsPage() {
       </div>
 
       {/* ── Tabs bar ────────────────────────────────────────────── */}
-      <div className="flex border-b border-gray-200 mt-4 space-x-6 shrink-0">
+      <div className="flex overflow-x-auto whitespace-nowrap border-b border-gray-200 mt-4 gap-6 shrink-0">
         {tabs.map((tab) => {
           const isActive = selectedEntity === tab.key;
           return (

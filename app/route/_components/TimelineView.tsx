@@ -1,3 +1,4 @@
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { Truck, Calendar, Home, Flag, ArrowUp, ArrowDown, House } from "lucide-react";
 import dayjs from "dayjs";
@@ -172,7 +173,7 @@ const getRouteDurationStr = (route: any): string => {
   return "";
 };
 
-const DRIVER_COLUMN_WIDTH = 265;
+const DESKTOP_DRIVER_COLUMN_WIDTH = 265;
 
 interface DriverGroup {
   driverKey: string;
@@ -429,6 +430,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   onMoveTrip,
   onMoveStops,
 }) => {
+  const compactTimeline = useMediaQuery("(max-width: 639px)");
+  const DRIVER_COLUMN_WIDTH = compactTimeline ? 168 : DESKTOP_DRIVER_COLUMN_WIDTH;
   const containerRef = useRef<HTMLDivElement>(null);
   const [shiftOverrides, setShiftOverrides] = useState<Record<string, DriverShift>>({});
   const [shiftDrag, setShiftDrag] = useState<ShiftDragState | null>(null);
@@ -1584,7 +1587,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         behavior: "smooth",
       });
     }
-  }, [selectedMarkerId, routes, startTime, pixelsPerMinute, skipSelectionScrollRef]);
+  }, [selectedMarkerId, routes, startTime, pixelsPerMinute, skipSelectionScrollRef, DRIVER_COLUMN_WIDTH]);
 
   const getRouteMenuItems = (routeIndex: number): MenuProps["items"] => [
     ...(onShareDriver ? [{ key: "share-driver", icon: sharingDriverId === routes[routeIndex]?.team_member_id ? <LoadingOutlined /> : <ShareAltOutlined />,
@@ -1653,7 +1656,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   ];
 
   return (
-    <TimelineTooltipProvider leftInset={DRIVER_COLUMN_WIDTH} topInset={HEADER_HEIGHT}>
+    <TimelineTooltipProvider leftInset={DRIVER_COLUMN_WIDTH} topInset={HEADER_HEIGHT + (compactTimeline ? 61 : 0)}>
     <div 
       className="relative flex flex-col h-full bg-white select-none"
       onDragOver={(e) => {
@@ -1670,8 +1673,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         }
       }}
     >
+      {compactTimeline && <div className="flex flex-wrap items-center gap-2 p-2 border-b border-gray-200 shrink-0">
+        <Input aria-label="Search driver" placeholder="Search driver…" value={driverSearch}
+          onChange={event => setDriverSearch(event.target.value)} allowClear className="!flex-1 !min-w-0" />
+        <Select aria-label="Timeline zoom interval" value={intervalMinutes} onChange={value => changeInterval(value)}
+          options={INTERVAL_OPTIONS} style={{ width: 100 }} />
+      </div>}
       <div
-        className="flex-1 overflow-auto relative custom-scrollbar"
+        className="flex-1 min-h-0 overflow-auto relative custom-scrollbar"
         ref={containerRef}
       >
         <div className="min-w-full inline-block">
@@ -1685,7 +1694,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               className="sticky left-0 top-0 z-50 bg-gray-50 border-r border-gray-200 px-3 flex items-center justify-between font-medium text-gray-500 shadow-sm"
               style={{ width: DRIVER_COLUMN_WIDTH, minWidth: DRIVER_COLUMN_WIDTH }}
             >
-              {isSearchOpen ? (
+              {compactTimeline ? <span>Driver</span> : isSearchOpen ? (
                 <div className="flex items-center gap-1 flex-1 min-w-0 mr-1.5">
                   <Input
                     size="small"
@@ -1770,7 +1779,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                   )}
                 </div>
               )}
-              <Select
+              {!compactTimeline && <Select
                 aria-label="Timeline zoom interval"
                 title="Zoom timeline: Ctrl + mouse wheel"
                 value={intervalMinutes}
@@ -1779,7 +1788,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                 size="small"
                 style={{ width: 78 }}
                 className="text-xs shrink-0"
-              />
+              />}
             </div>
 
             {/* Time Axis */}
@@ -2074,12 +2083,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                       >
                         <Avatar
                           icon={<UserOutlined />}
-                          className="bg-gray-100 text-gray-500 shrink-0"
+                          className="!hidden sm:!inline-flex bg-gray-100 text-gray-500 shrink-0"
                           size="default"
                         />
                         <div className="flex flex-col overflow-hidden flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span className="font-semibold truncate text-gray-800 text-xs">
+                            <span title={driverGroup.driverName} className="font-semibold truncate text-gray-800 text-xs">
                               {driverGroup.driverName}
                             </span>
                             <DriverPresenceIndicator driverId={Number.isFinite(routeTeamId) && routeTeamId > 0 ? routeTeamId : matchedTeam?.id} />
@@ -2143,12 +2152,15 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                           trigger={["click"]}
                           placement="bottomRight"
                         >
-                          <div
-                            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-100 cursor-pointer transition-colors shrink-0"
+                          <button
+                            type="button"
+                            aria-label={`Actions for ${driverGroup.driverName}`}
+                            aria-haspopup="menu"
+                            className="w-11 h-11 sm:w-7 sm:h-7 flex items-center justify-center rounded-md hover:bg-gray-100 cursor-pointer transition-colors shrink-0"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreOutlined className="text-gray-500 text-base" />
-                          </div>
+                          </button>
                         </Dropdown>
                       </div>
                     </div>

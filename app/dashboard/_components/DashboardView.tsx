@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Spin, DatePicker, Typography, Flex } from "antd";
 import { Dayjs } from "dayjs";
@@ -27,6 +28,9 @@ import AddJobsModal from "@/app/plan/AddJobsModal";
 import { useJobsStore } from "@/store/jobs.store";
 
 const { Title, Text } = Typography;
+
+const routeProgress = (route: RecentRoute) => route.stops > 0
+  ? Math.min(100, Math.round((route.completed / route.stops) * 100)) : 0;
 
 export default function DashboardView() {
   const router = useRouter();
@@ -194,7 +198,7 @@ export default function DashboardView() {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden relative">
+    <div className="relative flex min-h-full min-w-0 flex-col gap-4 pb-2">
       {/* Loading overlay */}
       {isLoading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60">
@@ -203,19 +207,19 @@ export default function DashboardView() {
       )}
 
       {/* Title row */}
-      <Flex justify="space-between" align="center">
-        <Title className="m-0 mb-2 pt-2" level={4}>
+      <Flex justify="space-between" align="center" wrap gap="small">
+        <Title className="!m-0 !text-lg sm:!text-xl" level={4}>
           Dashboard
         </Title>
-        {error && <Text type="danger">{error}</Text>}
+        {error && <Text role="alert" className="min-w-0 break-words" type="danger">{error}</Text>}
       </Flex>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-6 gap-4 mb-4 flex-shrink-0">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-6">
         {kpiCards.map((k) => (
           <div
             key={k.label}
-            className="flex flex-col items-center text-center p-4 bg-white border-[1.5px] border-gray-100"
+            className="flex min-w-0 flex-col items-center border-[1.5px] border-gray-100 bg-white p-3 text-center sm:p-4"
           >
             <div
               className="w-7 h-7 flex items-center justify-center mb-1.5 text-sm"
@@ -226,7 +230,7 @@ export default function DashboardView() {
             <span className="text-[11px] text-gray-500 font-medium">
               {k.label}
             </span>
-            <span className="text-xl font-semibold text-gray-900 leading-tight mt-0.5">
+            <span className="mt-0.5 max-w-full break-all text-xl font-semibold leading-tight text-gray-900 tabular-nums sm:text-2xl">
               {k.value}
             </span>
             <span
@@ -244,21 +248,22 @@ export default function DashboardView() {
       </div>
 
       {/* Middle Row */}
-      <div className="flex gap-4 mb-4 h-[250px] flex-shrink-0">
+      <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.9fr)]">
         {/* Quick Actions */}
-        <div className="bg-white border-[1.5px] border-gray-100 p-4 w-[380px] flex-shrink-0">
+        <div className="min-w-0 border-[1.5px] border-gray-100 bg-white p-4">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-3">
             <ThunderboltOutlined /> Quick Actions
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
             {quickActions.map((action) => (
               <button
                 key={action.label}
                 onClick={action.onClick}
-                className="flex flex-col items-center justify-center gap-2 p-4 bg-white border-[1.5px] border-gray-200 cursor-pointer font-[inherit] transition-all duration-150 hover:bg-green-50 hover:border-green-300 hover:-translate-y-px"
+                type="button"
+                className="flex min-h-20 min-w-0 cursor-pointer flex-col items-center justify-center gap-2 border-[1.5px] border-gray-200 bg-white px-2 py-3 font-[inherit] transition-all duration-150 hover:-translate-y-px hover:border-green-300 hover:bg-green-50 focus-visible:outline-2 focus-visible:outline-primary sm:p-3"
               >
                 <span className="text-gray-800 text-lg">{action.icon}</span>
-                <span className="text-[11px] font-medium text-gray-500">
+                <span className="text-center text-xs font-medium text-gray-600">
                   {action.label}
                 </span>
               </button>
@@ -267,11 +272,11 @@ export default function DashboardView() {
         </div>
 
         {/* Optimization Impact */}
-        <div className="bg-white border-[1.5px] border-gray-100 p-4 flex-1 flex flex-col">
+        <div className="flex min-w-0 flex-col border-[1.5px] border-gray-100 bg-white p-4">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-3 flex-shrink-0">
             <DashboardOutlined /> Optimization Impact
           </div>
-          <div className="grid grid-cols-3 gap-3 flex-1">
+          <div className="grid flex-1 grid-cols-3 gap-2 sm:gap-3">
             {[
               {
                 icon: (
@@ -305,10 +310,10 @@ export default function DashboardView() {
             ].map((item) => (
               <div
                 key={item.unit}
-                className="flex flex-col items-center justify-center text-center p-4 bg-white border-[1.5px] border-gray-100"
+                className="flex min-w-0 flex-col items-center justify-center border-[1.5px] border-gray-100 bg-white px-2 py-4 text-center sm:p-3"
               >
                 <div className="mb-1">{item.icon}</div>
-                <div className="text-xl font-semibold text-gray-900">
+                <div className="max-w-full break-all text-lg font-semibold text-gray-900 tabular-nums sm:text-xl">
                   {item.value}
                 </div>
                 <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
@@ -321,21 +326,22 @@ export default function DashboardView() {
         </div>
 
         {/* Upcoming */}
-        <div className="bg-white border-[1.5px] border-gray-100 p-4 w-[280px] flex-shrink-0 flex flex-col">
-          <div className="flex items-center justify-between text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-3 flex-shrink-0">
+        <div className="flex min-w-0 flex-col border-[1.5px] border-gray-100 bg-white p-4 md:col-span-2 xl:col-span-1">
+          <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
             <span className="flex items-center gap-1.5">
               <CalendarOutlined /> Upcoming
             </span>
-            <DatePicker
-              size="small"
-              onChange={handleDateChange}
-              value={selectedDate}
-              placeholder="Select Date"
-              style={{ width: 110, fontWeight: "normal" }}
-              allowClear
-            />
+              <DatePicker
+                size="small"
+                onChange={handleDateChange}
+                value={selectedDate}
+                placeholder="Select Date"
+                aria-label="Filter upcoming routes by date"
+                className="min-h-11 !w-[132px] shrink-0 font-normal [&_input]:!text-base lg:[&_input]:!text-xs"
+                allowClear
+              />
           </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className="custom-scrollbar max-h-64 overflow-y-auto">
             {selectedDate ? (
               isLoadingRoutes ? (
                 <div className="flex justify-center py-4">
@@ -349,22 +355,20 @@ export default function DashboardView() {
                 selectedDateRoutes.map((route: AllRoutes) => (
                   <div
                     key={route.id}
-                    className="flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0"
+                    className="flex items-center justify-between gap-3 border-b border-gray-100 py-2 last:border-0"
                   >
-                    <div>
-                      <div
-                        className="text-xs font-medium text-blue-700 cursor-pointer"
-                        onClick={() =>
-                          router.push(`/route/${route.optimization_id}`)
-                        }
+                    <div className="min-w-0">
+                      <Link
+                        className="inline-flex min-h-11 items-center break-words text-sm font-medium text-blue-700 sm:text-xs"
+                        href={`/route/${route.optimization_id}`}
                       >
                         {route.name}
-                      </div>
+                      </Link>
                       <div className="text-[10px] text-gray-400 mt-0.5">
                         {route.total_stops} stops
                       </div>
                     </div>
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-gray-100 text-gray-600">
+                    <span className="shrink-0 bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">
                       {route.status.replace("_", " ")}
                     </span>
                   </div>
@@ -399,14 +403,42 @@ export default function DashboardView() {
       </div>
 
       {/* Bottom Row */}
-      <div className="flex gap-4 flex-1 min-h-0">
+      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
         {/* Recent Routes */}
-        <div className="flex flex-col flex-1 bg-white border-[1.5px] border-gray-100 p-4 overflow-hidden">
+        <div className="flex min-w-0 flex-col border-[1.5px] border-gray-100 bg-white p-4">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-3 flex-shrink-0">
             <CarOutlined /> Recent Routes
           </div>
-          <div className="flex-1 overflow-auto custom-scrollbar">
-            <table className="w-full border-collapse text-xs">
+          <div className="divide-y divide-gray-100 sm:hidden">
+            {recent_routes.length === 0 ? <p className="py-4 text-xs text-gray-400">No routes yet</p>
+              : recent_routes.map(route => {
+                const pct = routeProgress(route);
+                const statusStyle = statusStyleMap[route.status] ?? statusStyleMap.scheduled;
+                return <article key={route.key} className="min-w-0 py-3 first:pt-0 last:pb-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <Link href={`/route/${route.key}`} className="flex min-h-11 items-center break-words text-sm font-medium text-blue-700">
+                        {route.name}
+                      </Link>
+                      <p className="break-words text-xs text-gray-500">{route.driver}</p>
+                    </div>
+                    <span className="mt-2 shrink-0 px-1.5 py-1 text-[10px] font-semibold" style={{ background: statusStyle.bg, color: statusStyle.color }}>
+                      {route.status.replaceAll("_", " ")}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <div role="progressbar" aria-label={`${route.name} progress`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}
+                      className="h-1.5 min-w-0 flex-1 overflow-hidden bg-gray-200">
+                      <div className="h-full" style={{ background: getStatusStrokeColor(route.status), width: `${pct}%` }} />
+                    </div>
+                    <span className="shrink-0 text-xs text-gray-500">{route.completed}/{route.stops} stops</span>
+                  </div>
+                </article>;
+              })}
+          </div>
+          <div className="custom-scrollbar hidden overflow-x-auto sm:block">
+            <table className="w-full min-w-[480px] border-collapse text-xs">
+              <caption className="sr-only">Recent routes, drivers, progress and status</caption>
               <thead>
                 <tr>
                   {["Route", "Driver", "Progress", "Status"].map((h) => (
@@ -428,13 +460,7 @@ export default function DashboardView() {
                   </tr>
                 ) : (
                   recent_routes.map((route: RecentRoute) => {
-                    const pct =
-                      route.stops > 0
-                        ? Math.min(
-                            100,
-                            Math.round((route.completed / route.stops) * 100),
-                          )
-                        : 0;
+                    const pct = routeProgress(route);
                     const statusStyle =
                       statusStyleMap[route.status] ?? statusStyleMap.scheduled;
                     return (
@@ -443,12 +469,12 @@ export default function DashboardView() {
                         className="transition-colors duration-100 hover:bg-gray-100"
                       >
                         <td className="px-2 py-2 border-b border-gray-100">
-                          <span
-                            className="text-blue-700 font-medium cursor-pointer text-xs"
-                            onClick={() => router.push(`/route/${route.key}`)}
+                          <Link
+                            className="inline-flex min-h-11 items-center text-xs font-medium text-blue-700"
+                            href={`/route/${route.key}`}
                           >
                             {route.name}
-                          </span>
+                          </Link>
                         </td>
                         <td className="px-2 py-2 border-b border-gray-100 text-gray-500 text-xs">
                           {route.driver}
@@ -492,11 +518,11 @@ export default function DashboardView() {
         </div>
 
         {/* Top Drivers */}
-        <div className="flex flex-col bg-white border-[1.5px] border-gray-100 p-4 w-[280px] flex-shrink-0 overflow-hidden">
+        <div className="flex min-w-0 flex-col border-[1.5px] border-gray-100 bg-white p-4">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-3 flex-shrink-0">
             <UserOutlined /> Top Drivers
           </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className="custom-scrollbar max-h-80 overflow-y-auto">
             {top_drivers.length === 0 ? (
               <span className="text-xs text-gray-400">No driver data yet</span>
             ) : (

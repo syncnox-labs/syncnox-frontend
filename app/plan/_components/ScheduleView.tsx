@@ -61,13 +61,13 @@ export default function ScheduleView() {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <Flex justify="space-between" align="center" className="my-4">
-        <Flex gap={24} align="center">
+    <div className="flex flex-col h-full min-h-[360px] min-w-0">
+      <Flex justify="space-between" align="center" className="plan-toolbar responsive-toolbar !mb-0 shrink-0">
+        <Flex wrap gap={12} align="center">
           <Title level={4} className="m-0 pt-2">
             Driver Schedule
           </Title>
-          <Flex gap={8} align="center">
+          <Flex wrap gap={8} align="center">
             {Object.entries(SCHEDULE_STATUS_COLORS).map(([status, color]) => (
               <Flex key={status} align="center" gap={4}>
                 <div
@@ -92,7 +92,7 @@ export default function ScheduleView() {
           </Flex>
         </Flex>
 
-        <Flex gap={8} align="center">
+        <Flex wrap gap={8} align="center">
           <Select
             value={intervalMinutes}
             onChange={setIntervalMinutes}

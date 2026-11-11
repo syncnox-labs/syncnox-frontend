@@ -316,11 +316,18 @@ const TeamMemberForm = ({
     : menuItems.filter((item) => item.key === "basic");
 
   return (
-    <Flex style={{ height: isInline ? "auto" : "100%", overflow: isInline ? "visible" : "hidden" }}>
+    <Flex className="responsive-entity-form" style={{ height: isInline ? "auto" : "100%", overflow: isInline ? "visible" : "hidden" }}>
       {contextHolder}
 
       {/* Left Sidebar Menu - always show but filter items based on role */}
+      <label className="entity-section-select">
+        Section
+        <select aria-label="Form section" value={activeSection} onChange={event => setActiveSection(event.target.value as MenuKey)}>
+          {filteredMenuItems.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}
+        </select>
+      </label>
       <div
+        className="entity-form-nav"
         style={{
           width: "200px",
           borderRight: "1px solid #f0f0f0",
@@ -343,6 +350,7 @@ const TeamMemberForm = ({
       {/* Right Content Area */}
       <Flex
         vertical
+        className="entity-form-content"
         style={{
           flex: 1,
           overflow: isInline ? "visible" : "hidden",

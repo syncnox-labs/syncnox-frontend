@@ -264,11 +264,18 @@ const VehicleForm = ({
   ];
 
   return (
-    <Flex style={{ height: isInline ? "auto" : "100%", overflow: isInline ? "visible" : "hidden" }}>
+    <Flex className="responsive-entity-form" style={{ height: isInline ? "auto" : "100%", overflow: isInline ? "visible" : "hidden" }}>
       {contextHolder}
 
       {/* Left Sidebar Menu */}
+      <label className="entity-section-select">
+        Section
+        <select aria-label="Form section" value={activeSection} onChange={event => setActiveSection(event.target.value as SectionKey)}>
+          {menuItems.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}
+        </select>
+      </label>
       <div
+        className="entity-form-nav"
         style={{
           width: "200px",
           borderRight: "1px solid #f0f0f0",
@@ -291,6 +298,7 @@ const VehicleForm = ({
       {/* Right Content Area */}
       <Flex
         vertical
+        className="entity-form-content"
         style={{
           flex: 1,
           overflow: isInline ? "visible" : "hidden",
@@ -322,7 +330,7 @@ const VehicleForm = ({
             <div style={{ display: activeSection === "basic" ? "block" : "none" }}>
               {/* Row 1: Name, License Plate */}
               <Row gutter={16}>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Form.Item
                     label="Name"
                     name="name"
@@ -333,7 +341,7 @@ const VehicleForm = ({
                     <Input placeholder="Enter vehicle name" />
                   </Form.Item>
                 </Col>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Form.Item label="License Plate" name="license_plate">
                     <Input placeholder="Enter license plate" />
                   </Form.Item>
@@ -342,12 +350,12 @@ const VehicleForm = ({
 
               {/* Row 2: Make, Model */}
               <Row gutter={16}>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Form.Item label="Make" name="make">
                     <Input placeholder="Enter vehicle make" />
                   </Form.Item>
                 </Col>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Form.Item label="Model" name="model">
                     <Input placeholder="Enter vehicle model" />
                   </Form.Item>
@@ -437,7 +445,7 @@ const VehicleForm = ({
                   <>
                     {/* Table header */}
                     {fields.length > 0 && (
-                      <Row gutter={8} style={{ marginBottom: 4 }}>
+                      <Row className="constraint-header" gutter={8} style={{ marginBottom: 4 }}>
                         <Col flex="160px">
                           <Text type="secondary" style={{ fontSize: 12 }}>Constraint type</Text>
                         </Col>
@@ -452,7 +460,7 @@ const VehicleForm = ({
                     )}
 
                     {fields.map(({ key, name, ...restField }) => (
-                      <Row key={key} gutter={8} align="middle" style={{ marginBottom: 8 }}>
+                      <Row className="constraint-row" key={key} gutter={8} align="middle" style={{ marginBottom: 8 }}>
                         {/* Constraint type */}
                         <Col flex="160px">
                           <Form.Item
@@ -463,7 +471,7 @@ const VehicleForm = ({
                           >
                             <Select
                               options={CONSTRAINT_TYPES}
-                              placeholder="Type"
+                              placeholder="Constraint type" aria-label="Constraint type"
                               getPopupContainer={() => document.body}
                               onChange={(val: ConstraintType) => {
                                 // Reset unit to the first option for the new type
@@ -485,7 +493,7 @@ const VehicleForm = ({
                             rules={[{ required: true, message: "Required" }]}
                           >
                             <InputNumber
-                              placeholder="0"
+                              placeholder="0" aria-label="Maximum load"
                               min={0}
                               style={{ width: "100%" }}
                             />
@@ -515,7 +523,7 @@ const VehicleForm = ({
                                   style={{ margin: 0 }}
                                   rules={[{ required: true, message: "Required" }]}
                                 >
-                                  <Select options={unitOptions} placeholder="Unit" getPopupContainer={() => document.body} />
+                                  <Select options={unitOptions} placeholder="Unit" aria-label="Constraint unit" getPopupContainer={() => document.body} />
                                 </Form.Item>
                               );
                             }}

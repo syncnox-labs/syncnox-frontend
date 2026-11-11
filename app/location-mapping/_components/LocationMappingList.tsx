@@ -21,6 +21,7 @@ export default function LocationMappingList() {
     bulkDeleteLocationMappings,
   } = useLocationMappingStore();
 
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [selectedMapping, setSelectedMapping] = useState<LocationMapping | null>(null);
   const [checkedIds, setCheckedIds] = useState<number[]>([]);
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -131,13 +132,13 @@ export default function LocationMappingList() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
       {/* Page header */}
       <div className="flex items-center justify-between pb-3 shrink-0 border-b border-gray-200 mb-0">
         <div>
           <h1 className="text-lg font-bold text-gray-900 m-0">Location Mappings</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            Pick a location on the left to view and edit its reference details.
+            Pick a location in the list to view and edit its reference details.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -170,9 +171,9 @@ export default function LocationMappingList() {
       </div>
 
       {/* Split layout */}
-      <div className="flex h-full overflow-hidden gap-0 flex-1">
+      <div data-detail-open={mobileDetailOpen} className="responsive-entity-split flex min-h-0 min-w-0 overflow-hidden gap-0 flex-1">
         {/* LEFT searchable card list */}
-        <div className="w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
+        <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
           <div className="p-3 pb-2 border-b border-gray-200 bg-gray-50/70 shrink-0">
             <div className="relative flex items-center">
               <Search
@@ -218,7 +219,7 @@ export default function LocationMappingList() {
                   isSelected={selectedMapping?.id === mapping.id}
                   isChecked={checkedIds.includes(mapping.id)}
                   onToggleCheck={() => toggleCheck(mapping.id)}
-                  onClick={() => setSelectedMapping(mapping)}
+                  onClick={() => { setSelectedMapping(mapping); setMobileDetailOpen(true); }}
                 />
               ))
             )}
@@ -226,7 +227,8 @@ export default function LocationMappingList() {
         </div>
 
         {/* RIGHT detail / form panel */}
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-white">
+        <div className="responsive-entity-detail flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden bg-white">
+          <button type="button" className="entity-back" onClick={() => setMobileDetailOpen(false)}>← Back to list</button>
           {selectedMapping ? (
             <>
               <div className="flex items-center gap-3 p-3.5 px-5 border-b border-gray-200 shrink-0 bg-white">
@@ -281,7 +283,7 @@ export default function LocationMappingList() {
                 <MapPin size={28} />
               </div>
               <p className="text-sm text-gray-400 text-center max-w-[240px]">
-                Select a location on the left to view and edit its details.
+                Select a location in the list to view and edit its details.
               </p>
             </div>
           )}

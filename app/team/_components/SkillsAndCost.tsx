@@ -22,7 +22,7 @@ const SkillsAndCost = ({
       <h3 className="text-lg font-medium mb-4">Costs</h3>
 
       <Row gutter={16}>
-        <Col span={12}>
+        <Col xs={24} sm={12}>
           <Form.Item label="Fixed cost for Driver" name="fixed_cost_for_driver">
             <InputNumber
               className="w-full"
@@ -33,7 +33,7 @@ const SkillsAndCost = ({
             />
           </Form.Item>
         </Col>
-        <Col span={12}>
+        <Col xs={24} sm={12}>
           <Form.Item label="Cost Per Kilometer" name="cost_per_km">
             <InputNumber
               className="w-full"
@@ -47,7 +47,7 @@ const SkillsAndCost = ({
       </Row>
 
       <Row gutter={16}>
-        <Col span={12}>
+        <Col xs={24} sm={12}>
           <Form.Item label="Cost Per Hour" name="cost_per_hr">
             <InputNumber
               className="w-full"
@@ -58,7 +58,7 @@ const SkillsAndCost = ({
             />
           </Form.Item>
         </Col>
-        <Col span={12}>
+        <Col xs={24} sm={12}>
           <Form.Item
             label="Cost Per Hour For Overtime"
             name="cost_per_hr_overtime"
