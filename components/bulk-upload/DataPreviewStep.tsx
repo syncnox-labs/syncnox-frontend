@@ -328,8 +328,10 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
     const uploadCols = useBulkUploadStore.getState().uploadResponse?.columns || [];
 
     // Add dynamic columns for mapped fields
-    Object.keys(columnMapping).forEach((identifier) => {
-      if (identifier !== "address_formatted" && columnMapping[identifier]) {
+    const mappedFields = new Set(Object.keys(columnMapping).filter(key => columnMapping[key]));
+    if (uploadCols.some(col => col.identifier === "language")) mappedFields.add("language");
+    mappedFields.forEach((identifier) => {
+      if (identifier !== "address_formatted") {
         // Skip redundant first_name column if client_name is mapped or template is worker_shuttle
         if (identifier === "first_name" && (isWorkerShuttle || columnMapping["client_name"])) {
           return;
@@ -572,6 +574,13 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
         ...keptErrors,
         ...validateTripRequirements(updatedRow.original_data || {}),
       ];
+      if (field === "language") {
+        updatedRow.validation_errors = updatedRow.validation_errors.filter(error => !error.startsWith("Language must be"));
+        const language = String(newValue ?? "").normalize("NFC").trim().toLocaleLowerCase();
+        if (language !== "english" && language !== "français") {
+          updatedRow.validation_errors.push("Language must be English or Français; set a valid value or custom-field default.");
+        }
+      }
 
       // Other field errors clear when the field they refer to is edited
       if (field && updatedRow.validation_errors.length > 0) {
