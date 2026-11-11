@@ -162,7 +162,7 @@ const OnboardingModal = () => {
   return (
     <div className="fixed inset-0 z-[9999] bg-white grid grid-cols-1 md:grid-cols-[280px_1fr] overflow-hidden rounded-none font-sans" role="dialog" aria-modal="true" aria-label="Syncnox setup wizard">
       {/* ── Left rail ─────────────────────────────────────── */}
-      <aside className="hidden md:flex bg-[#003220] text-white p-8 flex-col gap-6 h-screen overflow-hidden border-r border-[#002a00] rounded-none">
+      <aside className="hidden md:flex bg-[#003220] text-white p-8 flex-col gap-6 h-dvh overflow-hidden border-r border-[#002a00] rounded-none">
         {/* Brand */}
         <div className="flex items-center gap-2.5 font-bold text-lg tracking-tight text-white">
           <Image
@@ -224,7 +224,7 @@ const OnboardingModal = () => {
       </aside>
 
       {/* ── Main content ───────────────────────────────────── */}
-      <main className="relative flex flex-col overflow-hidden bg-white">
+      <main className="relative min-w-0 min-h-0 flex flex-col overflow-hidden bg-white">
         {renderContent()}
       </main>
     </div>

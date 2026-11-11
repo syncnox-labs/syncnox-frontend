@@ -86,6 +86,7 @@ const RouteStopsTable: React.FC<RouteStopsTableProps> = ({ stops }) => {
       <Table
         columns={columns}
         dataSource={stops}
+        scroll={{ x: 1100 }}
         pagination={false}
         size="small"
         bordered

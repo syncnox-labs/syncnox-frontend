@@ -35,7 +35,7 @@ export const FieldsTable: React.FC<FieldsTableProps> = ({
   onToggleBaseVisibility,
 }) => {
   return (
-    <table className="w-full text-left border-collapse font-sans">
+    <table className="min-w-[760px] w-full text-left border-collapse font-sans">
       <thead>
         <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 text-[11px] uppercase font-bold tracking-wider">
           <th className="py-2.5 px-4">Field Label</th>

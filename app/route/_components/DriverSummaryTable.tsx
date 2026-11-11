@@ -90,6 +90,7 @@ const DriverSummaryTable: React.FC<DriverSummaryTableProps> = ({
       <Table
         columns={columns}
         dataSource={data}
+        scroll={{ x: 900 }}
         pagination={false}
         size="small"
         bordered

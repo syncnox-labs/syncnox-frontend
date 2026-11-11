@@ -214,7 +214,7 @@ const LocationMappingForm = ({
   const mapCenter = mapLocation || (existingMarkers.length > 0 ? existingMarkers[0].position : defaultCenter);
 
   return (
-    <Flex vertical gap={4} className="font-sans h-full">
+    <Flex vertical gap={4} className="font-sans min-h-full">
       <Form
         id={initialData?.id ? `location-mapping-${initialData.id}` : undefined}
         form={form}
@@ -222,10 +222,10 @@ const LocationMappingForm = ({
         onFinish={onFinish}
         onValuesChange={handleValuesChange}
         onBlurCapture={handleBlurCapture}
-        className="flex flex-col h-full"
+        className="flex flex-col min-h-full"
         autoComplete="off"
       >
-        <div className="grid grid-cols-2 gap-3 mb-2 shrink-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2 shrink-0">
           <Form.Item
             label="Station / Location Name"
             name="name"
@@ -262,7 +262,7 @@ const LocationMappingForm = ({
           </Form.Item>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 mb-2 shrink-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-2 shrink-0">
           <Form.Item label="Location Type" name="type" className="mb-0">
             <LocationTypeSelect
               placeholder="Select location type"

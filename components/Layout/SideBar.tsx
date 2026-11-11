@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useState, useCallback } from "react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { Avatar, Modal, Popover, Tooltip, Typography } from "antd";
+import { Avatar, Modal, Popover, Tooltip } from "antd";
 import {
   LogoutOutlined,
   MailOutlined,
@@ -23,15 +23,6 @@ import { useDepotStore } from "@/store/depots.store";
 import { signOut } from "next-auth/react";
 import { MENU_ITEMS } from "./sidebar.constants";
 
-const { Title } = Typography;
-
-interface BottomMenuItem {
-  icon: (props: any) => React.ReactNode;
-  label: string;
-  action: () => void;
-  isDanger?: boolean;
-}
-
 const getInitials = (name: string) => {
   if (!name) return "";
   const words = name.trim().split(/\s+/).filter(Boolean);
@@ -40,7 +31,7 @@ const getInitials = (name: string) => {
   return (words[0][0] + words[1][0]).toUpperCase();
 };
 
-const SideBar = () => {
+const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?: () => void }) => {
   const pathname = usePathname();
   const router = useRouter();
   const {
@@ -48,9 +39,10 @@ const SideBar = () => {
     clearUser,
     setCurrentTab,
     setSidebarNavigation,
-    sidebarCollapsed,
+    sidebarCollapsed: desktopCollapsed,
     toggleSidebar,
   } = useIndexStore();
+  const sidebarCollapsed = mobile ? false : desktopCollapsed;
   const { onboarding } = useOnboardingStore();
   const { teams } = useTeamStore();
   const { vehicles } = useVehicleStore();
@@ -80,8 +72,9 @@ const SideBar = () => {
       } else {
         setSidebarNavigation(true);
       }
+      onNavigate?.();
     },
-    [pathname, setCurrentTab, setSidebarNavigation]
+    [pathname, setCurrentTab, setSidebarNavigation, onNavigate]
   );
 
   const handleLogout = useCallback(() => {
@@ -235,8 +228,9 @@ const SideBar = () => {
 
   return (
     <aside
-      className={`h-screen bg-white flex flex-col border-r overflow-hidden shrink-0 transition-[width] duration-200 ease-in-out ${
-        sidebarCollapsed ? "w-14" : "w-48"
+      aria-label={mobile ? "Mobile navigation" : "Sidebar"}
+      className={`bg-white flex flex-col border-r overflow-hidden shrink-0 transition-[width] duration-200 ease-in-out ${
+        mobile ? "h-full w-full [&_nav_button]:min-h-11 [&_nav_a>div]:min-h-11 [&_footer_button]:min-h-11" : `h-dvh ${sidebarCollapsed ? "w-14" : "w-48"}`
       }`}
     >
       {/* Logo Section */}
@@ -284,7 +278,7 @@ const SideBar = () => {
               />
             </div>
           </Link>
-          <Tooltip title="Close sidebar" placement="right" mouseEnterDelay={0.15}>
+          {!mobile && <Tooltip title="Close sidebar" placement="right" mouseEnterDelay={0.15}>
             <button
               type="button"
               onClick={handleToggleSidebar}
@@ -294,13 +288,13 @@ const SideBar = () => {
             >
               <ChevronLeft size={18} strokeWidth={2} />
             </button>
-          </Tooltip>
+          </Tooltip>}
         </div>
       )}
 
       {/* Main Menu Items */}
       <nav
-        className={`flex-1 overflow-y-auto overflow-x-hidden ${
+        className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
           sidebarCollapsed ? "px-1.5" : "px-2"
         }`}
         style={{
@@ -423,7 +417,9 @@ const SideBar = () => {
               {hasSubItems ? (
                 item.label === "Settings" ? (
                   <>
-                    <div
+                    <button
+                      type="button"
+                      aria-expanded={settingsOpen}
                       className={getMenuItemClasses(item.path, activeSub)}
                       onClick={() => setSettingsOpen(!settingsOpen)}
                     >
@@ -443,7 +439,7 @@ const SideBar = () => {
                         }`}
                         style={{ fontSize: 12 }}
                       />
-                    </div>
+                    </button>
                     {settingsOpen && (
                       <div className="mt-1 mb-1 space-y-0.5">
                         {item.subItems!.map((subItem) => {
@@ -556,7 +552,7 @@ const SideBar = () => {
 
       {/* Bottom Section - User Profile & Logout */}
       <footer
-        className={`border-t pt-2.5 pb-3 flex flex-col gap-1 ${
+        className={`shrink-0 border-t pt-2.5 pb-3 flex flex-col gap-1 ${
           sidebarCollapsed ? "px-1.5 items-center" : "px-2"
         }`}
       >

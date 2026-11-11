@@ -214,15 +214,15 @@ const MapSearch: React.FC<MapSearchProps> = ({
   return (
     <div
       ref={containerRef}
-      className="flex flex-col"
+      className="route-map-search flex flex-col"
     >
       {/* ── Toggle button / expanded input row ── */}
       <div className="flex items-center gap-1.5">
         <div
           className={`
-            flex items-center bg-white/95 backdrop-blur-sm border border-gray-200
+            route-map-search-toggle flex items-center bg-white/95 backdrop-blur-sm border border-gray-200
             shadow-lg transition-all duration-300 ease-out overflow-hidden
-            ${isOpen ? "rounded-none w-72" : "rounded-none w-9 h-9"}
+            ${isOpen ? "is-expanded rounded-none w-72" : "rounded-none w-11 h-11"}
           `}
         >
           {/* Search icon button */}
@@ -236,8 +236,8 @@ const MapSearch: React.FC<MapSearchProps> = ({
             className={`
               flex items-center justify-center shrink-0 transition-colors cursor-pointer
               ${isOpen
-                ? "w-9 h-9 text-emerald-700 hover:bg-emerald-50"
-                : "w-9 h-9 text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-none"
+                ? "w-11 h-11 text-emerald-700 hover:bg-emerald-50"
+                : "w-11 h-11 text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-none"
               }
             `}
           >
@@ -278,7 +278,7 @@ const MapSearch: React.FC<MapSearchProps> = ({
               type="button"
               onClick={onOpenAddJob}
               aria-label="Add Candidate"
-              className="flex items-center justify-center w-9 h-9 bg-white/95 backdrop-blur-sm border border-gray-200 text-gray-700 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer shadow-lg rounded-none"
+              className="flex items-center justify-center w-11 h-11 bg-white/95 backdrop-blur-sm border border-gray-200 text-gray-700 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer shadow-lg rounded-none"
             >
               <Plus size={16} strokeWidth={2.2} />
             </button>

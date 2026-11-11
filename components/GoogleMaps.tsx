@@ -285,6 +285,7 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
       {/* Unified Map Controls Toolbar (Fullscreen, Collapse, Layers) */}
       {(onToggleFullscreen || onToggleCollapse || showMapTypeControl) && (
         <div
+          className="map-controls"
           style={{
             position: "absolute",
             top: "10px",

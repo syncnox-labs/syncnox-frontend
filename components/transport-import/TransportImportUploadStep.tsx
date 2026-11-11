@@ -141,7 +141,7 @@ export default function TransportImportUploadStep({
         </div>
 
         {/* Template Download Section */}
-        <div className="bg-white border border-gray-200 p-3.5 flex items-center justify-between gap-3">
+        <div className="bg-white border border-gray-200 p-3.5 responsive-toolbar flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-emerald-50 text-[#003220] flex items-center justify-center shrink-0 border border-emerald-100">
               <FileExcelOutlined style={{ fontSize: 18 }} />
@@ -166,7 +166,7 @@ export default function TransportImportUploadStep({
       </div>
 
       {/* Main Drag & Drop Zone */}
-      <div className="flex-1 min-h-[300px]">
+      <div className="flex-1 min-h-[180px] sm:min-h-[300px]">
         <Dragger
           name="file"
           fileList={fileList}

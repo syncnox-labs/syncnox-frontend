@@ -47,7 +47,7 @@ export const FieldsSectionCard: React.FC<FieldsSectionCardProps> = ({
 }) => {
   return (
     <div className="border border-gray-200 rounded-none overflow-hidden bg-white font-sans">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+      <div className="responsive-toolbar px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
         <div className="flex items-center gap-3">
           {badgeNumber && (
             <div className="w-5 h-5 bg-[#003220] text-white font-bold text-[11px] flex items-center justify-center rounded-none shrink-0">
@@ -78,6 +78,7 @@ export const FieldsSectionCard: React.FC<FieldsSectionCardProps> = ({
         )}
       </div>
 
+      <div className="overflow-x-auto">
       <FieldsTable
         baseItems={baseItems}
         customItems={customItems}
@@ -91,6 +92,7 @@ export const FieldsSectionCard: React.FC<FieldsSectionCardProps> = ({
         onDeleteCustomField={onDeleteCustomField}
         onToggleBaseVisibility={onToggleBaseVisibility}
       />
+      </div>
     </div>
   );
 };

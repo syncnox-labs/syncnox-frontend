@@ -29,9 +29,9 @@ export default function ResourceRow({
   return (
     <div className="flex border-b border-gray-100 min-h-[48px]">
       {/* Driver name column - sticky */}
-      <div className="w-[180px] min-w-[180px] py-2 px-3 border-r border-gray-200 flex items-center gap-2 bg-white sticky left-0 z-2">
-        <Avatar size="small" icon={<UserOutlined />} />
-        <span className="font-medium overflow-hidden text-ellipsis whitespace-nowrap">
+      <div className="w-[130px] min-w-[130px] sm:w-[180px] sm:min-w-[180px] py-2 px-3 border-r border-gray-200 flex items-center gap-2 bg-white sticky left-0 z-2">
+        <Avatar className="!hidden sm:!inline-flex" size="small" icon={<UserOutlined />} />
+        <span title={resource.resource_name} className="min-w-0 font-medium break-words whitespace-normal text-xs sm:truncate">
           {resource.resource_name}
         </span>
       </div>

@@ -44,6 +44,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
   const router = useRouter();
 
   const tabFromUrl = searchParams.get("tab") as LocationTab | null;
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<LocationTab>(
     tabFromUrl || defaultTab
   );
@@ -56,6 +57,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
 
   const handleTabChange = (tab: LocationTab) => {
     setActiveTab(tab);
+    setMobileDetailOpen(false);
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", tab);
     router.replace(`/locations?${params.toString()}`);
@@ -340,7 +342,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden font-sans">
+    <div className="responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden font-sans">
       {/* Top Header */}
       <div className="flex items-start justify-between pb-3 shrink-0 border-b border-gray-200">
         <div>
@@ -427,11 +429,11 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
       </div>
 
       {/* Tabs Navigation (Underline Style matching Jobs, Routes, Schedule & Custom Fields) */}
-      <div className="flex border-b border-gray-200 my-3 space-x-6 shrink-0">
+      <div className="flex border-b border-gray-200 my-3 gap-4 shrink-0">
         <button
           type="button"
           onClick={() => handleTabChange("depots")}
-          className={`pb-2.5 px-1 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer bg-transparent border-t-0 border-x-0 outline-none ${
+          className={`min-h-11 pb-2.5 px-1 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer bg-transparent border-t-0 border-x-0 outline-none ${
             activeTab === "depots"
               ? "border-b-2 border-[#003220] text-[#003220] font-bold"
               : "border-b-2 border-transparent text-gray-500 hover:text-gray-800"
@@ -453,7 +455,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
         <button
           type="button"
           onClick={() => handleTabChange("additional-locations")}
-          className={`pb-2.5 px-1 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer bg-transparent border-t-0 border-x-0 outline-none ${
+          className={`min-h-11 pb-2.5 px-1 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer bg-transparent border-t-0 border-x-0 outline-none ${
             activeTab === "additional-locations"
               ? "border-b-2 border-[#003220] text-[#003220] font-bold"
               : "border-b-2 border-transparent text-gray-500 hover:text-gray-800"
@@ -475,9 +477,9 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
 
       {/* Tab 1: Depots Split View */}
       {activeTab === "depots" && (
-        <div className="flex h-full overflow-hidden gap-0 flex-1 mt-0">
+        <div data-detail-open={mobileDetailOpen} className="responsive-entity-split flex min-h-0 min-w-0 overflow-hidden gap-0 flex-1 mt-0">
           {/* Left card list */}
-          <div className="w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
+          <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
             <div className="p-3 pb-2 border-b border-gray-200 bg-gray-50/70 shrink-0">
               <div className="relative flex items-center">
                 <Search
@@ -525,6 +527,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                     onToggleCheck={() => toggleDepotCheck(depot.id)}
                     onClick={() => {
                       setSelectedDepot(depot);
+                      setMobileDetailOpen(true);
                     }}
                   />
                 ))
@@ -533,7 +536,8 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
           </div>
 
           {/* Right detail panel */}
-          <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-white">
+          <div className="responsive-entity-detail flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden bg-white">
+          <button type="button" className="entity-back" onClick={() => setMobileDetailOpen(false)}>← Back to list</button>
             {selectedDepot ? (
               <>
                 <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-200 shrink-0 bg-white">
@@ -572,7 +576,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                   <MapPin size={24} />
                 </div>
                 <p className="text-xs text-gray-400 text-center max-w-[240px]">
-                  Select a depot on the left to view and edit its details.
+                  Select a depot in the list to view and edit its details.
                 </p>
               </div>
             )}
@@ -582,7 +586,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
 
       {/* Tab 2: Additional Locations View */}
       {activeTab === "additional-locations" && (
-        <div className="flex flex-col h-full overflow-hidden flex-1 mt-0">
+        <div className="flex flex-col min-h-0 min-w-0 overflow-hidden flex-1 mt-0">
           {/* Category / Type filter chips (Only show chips if location type exists) */}
           <div className="flex items-center justify-between py-2 px-1 border-b border-gray-200 shrink-0 bg-white">
             <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar py-0.5">
@@ -619,9 +623,9 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
           </div>
 
           {/* Split View for Additional Locations */}
-          <div className="flex h-full overflow-hidden gap-0 flex-1">
+          <div data-detail-open={mobileDetailOpen} className="responsive-entity-split flex min-h-0 min-w-0 overflow-hidden gap-0 flex-1">
             {/* Left card list */}
-            <div className="w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
+            <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
               <div className="p-3 pb-2 border-b border-gray-200 bg-gray-50/70 shrink-0">
                 <div className="relative flex items-center">
                   <Search
@@ -670,6 +674,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                       onToggleCheck={() => toggleLocationCheck(mapping.id)}
                       onClick={() => {
                         setSelectedMapping(mapping);
+                        setMobileDetailOpen(true);
                       }}
                     />
                   ))
@@ -678,7 +683,8 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
             </div>
 
             {/* Right detail form matching Depots structure */}
-            <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-white">
+            <div className="responsive-entity-detail flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden bg-white">
+          <button type="button" className="entity-back" onClick={() => setMobileDetailOpen(false)}>← Back to list</button>
               {selectedMapping ? (
                 <>
                   <div className="flex items-center gap-3 p-3.5 px-5 border-b border-gray-200 shrink-0 bg-white">
@@ -745,7 +751,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                     <MapPin size={24} />
                   </div>
                   <p className="text-xs text-gray-400 text-center max-w-[240px]">
-                    Select a location on the left to view and edit its details.
+                    Select a location in the list to view and edit its details.
                   </p>
                 </div>
               )}

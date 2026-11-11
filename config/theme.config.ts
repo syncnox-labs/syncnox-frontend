@@ -42,6 +42,8 @@ const theme: ThemeConfig = {
       // paddingBlock: 8,
     },
     DatePicker: {
+      cellWidth: 32,
+      cellHeight: 32,
       activeBorderColor: "#003220",
       hoverBorderColor: "#003220",
       activeShadow: "0 0 0 1px rgba(0, 50, 32, 0.1)",

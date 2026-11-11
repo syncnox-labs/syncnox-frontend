@@ -23,7 +23,7 @@ export default function TimelineHeader({
   return (
     <div className="flex border-b border-gray-200 bg-gray-50 sticky top-0 z-10">
       {/* Driver column - sticky */}
-      <div className="w-[180px] min-w-[180px] py-2 px-3 font-semibold border-r border-gray-200 bg-gray-50 sticky left-0 z-5">
+      <div className="w-[130px] min-w-[130px] sm:w-[180px] sm:min-w-[180px] py-2 px-3 font-semibold border-r border-gray-200 bg-gray-50 sticky left-0 z-5">
         Driver
       </div>
 

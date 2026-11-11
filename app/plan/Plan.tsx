@@ -13,7 +13,7 @@ const Plan = () => {
   const depot = depots[0] ?? {};
 
   return (
-    <div className="h-full w-full overflow-y-hidden">
+    <div className="relative h-full min-h-[300px] w-full overflow-hidden">
       <div className="h-full w-full opacity-20">
         <GoogleMaps
           showMapTypeControl={false}
@@ -25,18 +25,18 @@ const Plan = () => {
           }}
         />
       </div>
-      <div className="absolute top-1/3 right-1/2 transform translate-x-1/2 translate-y-1/2 flex flex-col gap-5 w-[500px]">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col gap-4 w-[calc(100%-32px)] max-w-[500px]">
         <Button
           onClick={() => setIsBulkUploadOpen(true)}
           size="middle"
-          className="flex gap-1"
+          className="!h-12 flex gap-1"
         >
           <UploadOutlined /> <p className="text-lg">Bulk Upload Jobs</p>
         </Button>
         <Button
           onClick={() => setIsAddJobsModalOpen(true)}
           size="middle"
-          className="flex gap-1"
+          className="!h-12 flex gap-1"
           type="primary"
         >
           <FileAddOutlined /> <p className="text-lg">Manually Add Job</p>

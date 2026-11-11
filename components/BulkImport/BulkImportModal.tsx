@@ -116,6 +116,7 @@ export default function BulkImportModal({
         ) : (
           <>
             <Steps
+          responsive={false}
               current={currentStep - 1}
               items={steps}
               size="small"

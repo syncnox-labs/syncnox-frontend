@@ -18,8 +18,8 @@ const CompletionScreen = ({ onClose }: CompletionScreenProps) => {
   const { isLoading } = useOnboardingStore();
 
   return (
-    <div className="flex flex-col h-screen p-6 md:p-10 w-full mx-auto overflow-hidden bg-white justify-between">
-      <div className="flex-1 overflow-y-auto pr-1 flex flex-col items-start justify-center max-w-[840px]">
+    <div className="flex flex-col h-dvh p-4 sm:p-6 lg:p-10 w-full mx-auto overflow-hidden bg-white justify-between">
+      <div className="flex-1 min-h-0 overflow-y-auto pr-1 flex flex-col items-start justify-start max-w-[840px]">
         {/* Success badge */}
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 border border-emerald-200 text-[#003220] text-xs font-semibold mb-4 rounded-none">
           <CheckCircle2 size={15} className="text-emerald-600" />

@@ -40,6 +40,7 @@ function recordElement(factory, type, props, key) {
   return factory(type, props, key);
 }
 const TimelineView = load("app/route/_components/TimelineView.tsx", {
+  "@/hooks/useMediaQuery": load("hooks/useMediaQuery.ts"),
   "react/jsx-runtime": {
     ...jsxRuntime,
     jsx: (...args) => recordElement(jsxRuntime.jsx, ...args),

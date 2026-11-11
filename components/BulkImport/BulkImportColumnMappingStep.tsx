@@ -231,7 +231,7 @@ export default function BulkImportColumnMappingStep({
         />
       )}
 
-      <div className="flex items-center justify-between text-xs text-gray-600 font-medium shrink-0">
+      <div className="responsive-toolbar flex items-center justify-between text-xs text-gray-600 font-medium shrink-0">
         <span>Map Excel headers to system fields ({rawHeaders.length} columns detected)</span>
         <div className="flex items-center gap-4">
           <Checkbox
@@ -255,7 +255,7 @@ export default function BulkImportColumnMappingStep({
         />
       </div>
 
-      <div className="flex justify-between items-center pt-2 border-t shrink-0">
+      <div className="import-step-footer flex justify-between items-center pt-2 border-t shrink-0">
         <Button onClick={onBack} className="rounded-none">Back</Button>
         <Button
           type="primary"

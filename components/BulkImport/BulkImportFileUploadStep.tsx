@@ -95,7 +95,7 @@ export default function BulkImportFileUploadStep({
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-4 py-1">
       {/* Top Banner Card */}
-      <div className="bg-white border border-gray-200 p-3.5 flex items-center justify-between gap-4 rounded-none shrink-0">
+      <div className="bg-white border border-gray-200 p-3.5 responsive-toolbar flex items-center justify-between gap-4 rounded-none shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-emerald-50 text-[#003220] flex items-center justify-center shrink-0 border border-emerald-100">
             <FileExcelOutlined style={{ fontSize: 18 }} />
@@ -117,7 +117,7 @@ export default function BulkImportFileUploadStep({
       </div>
 
       {/* Main Drag & Drop Zone */}
-      <div className="flex-1 min-h-[220px]">
+      <div className="flex-1 min-h-[180px] sm:min-h-[220px]">
         <Upload.Dragger
           name="file"
           multiple={false}

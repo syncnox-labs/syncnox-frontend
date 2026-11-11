@@ -1,4 +1,5 @@
 "use client";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useMemo } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { ColDef, themeQuartz } from "ag-grid-community";
@@ -93,6 +94,7 @@ export default function BaseTable<TData = any>({
   onGridReady,
   ...otherGridProps
 }: BaseTableProps<TData>) {
+  const compact = useMediaQuery("(max-width: 1023px)");
   // Default theme configuration based on the app's design system
   const defaultTheme = useMemo(() => {
     const baseTheme = themeQuartz.withParams({
@@ -204,8 +206,8 @@ export default function BaseTable<TData = any>({
   }
 
   return (
-    <div className={containerClassName} style={containerStyle}>
-      <div className={`h-full w-full ${gridClassName}`} style={gridStyle}>
+    <div className={`min-w-0 ${containerClassName}`} style={containerStyle}>
+      <div className={`h-full w-full min-w-0 ${gridClassName}`} style={gridStyle}>
         <AgGridReact
           columnDefs={processedColumnDefs}
           rowData={rowData || []}
@@ -214,7 +216,7 @@ export default function BaseTable<TData = any>({
           rowSelection={processedRowSelection}
           getRowId={defaultGetRowId}
           suppressRowClickSelection={true}
-          rowHeight={32}
+          rowHeight={compact ? 48 : 32}
           theme={theme || defaultTheme}
           pagination={pagination}
           paginationPageSize={paginationPageSize}

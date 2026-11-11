@@ -319,10 +319,11 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
       open={open}
       onCancel={onClose}
       width={780}
+      className="responsive-reorder-modal"
       centered
       title={
-        <div className="flex items-center justify-between pr-6 py-1 select-none border-b border-gray-100 pb-3">
-          <div className="flex items-center gap-2.5">
+        <div className="responsive-toolbar flex items-center justify-between pr-6 py-1 select-none border-b border-gray-100 pb-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <div
               className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs"
               style={{ backgroundColor: routeColor }}
@@ -351,7 +352,7 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
         </div>
       }
       footer={
-        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+        <div className="responsive-toolbar flex items-center justify-between pt-2 border-t border-gray-100">
           <div className="flex items-center gap-2">
             <Button
               size="small"
@@ -364,7 +365,7 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
             </Button>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <Button size="middle" onClick={onClose} disabled={isSaving || isReoptimizing}>
               Cancel
             </Button>
@@ -459,7 +460,7 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, actualIndex)}
                 onDragEnd={handleDragEnd}
-                className={`flex items-center gap-2.5 p-2 rounded-lg border transition-all select-none cursor-grab active:cursor-grabbing ${
+                className={`reorder-stop-row flex items-center gap-2.5 p-2 rounded-lg border transition-all select-none cursor-grab active:cursor-grabbing ${
                   isDragging
                     ? "opacity-40 border-dashed border-emerald-500 bg-emerald-50/50 scale-[0.99]"
                     : isDragOver
@@ -489,7 +490,7 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
                 </div>
 
                 {/* Stop Type & Highlights */}
-                <div className="shrink-0 flex items-center gap-1">
+                <div className="shrink-0 flex flex-wrap items-center gap-1">
                   {isPickup ? (
                     <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
                       PICKUP
@@ -554,6 +555,7 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
                       size="small"
                       icon={<ArrowUpOutlined className="text-xs" />}
                       disabled={actualIndex === 0}
+                      aria-label="Move stop up"
                       onClick={() => moveUp(actualIndex)}
                       className="p-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded"
                     />
@@ -564,6 +566,7 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
                       size="small"
                       icon={<ArrowDownOutlined className="text-xs" />}
                       disabled={actualIndex === stopsList.length - 1}
+                      aria-label="Move stop down"
                       onClick={() => moveDown(actualIndex)}
                       className="p-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded"
                     />
