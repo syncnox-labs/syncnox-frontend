@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Button, Spin, Modal, message } from "antd";
 import { Search, Truck, Upload, Plus, Trash2, Download } from "lucide-react";
 import { Vehicle } from "@/types/vehicle.type";
@@ -11,6 +11,10 @@ import AddVehicleModal from "./AddVehicleModal";
 import VehicleForm from "./VehicleForm";
 import VehicleCard from "./VehicleCard";
 import BulkImportModal from "@/components/BulkImport/BulkImportModal";
+import EntityViewToggle, { type EntityView } from "@/components/Settings/EntityViewToggle";
+import EntityRecordTable from "@/components/Settings/EntityRecordTable";
+import { createVehicleSettingsColumns } from "@/utils/settingsTable.columns";
+import { useTeamStore } from "@/store/team.store";
 
 function formatType(type: string | null): string {
   if (!type) return "";
@@ -23,6 +27,10 @@ function formatType(type: string | null): string {
 const VehicleList = () => {
   const { isLoading, vehicles, bulkDeleteVehiclesAction } = useVehicleStore();
 
+  const [view, setView] = useState<EntityView>("form");
+  const { teams } = useTeamStore();
+  const tableColumns = useMemo(() => createVehicleSettingsColumns(vehicles, teams), [vehicles, teams]);
+
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [checkedIds, setCheckedIds] = useState<number[]>([]);
@@ -30,6 +38,12 @@ const VehicleList = () => {
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+
+  const openTableRecord = useCallback((record: Vehicle) => {
+    setSelectedVehicle(record);
+    setMobileDetailOpen(true);
+    setView("form");
+  }, []);
 
   // Auto-select first vehicle
   useEffect(() => {
@@ -129,10 +143,11 @@ const VehicleList = () => {
         <div>
           <h1 className="text-lg font-bold text-gray-900 m-0">Vehicles</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            Pick a vehicle in the list to edit it. Alerts show on the tab so nothing important is hidden.
+            {view === "table" ? "Compare vehicles, filter columns, and select a name to edit." : "Pick a vehicle in the list to edit it. Alerts show on the tab so nothing important is hidden."}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <EntityViewToggle value={view} onChange={setView} label="Vehicle" />
           {checkedIds.length > 0 && (
             <Button
               danger
@@ -170,6 +185,17 @@ const VehicleList = () => {
       </div>
 
       {/* ── Split layout ─────────────────────────────────────────── */}
+      <EntityRecordTable<Vehicle>
+        active={view === "table"}
+        label="Vehicles"
+        records={vehicles}
+        columns={tableColumns}
+        checkedIds={checkedIds}
+        onCheckedIdsChange={setCheckedIds}
+        onOpenRecord={openTableRecord}
+        customFieldEntity="vehicle"
+      />
+      <div className={view === "form" ? "contents" : "hidden"}>
       <div data-detail-open={mobileDetailOpen} className="responsive-entity-split flex min-h-0 min-w-0 overflow-hidden gap-0 flex-1">
         {/* LEFT — Searchable card list */}
         <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
@@ -279,6 +305,8 @@ const VehicleList = () => {
             </div>
           )}
         </div>
+      </div>
+
       </div>
 
       {/* Add modal */}

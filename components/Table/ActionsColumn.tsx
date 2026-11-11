@@ -68,6 +68,7 @@ export const createActionsColumn = <T extends { id: number }>(
     filter: false,
     cellRenderer: (params: any) => {
       const data: T = params.data;
+      if (!data) return null;
 
       // Map actions to menu items
       const menuItems = actions.map((action) => ({
@@ -116,9 +117,13 @@ export const createActionsColumn = <T extends { id: number }>(
           trigger={["click"]}
           placement="bottomRight"
         >
-          <div className="flex items-center justify-center h-full cursor-pointer">
+          <button
+            type="button"
+            aria-label={`Actions for ${String((data as { name?: unknown }).name || data.id)}`}
+            className="flex items-center justify-center h-full w-full cursor-pointer border-none bg-transparent p-0"
+          >
             <EllipsisVertical size={18} />
-          </div>
+          </button>
         </Dropdown>
       );
     },

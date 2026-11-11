@@ -9,6 +9,7 @@ import {
   updateCustomField,
   deleteCustomField,
   resetCustomFields,
+  notifyFieldChanges,
 } from "@/apis/custom-fields.api";
 import {
   Plus,
@@ -144,6 +145,7 @@ export default function CustomFieldsSettingsPage() {
     };
     setBaseFieldOverrides(updated);
     localStorage.setItem(`syncnox_base_field_overrides_${selectedEntity}`, JSON.stringify(updated));
+    notifyFieldChanges(selectedEntity);
     message.success(`Set '${fieldLabel}' to ${!currentRequired ? "Required" : "Optional"}`);
   };
 
@@ -195,6 +197,7 @@ export default function CustomFieldsSettingsPage() {
         };
         setBaseFieldOverrides(updated);
         localStorage.setItem(`syncnox_base_field_overrides_${selectedEntity}`, JSON.stringify(updated));
+        notifyFieldChanges(selectedEntity);
         message.success("Base field settings updated!");
       } else if (editingField) {
         await updateCustomField(editingField.id, {
@@ -320,6 +323,7 @@ export default function CustomFieldsSettingsPage() {
 
     setHiddenBaseFields(updated);
     localStorage.setItem(`syncnox_hidden_base_fields_${selectedEntity}`, JSON.stringify(updated));
+    notifyFieldChanges(selectedEntity);
     message.info(updated.includes(key) ? `Base field '${key}' removed from list` : `Base field '${key}' restored`);
   };
 
@@ -339,6 +343,7 @@ export default function CustomFieldsSettingsPage() {
           await resetCustomFields(selectedEntity);
           localStorage.removeItem(`syncnox_hidden_base_fields_${selectedEntity}`);
           localStorage.removeItem(`syncnox_base_field_overrides_${selectedEntity}`);
+          notifyFieldChanges(selectedEntity);
           setHiddenBaseFields([]);
           setBaseFieldOverrides({});
           message.success(`Custom fields for ${entityLabel} reset to default`);

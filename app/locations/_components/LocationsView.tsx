@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Button, Spin, Modal, message, Popconfirm } from "antd";
 import {
   Search,
@@ -33,6 +33,10 @@ import {
 } from "@/utils/exportCsv.utils";
 import { useSearchParams, useRouter } from "next/navigation";
 
+import EntityViewToggle, { type EntityView } from "@/components/Settings/EntityViewToggle";
+import EntityRecordTable from "@/components/Settings/EntityRecordTable";
+import { createDepotSettingsColumns, createLocationSettingsColumns } from "@/utils/settingsTable.columns";
+
 type LocationTab = "depots" | "additional-locations";
 
 interface LocationsViewProps {
@@ -44,6 +48,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
   const router = useRouter();
 
   const tabFromUrl = searchParams.get("tab") as LocationTab | null;
+  const [view, setView] = useState<EntityView>("form");
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<LocationTab>(
     tabFromUrl || defaultTab
@@ -328,6 +333,19 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
     });
   };
 
+  const depotTableColumns = useMemo(() => createDepotSettingsColumns(), []);
+  const locationTableColumns = useMemo(() => createLocationSettingsColumns(locationTypes.length ? locationTypes : LOCATION_TYPE_OPTIONS), [locationTypes]);
+  const openDepotRecord = useCallback((record: DepotType) => {
+    setSelectedDepot(record);
+    setMobileDetailOpen(true);
+    setView("form");
+  }, []);
+  const openLocationRecord = useCallback((record: LocationMapping) => {
+    setSelectedMapping(record);
+    setMobileDetailOpen(true);
+    setView("form");
+  }, []);
+
   const isGlobalLoading =
     activeTab === "depots"
       ? isDepotLoading && depots.length === 0
@@ -355,6 +373,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
         </div>
 
         <div className="flex items-center gap-2">
+          <EntityViewToggle value={view} onChange={setView} label="Location" />
           {activeTab === "depots" ? (
             <>
               {depotCheckedIds.length > 0 && (
@@ -475,6 +494,26 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
         </button>
       </div>
 
+      <EntityRecordTable<DepotType>
+        active={view === "table" && activeTab === "depots"}
+        label="Depots"
+        records={depots}
+        columns={depotTableColumns}
+        checkedIds={depotCheckedIds}
+        onCheckedIdsChange={setDepotCheckedIds}
+        onOpenRecord={openDepotRecord}
+        customFieldEntity="depot"
+      />
+      <EntityRecordTable<LocationMapping>
+        active={view === "table" && activeTab === "additional-locations"}
+        label="Locations"
+        records={locationMappings}
+        columns={locationTableColumns}
+        checkedIds={locationCheckedIds}
+        onCheckedIdsChange={setLocationCheckedIds}
+        onOpenRecord={openLocationRecord}
+      />
+      <div className={view === "form" ? "contents" : "hidden"}>
       {/* Tab 1: Depots Split View */}
       {activeTab === "depots" && (
         <div data-detail-open={mobileDetailOpen} className="responsive-entity-split flex min-h-0 min-w-0 overflow-hidden gap-0 flex-1 mt-0">
@@ -759,6 +798,8 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
           </div>
         </div>
       )}
+
+      </div>
 
       {/* Modals */}
       <CreateDepotModal
