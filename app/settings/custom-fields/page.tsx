@@ -216,6 +216,7 @@ export default function CustomFieldsSettingsPage() {
       } else {
         await createCustomField({
           entity_type: selectedEntity,
+          display_order: customFields.reduce((maxOrder, field) => Math.max(maxOrder, field.display_order), -1) + 1,
           field_key: fieldKey.trim(),
           label: label.trim(),
           data_type: dataType,
