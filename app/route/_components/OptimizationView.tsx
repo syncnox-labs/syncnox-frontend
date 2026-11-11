@@ -26,6 +26,7 @@ import {
   TeamOutlined,
   ExportOutlined,
   ShareAltOutlined,
+  MessageOutlined,
   EditOutlined,
   LoadingOutlined,
   ReloadOutlined,
@@ -41,6 +42,8 @@ import MapSearch from "./MapSearch";
 import { buildMapSearchIndex } from "./mapSearch.utils";
 import { getRouteStopDisplay } from "./stopDisplay.utils";
 import TimelineView from "./TimelineView";
+import CandidateMessagesModal from "./CandidateMessagesModal";
+import { candidateMessagesEnabled } from "@/apis/candidateMessages.api";
 import AssignedJobsTable from "./AssignedJobsTable";
 import VehicleAssignments from "./VehicleAssignments";
 import type { VehicleAssignment } from "./vehicleSchedule.utils";
@@ -272,6 +275,14 @@ const OptimizationView = ({
   const [showPreview, setShowPreview] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [sharingDriverId, setSharingDriverId] = useState<number | null>(null);
+  const [messagingEnabled, setMessagingEnabled] = useState(false);
+  const [messageSelection, setMessageSelection] = useState<{ planId: number; driverId?: number } | null>(null);
+  useEffect(() => {
+    let active = true;
+    candidateMessagesEnabled().then(value => { if (active) setMessagingEnabled(value); })
+      .catch(() => { if (active) setMessagingEnabled(false); });
+    return () => { active = false; };
+  }, []);
   const [shareResult, setShareResult] = useState<ShareRouteResponse | null>(
     null,
   );
@@ -2130,6 +2141,8 @@ const OptimizationView = ({
                   <span className="inline lg:hidden 2xl:inline">{sharingState?.last_shared_at ? sharingState.sharing_status === "shared" ? "Share again" : "Share changes" : "Share to drivers"}</span>
                 </Button>
               </Tooltip>
+              {isWorkerShuttle && messagingEnabled && <Button icon={<MessageOutlined />} className="shrink-0"
+                onClick={() => setMessageSelection({ planId: route.id })}>Send WhatsApp</Button>}
               <Dropdown
                 trigger={["click"]}
                 placement="bottomRight"
@@ -2730,6 +2743,10 @@ const OptimizationView = ({
                     onMoveTrip={!isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed") ? handleMoveTrip : undefined}
                     onAddUnassignedJob={handleAddUnassignedJob}
                     onShareDriver={handleShareDriver}
+                    onMessageDriver={isWorkerShuttle && messagingEnabled ? routeIndex => {
+                      const target = getDriverShareTarget(route.result?.routes ?? [], routeIndex, route.id);
+                      if (target) setMessageSelection({ planId: target.optimizationId, driverId: target.driverId });
+                    } : undefined}
                     sharingDisabled={isSharing || isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued"}
                     sharingDriverId={sharingDriverId}
                     onEditWaiting={!isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed")
@@ -2865,6 +2882,7 @@ const OptimizationView = ({
       {/* Route Export Preview Modal */}
       <ManualRoutingDrawer plan={route} />
       <RouteWaitingModal plan={route} selection={waitingSelection} onClose={() => setWaitingSelection(null)} />
+      <CandidateMessagesModal selection={messageSelection} onClose={() => setMessageSelection(null)} />
       <RouteETAModal plan={route} selection={etaSelection} onClose={() => setETASelection(null)}
         onSaved={updated => setSelectedDrawerJob(previous => {
           if (!previous || !etaSelection) return previous;

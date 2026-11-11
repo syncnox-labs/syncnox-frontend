@@ -34,6 +34,7 @@ import {
   LoadingOutlined,
   CheckOutlined,
   ShareAltOutlined,
+  MessageOutlined,
 } from "@ant-design/icons";
 import {
   GripVertical,
@@ -86,6 +87,7 @@ interface TimelineViewProps {
   onStopClick?: (stop: any, routeIndex: number, stopIndex: number) => void;
   onAddStop?: (routeIndex: number) => void;
   onShareDriver?: (routeIndex: number) => void;
+  onMessageDriver?: (routeIndex: number) => void;
   sharingDisabled?: boolean;
   sharingDriverId?: number | null;
   onEditWaiting?: (routeIndex: number, afterStopIndex: number) => void;
@@ -402,6 +404,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   onStopClick,
   onAddStop,
   onShareDriver,
+  onMessageDriver,
   sharingDisabled = false,
   sharingDriverId = null,
   onEditWaiting,
@@ -1594,6 +1597,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       label: sharingDriverId === routes[routeIndex]?.team_member_id ? "Sharing…" : "Share",
       disabled: sharingDisabled || !routes[routeIndex]?.team_member_id,
       onClick: () => onShareDriver(routeIndex) }] : []),
+    ...(onMessageDriver ? [{ key: "message-driver", icon: <MessageOutlined />, label: "Send WhatsApp…",
+      disabled: !routes[routeIndex]?.team_member_id, onClick: () => onMessageDriver(routeIndex) }] : []),
     ...(onMergeRoutes ? [{ key: "merge-waiting", icon: <ClockCircleOutlined />, label: "Merge routes with waiting…", onClick: () => onMergeRoutes(routeIndex) }] : []),
     ...(onEditWaiting ? routes.flatMap((route, index) => route.team_member_id !== routes[routeIndex]?.team_member_id ? []
       : (route.stops || []).flatMap((stop: any, stopIndex: number) => stop.stop_type === "depot_end" && route.stops[stopIndex + 1]?.stop_type === "depot_start" ? [{
