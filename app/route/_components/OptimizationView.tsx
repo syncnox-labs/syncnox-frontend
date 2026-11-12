@@ -19,6 +19,7 @@ import {
   Select,
   Radio,
   Dropdown,
+  type MenuProps,
 } from "antd";
 import {
   ArrowLeftOutlined,
@@ -32,6 +33,7 @@ import {
   ReloadOutlined,
   MenuOutlined,
   PlusOutlined,
+  UndoOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 
@@ -217,6 +219,19 @@ const OptimizationView = ({
   const [detailView, setDetailView] = useState<"timeline" | "table" | "vehicles">("timeline");
   const [hasOpenedTable, setHasOpenedTable] = useState(false);
   const [hasOpenedVehicles, setHasOpenedVehicles] = useState(false);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const [isCompactHeader, setIsCompactHeader] = useState(true);
+
+  useEffect(() => {
+    const workspace = workspaceRef.current;
+    if (!workspace) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setIsCompactHeader(entry.contentRect.width < 1200);
+    });
+    observer.observe(workspace);
+    return () => observer.disconnect();
+  }, []);
+
   const planJobIds = useMemo(() => [...new Set([
     ...(route.job_ids || []),
     ...(route.result?.routes || []).flatMap(trip => (trip.stops || []).map(stop => stop.job_id).filter((id): id is number => typeof id === "number")),
@@ -1948,8 +1963,61 @@ const OptimizationView = ({
     router.push("/plan");
   };
 
+  const shareButtonLabel = sharingState?.last_shared_at
+    ? sharingState.sharing_status === "shared" ? "Share again" : "Share changes"
+    : "Share to drivers";
+  const routeMenuItems: MenuProps["items"] = [
+    {
+      key: "create-route",
+      icon: <PlusOutlined />,
+      label: "Create route",
+      disabled: isOptimizing,
+      onClick: () => useManualRoutingStore.getState().open({ planId: route.id, action: "create" }),
+    },
+    {
+      key: "edit-routes",
+      icon: <EditOutlined />,
+      label: "Edit routes",
+      disabled: !route.result?.routes?.length || isOptimizing,
+      onClick: () => useManualRoutingStore.getState().open({ planId: route.id, action: "edit", routeIndex: focusedRouteIndex ?? 0 }),
+    },
+    { type: "divider" },
+    { key: "export", icon: <ExportOutlined />, label: "Export", onClick: handleExportRoutes },
+  ];
+  const compactRouteMenuItems: MenuProps["items"] = [
+    ...(undoStep ? [{
+      key: "undo",
+      icon: <UndoOutlined />,
+      label: isUndoing ? "Undoing…" : "Undo",
+      disabled: isUndoing || isRemovingJob || (route.status !== "completed" && route.status !== "failed"),
+      onClick: handleUndo,
+    }] : []),
+    ...(route.status === "completed" ? [{
+      key: "reoptimize",
+      icon: <ReloadOutlined />,
+      label: "Reoptimize all routes",
+      disabled: isOptimizing,
+      onClick: handleReOptimizeAll,
+    }] : []),
+    {
+      key: "share",
+      icon: isSharing ? <LoadingOutlined /> : <ShareAltOutlined />,
+      label: isSharing ? "Sharing…" : shareButtonLabel,
+      disabled: isSharing || isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued",
+      onClick: () => handleShareToApp(),
+    },
+    ...(isWorkerShuttle && messagingEnabled ? [{
+      key: "whatsapp",
+      icon: <MessageOutlined />,
+      label: "Send WhatsApp",
+      onClick: () => setMessageSelection({ planId: route.id }),
+    }] : []),
+    { type: "divider" },
+    ...routeMenuItems,
+  ];
+
   return (
-    <div className="route-workspace flex flex-col h-full min-w-0 absolute inset-0">
+    <div ref={workspaceRef} className="route-workspace flex flex-col h-full min-w-0 absolute inset-0">
       {/* Full-screen loading overlay — shown during any async optimization op */}
       {(isOptimizing || route.status === "processing" || route.status === "queued") && (
         <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-50 flex items-center justify-center">
@@ -1975,10 +2043,10 @@ const OptimizationView = ({
       )}
 
       {/* Route header */}
-      <nav className="route-header bg-white border-b border-gray-200 px-3 shrink-0 min-h-14 py-2 grid grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2">
+      <nav aria-label="Optimization details" className="route-header bg-white border-b border-gray-200 px-3 shrink-0 min-h-14 py-2">
         <div className="contents">
           {/* Left: Route details */}
-          <div className="order-1 flex items-center gap-3 min-w-0">
+          <div className="route-details flex items-center gap-3 min-w-0">
             <Icon
               component={ArrowLeftOutlined}
               style={{ color: "#003220" }}
@@ -2062,8 +2130,8 @@ const OptimizationView = ({
           </div>
 
           {/* Right: Sharing state and actions */}
-          <div className="contents xl:order-3 xl:flex xl:items-center xl:justify-end xl:gap-3 xl:min-w-0">
-            <div className="route-sharing-state order-2 xl:order-none flex flex-col items-end justify-self-end gap-0.5 shrink-0 text-[11px] whitespace-nowrap" aria-live="polite">
+          <div className="route-header-controls">
+            <div className="route-sharing-state flex flex-col items-end justify-self-end gap-0.5 min-w-0 text-[11px]" aria-live="polite">
               {checkingShareStatus ? (
                 <span className="text-slate-500">Checking share status…</span>
               ) : shareStatusError ? (
@@ -2098,10 +2166,11 @@ const OptimizationView = ({
                 <span className="text-slate-500">Not shared yet</span>
               )}
             </div>
-            <div className="route-actions order-4 xl:order-none flex flex-nowrap items-center justify-end gap-1 sm:gap-2 shrink-0 whitespace-nowrap">
+            {!isCompactHeader && <div className="route-actions flex flex-wrap items-center justify-end gap-1 min-w-0">
               {/* Undo Button */}
               {undoStep && (
                 <Button
+                  size="small"
                   onClick={handleUndo}
                   aria-label={`Undo ${undoStep.label}`}
                   title={`Undo`}
@@ -2116,7 +2185,7 @@ const OptimizationView = ({
                     )} />
                   }
                 >
-                  <span>Undo</span>
+                  <span className="route-action-label">Undo</span>
                 </Button>
               )}
 
@@ -2124,6 +2193,7 @@ const OptimizationView = ({
               {route.status === "completed" && (
                 <Tooltip title="Reoptimize All Routes">
                   <Button
+                    size="small"
                     ghost={true}
                     aria-label="Reoptimize All Routes"
                     icon={<ReloadOutlined />}
@@ -2135,58 +2205,35 @@ const OptimizationView = ({
                 </Tooltip>
               )}
               <Tooltip title="Share ready driver routes. Routes with unresolved issues are skipped and listed in the result.">
-                <Button type="primary" aria-label="Share saved route to drivers" icon={<ShareAltOutlined />} loading={isSharing}
+                <Button size="small" type="primary" aria-label="Share saved route to drivers" icon={<ShareAltOutlined />} loading={isSharing}
                   disabled={isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued"}
                   onClick={() => handleShareToApp()} className="shrink-0">
-                  <span className="inline lg:hidden 2xl:inline">{sharingState?.last_shared_at ? sharingState.sharing_status === "shared" ? "Share again" : "Share changes" : "Share to drivers"}</span>
+                  <span className="route-action-label">{shareButtonLabel}</span>
                 </Button>
               </Tooltip>
-              {isWorkerShuttle && messagingEnabled && <Button icon={<MessageOutlined />} className="shrink-0"
-                onClick={() => setMessageSelection({ planId: route.id })}>Send WhatsApp</Button>}
+              {isWorkerShuttle && messagingEnabled && <Tooltip title="Send WhatsApp">
+                <Button size="small" aria-label="Send WhatsApp" icon={<MessageOutlined />} className="shrink-0"
+                  onClick={() => setMessageSelection({ planId: route.id })}><span className="route-action-label">Send WhatsApp</span></Button>
+              </Tooltip>}
+            </div>}
+            <div className="shrink-0">
               <Dropdown
                 trigger={["click"]}
                 placement="bottomRight"
-                menu={{ items: [
-                  {
-                    key: "create-route",
-                    icon: <PlusOutlined />,
-                    label: "Create route",
-                    disabled: isOptimizing,
-                    onClick: () => useManualRoutingStore.getState().open({ planId: route.id, action: "create" }),
-                  },
-                  {
-                    key: "edit-routes",
-                    icon: <EditOutlined />,
-                    label: "Edit routes",
-                    disabled: !route.result?.routes?.length || isOptimizing,
-                    onClick: () => useManualRoutingStore.getState().open({ planId: route.id, action: "edit", routeIndex: focusedRouteIndex ?? 0 }),
-                  },
-                  { type: "divider" },
-                  {
-                    key: "export",
-                    icon: <ExportOutlined />,
-                    label: "Export",
-                    onClick: handleExportRoutes,
-                  },
-                  // {
-                  //   key: "share",
-                  //   icon: isSharing ? <LoadingOutlined /> : <ShareAltOutlined />,
-                  //   label: isSharing ? "Sharing…" : "Share to App",
-                  //   disabled: isSharing || isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued",
-                  //   onClick: handleShareToApp,
-                  // },
-                ] }}
+                classNames={{ root: "route-actions-menu" }}
+                menu={{ items: isCompactHeader ? compactRouteMenuItems : routeMenuItems }}
               >
-                <Button icon={<MenuOutlined />} aria-label="Route actions" aria-haspopup="menu" aria-busy={isSharing} title="Route actions" className="shrink-0" />
+                <Button size="small" icon={<MenuOutlined />} aria-label="Route actions" aria-haspopup="menu" aria-busy={isSharing} title="Route actions" />
               </Dropdown>
             </div>
           </div>
         </div>
 
-        {/* Center the view switch on desktop and use a compact second row on smaller screens. */}
-        <div className="route-view-switch order-3 xl:order-2 flex items-center justify-start xl:justify-center min-w-0">
+        {/* Keep the three view controls centered between route details and sharing. */}
+        <div className="route-view-switch flex items-center min-w-0">
           <div className="pointer-events-auto flex items-center">
             <Radio.Group
+              size="small"
               aria-label="Route view"
               buttonStyle="solid"
               className="view-switch-radio whitespace-nowrap inline-flex items-center"
@@ -2207,8 +2254,8 @@ const OptimizationView = ({
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  height: 32,
-                  width: 40,
+                  height: 24,
+                  width: 32,
                   padding: 0,
                   lineHeight: 1,
                 }}
@@ -2235,8 +2282,8 @@ const OptimizationView = ({
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  height: 32,
-                  width: 40,
+                  height: 24,
+                  width: 32,
                   padding: 0,
                   lineHeight: 1,
                 }}
@@ -2263,8 +2310,8 @@ const OptimizationView = ({
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  height: 32,
-                  width: 40,
+                  height: 24,
+                  width: 32,
                   padding: 0,
                   lineHeight: 1,
                 }}
