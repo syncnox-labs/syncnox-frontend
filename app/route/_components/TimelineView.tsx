@@ -1661,7 +1661,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   ];
 
   return (
-    <TimelineTooltipProvider leftInset={DRIVER_COLUMN_WIDTH} topInset={HEADER_HEIGHT + (compactTimeline ? 61 : 0)}>
+    <TimelineTooltipProvider leftInset={DRIVER_COLUMN_WIDTH} topInset={HEADER_HEIGHT + (compactTimeline ? 41 : 0)}>
     <div 
       className="relative flex flex-col h-full bg-white select-none"
       onDragOver={(e) => {
@@ -1678,11 +1678,11 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         }
       }}
     >
-      {compactTimeline && <div className="flex flex-wrap items-center gap-2 p-2 border-b border-gray-200 shrink-0">
-        <Input aria-label="Search driver" placeholder="Search driver…" value={driverSearch}
+      {compactTimeline && <div className="timeline-mobile-toolbar timeline-compact-controls flex items-center gap-2 p-2 border-b border-gray-200 shrink-0">
+        <Input size="small" aria-label="Search driver" placeholder="Search driver…" value={driverSearch}
           onChange={event => setDriverSearch(event.target.value)} allowClear className="!flex-1 !min-w-0" />
-        <Select aria-label="Timeline zoom interval" value={intervalMinutes} onChange={value => changeInterval(value)}
-          options={INTERVAL_OPTIONS} style={{ width: 100 }} />
+        <Select size="small" aria-label="Timeline zoom interval" value={intervalMinutes} onChange={value => changeInterval(value)}
+          options={INTERVAL_OPTIONS} style={{ width: 80 }} className="shrink-0" />
       </div>}
       <div
         className="flex-1 min-h-0 overflow-auto relative custom-scrollbar"
@@ -1696,7 +1696,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
           >
             {/* Sticky Driver Column Header */}
             <div
-              className="sticky left-0 top-0 z-50 bg-gray-50 border-r border-gray-200 px-3 flex items-center justify-between font-medium text-gray-500 shadow-sm"
+              className="timeline-compact-controls sticky left-0 top-0 z-50 bg-gray-50 border-r border-gray-200 px-3 flex items-center justify-between font-medium text-gray-500 shadow-sm"
               style={{ width: DRIVER_COLUMN_WIDTH, minWidth: DRIVER_COLUMN_WIDTH }}
             >
               {compactTimeline ? <span>Driver</span> : isSearchOpen ? (
@@ -1812,6 +1812,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                 >
                   {marker.isNewDay || (i === 0 && marker.dateLabel) ? (
                     <TimelineTooltip
+                      popupScope="viewport"
+                      trigger={["hover", "focus", "click"]}
                       color="#ffffff"
                       overlayInnerStyle={{
                         padding: "6px 12px",
@@ -1823,19 +1825,22 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                       title={
                         <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 select-none">
                           <Calendar size={14} className="text-[#003220] shrink-0" />
-                          <span className="font-bold text-slate-900">{marker.dateLabel || "New Day"}</span>
+                          <span className="font-bold text-slate-900">{marker.time.format("dddd, MMMM D, YYYY")}</span>
                           <span className="text-slate-500 font-mono text-[11px]">({marker.label})</span>
                         </div>
                       }
                     >
-                      <div className="flex items-center gap-1 whitespace-nowrap bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-300 text-[#003220] shadow-2xs cursor-pointer hover:bg-emerald-100 transition-colors">
-                        <Calendar size={11} className="shrink-0 text-[#003220]" />
-                        <span className="text-[10px] font-black uppercase tracking-wide">{marker.dateLabel}</span>
-                        <span className="text-[11px] font-bold ml-0.5">{marker.label}</span>
-                      </div>
+                      <button
+                        type="button"
+                        aria-label={`${marker.time.format("dddd, MMMM D, YYYY")} at ${marker.label}`}
+                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[#003220] cursor-pointer hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-primary transition-colors"
+                      >
+                        <Calendar size={14} aria-hidden="true" />
+                      </button>
                     </TimelineTooltip>
                   ) : (
                     <TimelineTooltip
+                      popupScope="viewport"
                       color="#ffffff"
                       overlayInnerStyle={{
                         padding: "4px 8px",

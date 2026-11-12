@@ -447,11 +447,6 @@ body {
   .route-map-search { max-width: 100%; }
   .route-map-search-toggle.is-expanded { width: min(288px, 100%); }
   .route-map-search button { min-width: 44px; min-height: 44px; }
-  .route-header { grid-template-columns: minmax(0, 1fr); }
-  .route-header > .contents > .order-1 { grid-column: 1 / -1; }
-  .route-header .route-sharing-state { flex-direction: row; flex-wrap: wrap; justify-self: start; gap: 6px; }
-  .route-header .route-actions { flex-wrap: wrap; justify-content: flex-start; }
-  .route-header .route-view-switch { grid-column: 1 / -1; }
   .route-map-overlay { top: 64px; max-width: calc(100% - 24px) !important; }
 }
 
@@ -523,6 +518,75 @@ body {
   /* The outer affix wrapper supplies the touch height for search/password inputs. */
   .ant-input-affix-wrapper .ant-input { min-height: 0; }
 }
+
+/* Size the optimization navbar against its available width, including the sidebar. */
+.route-workspace { container-type: inline-size; }
+.route-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas: "details views controls";
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 8px;
+}
+.route-header .route-details { grid-area: details; }
+.route-header .route-sharing-state { text-align: right; }
+.route-header .route-header-controls {
+  grid-area: controls;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+.route-header .route-view-switch { grid-area: views; }
+.route-header .ant-btn {
+  height: 24px;
+  min-height: 24px;
+  padding-inline: 7px;
+  font-size: 12px;
+  gap: 4px;
+}
+.route-header .ant-btn-icon-only { width: 24px; padding-inline: 0; }
+.route-header .view-switch-radio.ant-radio-group,
+.route-header .view-switch-radio .ant-radio-button-wrapper { height: 24px !important; }
+.route-header .view-switch-radio .ant-radio-button-wrapper { width: 32px !important; min-width: 32px !important; }
+.route-header .ant-input { height: 24px; min-height: 24px; font-size: 12px !important; }
+
+.route-actions-menu .ant-dropdown-menu-item {
+  min-height: 28px;
+  padding-block: 4px;
+  line-height: 20px;
+  font-size: 12px;
+}
+
+@container (max-width: 1199px) {
+  .route-header .route-header-controls { gap: 8px; }
+}
+
+@container (max-width: 639px) {
+  .route-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "details controls" "views views";
+  }
+  .route-header .route-header-controls { max-width: 55cqi; }
+  .route-header .route-view-switch { justify-content: center; }
+}
+
+/* Keep timeline search and interval controls compact on phones and tablets. */
+.timeline-compact-controls .ant-input-affix-wrapper,
+.timeline-compact-controls .ant-select-single {
+  height: 24px;
+  min-height: 24px;
+  font-size: 12px;
+}
+.timeline-compact-controls .ant-input-affix-wrapper { padding-block: 1px; }
+.timeline-compact-controls .ant-input-affix-wrapper input.ant-input {
+  min-height: 0;
+  font-size: 12px !important;
+}
+.timeline-compact-controls .ant-select-content,
+.timeline-compact-controls .ant-select-selection-item { font-size: 12px !important; }
 
 /* Compact planning controls while preserving the larger form input sizes. */
 @media (max-width: 639px) {
