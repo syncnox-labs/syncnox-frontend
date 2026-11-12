@@ -233,7 +233,7 @@ const ColumnMappingStep = ({ onNext }: ColumnMappingStepProps) => {
           Save this mapping as my default mapping
         </Checkbox>
 
-        <div className="flex gap-2">
+        <div className="ml-auto flex gap-2">
           <Button onClick={() => setCurrentStep(1)} className="rounded-none">
             Back
           </Button>

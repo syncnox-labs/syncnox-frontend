@@ -457,8 +457,8 @@ const RoutePage = () => {
       );
 
       const fixedDriver =
-        customFields.fixed_driver_name ||
-        customFields.fixed_return_driver_name ||
+        customFields.team_leader_name || customFields.team_leader ||
+        (fullJob?.job_type === "return_only" ? customFields.fixed_return_driver_name : customFields.fixed_driver_name) ||
         undefined;
 
       const reasonCode = unassignedJob.reason_code || "OTHER";
