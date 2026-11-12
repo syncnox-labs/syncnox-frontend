@@ -10,8 +10,9 @@ import { useEffect, useState } from "react";
 import { createActionsColumn } from "@/components/Table/ActionsColumn";
 import Link from "next/link";
 import { useIndexStore } from "@/store/index.store";
-import { FilterFilled, DeleteOutlined, ExclamationCircleFilled } from "@ant-design/icons";
+import { FilterFilled, DeleteOutlined, ExclamationCircleFilled, PlusOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { planActionsClassName, planToolbarClassName } from "./planStyles";
 
 const { Title } = Typography;
 
@@ -337,13 +338,16 @@ export default function RoutesView() {
 
   return (
     <div className="flex flex-col h-full min-h-[360px] min-w-0">
-      <Flex justify="space-between" gap={36} align="center" className="plan-toolbar responsive-toolbar !mb-0 shrink-0">
+      <Flex justify="space-between" gap={36} align="center" className={planToolbarClassName}>
         <Title level={4} className="m-0 pt-2">
           Routes
         </Title>
-        <Flex wrap gap={8} align="center">
+        <Flex wrap gap={8} align="center" className={`${planActionsClassName} ms-auto`}>
           <Link href="/plan" onClick={() => setCurrentTab("jobs")}>
-            <Button>Create New Route</Button>
+            <Button aria-label="Create new route">
+              <span className="inline-flex items-center gap-1.5 lg:hidden"><PlusOutlined aria-hidden="true" />Route</span>
+              <span className="hidden lg:inline">Create New Route</span>
+            </Button>
           </Link>
           <Button
             danger

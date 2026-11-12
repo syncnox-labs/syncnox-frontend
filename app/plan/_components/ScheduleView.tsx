@@ -10,6 +10,7 @@ import {
   SCHEDULE_STATUS_COLORS,
 } from "@/types/schedule.type";
 import dayjs, { Dayjs } from "dayjs";
+import { planActionsClassName, scheduleTitleClassName, scheduleToolbarClassName } from "./planStyles";
 
 const { Title } = Typography;
 
@@ -56,15 +57,11 @@ export default function ScheduleView() {
     setSelectedDate((prev) => prev.add(1, "day"));
   };
 
-  const goToToday = () => {
-    setSelectedDate(dayjs());
-  };
-
   return (
     <div className="flex flex-col h-full min-h-[360px] min-w-0">
-      <Flex justify="space-between" align="center" className="plan-toolbar responsive-toolbar !mb-0 shrink-0">
+      <Flex justify="space-between" align="center" wrap className={scheduleToolbarClassName}>
         <Flex wrap gap={12} align="center">
-          <Title level={4} className="m-0 pt-2">
+          <Title level={4} className={scheduleTitleClassName}>
             Driver Schedule
           </Title>
           <Flex wrap gap={8} align="center">
@@ -92,14 +89,13 @@ export default function ScheduleView() {
           </Flex>
         </Flex>
 
-        <Flex wrap gap={8} align="center">
+        <Flex wrap gap={8} align="center" className={planActionsClassName}>
           <Select
             value={intervalMinutes}
             onChange={setIntervalMinutes}
             options={INTERVAL_OPTIONS}
             style={{ width: 100 }}
           />
-          <Button onClick={goToToday}>Today</Button>
           <Button icon={<LeftOutlined />} onClick={goToPreviousDay} />
           <DatePicker
             value={selectedDate}

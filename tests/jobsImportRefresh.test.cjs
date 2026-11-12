@@ -14,6 +14,7 @@ function displayedJobIds(store) {
   const Null = () => null;
   const exports = {};
   const imports = {
+    "./planStyles": {},
     "@/store/jobs.store": { useJobsStore: () => store.getState() },
     "@/store/team.store": { useTeamStore: () => ({ getTeamsMap: () => ({}) }) },
     "@/store/index.store": { useIndexStore: () => ({ activeJobTemplate: "worker_shuttle" }) },

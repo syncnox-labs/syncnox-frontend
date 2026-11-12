@@ -41,6 +41,7 @@ import CreateRouteModal from "@/app/plan/_components/CreateRouteModal";
 import DraftJobsDatePicker from "@/components/Jobs/DraftJobsDatePicker";
 import AddJobsModal from "@/app/plan/AddJobsModal";
 import BulkUploadModal from "@/components/BulkUploadModal";
+import { jobsActionsClassName, jobsDateGroupClassName, jobsToolbarClassName } from "./planStyles";
 
 const { Title } = Typography;
 
@@ -329,8 +330,8 @@ export default function JobsList() {
   return (
     <div className="flex flex-col h-full min-h-[360px] min-w-0">
       {/* ── Top Bar (Exact same layout as RoutesView) ── */}
-      <Flex justify="space-between" gap={36} align="center" className="plan-toolbar responsive-toolbar !mb-0 shrink-0">
-        <Flex wrap gap={12} align="center">
+      <Flex justify="space-between" gap={8} align="center" wrap className={jobsToolbarClassName}>
+        <Flex wrap gap={12} align="center" className={jobsDateGroupClassName}>
           <Title level={4} className="m-0 pt-2">
             Jobs
           </Title>
@@ -341,12 +342,14 @@ export default function JobsList() {
           />
         </Flex>
 
-        <Flex wrap gap={8} align="center">
+        <Flex wrap gap={8} align="center" className={jobsActionsClassName}>
           <Button
+            aria-label="Create new route"
             disabled={selectedJobIds.length === 0}
             onClick={() => setShowCreateRouteModal(true)}
           >
-            Create New Route
+            <span className="inline-flex items-center gap-1.5 lg:hidden"><PlusOutlined aria-hidden="true" />Route</span>
+            <span className="hidden lg:inline">Create New Route</span>
           </Button>
 
           <Button
@@ -364,10 +367,12 @@ export default function JobsList() {
 
           <Dropdown menu={{ items: addJobsMenuItems }} trigger={["click"]}>
             <Button
+              aria-label="Add jobs"
               type="primary"
               className="bg-[#003220] hover:bg-[#002417] text-white flex items-center gap-1.5 border-none"
             >
-              <span>Add Jobs</span>
+              <span className="inline-flex items-center gap-1.5 lg:hidden">Jobs</span>
+              <span className="hidden lg:inline">Add Jobs</span>
               <DownOutlined style={{ fontSize: "10px" }} />
             </Button>
           </Dropdown>

@@ -143,12 +143,12 @@ const TeamList = () => {
   return (
     <div className="responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
       {/* ── Page header ─────────────────────────────────────────── */}
-      <div className="flex items-center justify-between pb-3 shrink-0 border-b border-gray-200 mb-0">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 pb-3 shrink-0 border-b border-gray-200 mb-0">
         <SettingsPageTitle
           title="Team Members"
           description={view === "table" ? "Compare team members, filter columns, and select a name to edit." : "Pick a member in the list to edit their details in the detail panel."}
         />
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <EntityViewToggle value={view} onChange={setView} label="Team" />
           {checkedIds.length > 0 && (
             <Button

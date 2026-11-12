@@ -195,38 +195,6 @@ body {
   opacity: 0 !important;
 }
 
-/* Route view icon-only radio switcher centering */
-.view-switch-radio.ant-radio-group {
-  display: inline-flex !important;
-  align-items: center !important;
-  height: 32px !important;
-  line-height: 1 !important;
-  vertical-align: middle !important;
-}
-
-.view-switch-radio .ant-radio-button-wrapper {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  height: 32px !important;
-  width: 40px !important;
-  min-width: 40px !important;
-  padding: 0 !important;
-  line-height: 1 !important;
-  vertical-align: middle !important;
-}
-
-.view-switch-radio .ant-radio-button-wrapper > span:not(.ant-radio-button),
-.view-switch-radio .ant-radio-button-wrapper .ant-radio-button-label {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  width: 100% !important;
-  height: 100% !important;
-  padding: 0 !important;
-  line-height: 1 !important;
-}
-
 /* Bulk Upload Modal Full Height */
 .bulk-upload-modal .ant-modal-content {
   height: 90vh;
@@ -491,11 +459,6 @@ body {
   .reorder-stop-row .ant-btn { min-width: 44px; }
 }
 @media (max-width: 1023px) {
-  .view-switch-radio.ant-radio-group,
-  .view-switch-radio .ant-radio-button-wrapper { height: 44px !important; }
-  .view-switch-radio .ant-radio-button-wrapper { width: 44px !important; min-width: 44px !important; }
-}
-@media (max-width: 1023px) {
   .responsive-entity-list input { min-height: 44px; }
   .ant-select-dropdown,
   .ant-dropdown-menu { max-width: calc(100vw - 16px); }
@@ -513,6 +476,20 @@ body {
 
 @media (max-width: 1023px) {
   .responsive-settings button { min-height: 44px; }
+}
+
+/* Compact header action buttons in settings/entity pages on mobile */
+@media (max-width: 1023px) {
+  .responsive-entity-page > div:first-child .ant-btn {
+    height: 36px;
+    min-height: 36px;
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+  .responsive-entity-page > div:first-child .ant-btn-icon-only {
+    width: 36px;
+    padding-inline: 0;
+  }
 }
 @media (max-width: 1023px) {
   /* The outer affix wrapper supplies the touch height for search/password inputs. */
@@ -548,9 +525,6 @@ body {
   gap: 4px;
 }
 .route-header .ant-btn-icon-only { width: 24px; padding-inline: 0; }
-.route-header .view-switch-radio.ant-radio-group,
-.route-header .view-switch-radio .ant-radio-button-wrapper { height: 24px !important; }
-.route-header .view-switch-radio .ant-radio-button-wrapper { width: 32px !important; min-width: 32px !important; }
 .route-header .ant-input { height: 24px; min-height: 24px; font-size: 12px !important; }
 
 .route-actions-menu .ant-dropdown-menu-item {
@@ -587,42 +561,3 @@ body {
 }
 .timeline-compact-controls .ant-select-content,
 .timeline-compact-controls .ant-select-selection-item { font-size: 12px !important; }
-
-/* Compact planning controls while preserving the larger form input sizes. */
-@media (max-width: 639px) {
-  /* The active tab provides the visible title; retain the heading for screen readers. */
-  .plan-toolbar h4 {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px !important;
-    padding: 0 !important;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-}
-
-@media (max-width: 1023px) {
-  .plan-toolbar .ant-btn {
-    height: 36px;
-    min-height: 36px;
-    padding-inline: 6px;
-    font-size: 12px;
-  }
-  .plan-toolbar > div:last-child { gap: 6px !important; }
-  .plan-toolbar .ant-btn-icon-only {
-    width: 36px;
-    padding-inline: 0;
-  }
-  .plan-toolbar .ant-picker,
-  .plan-toolbar .ant-select-single {
-    height: 36px;
-    min-height: 36px;
-  }
-  .plan-toolbar .ant-picker {
-    width: 154px;
-    max-width: 100%;
-    padding-block: 4px;
-  }
-}
