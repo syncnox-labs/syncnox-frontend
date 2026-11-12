@@ -17,7 +17,6 @@ import {
   Switch,
   Checkbox,
   Select,
-  Radio,
   Dropdown,
   type MenuProps,
 } from "antd";
@@ -38,7 +37,7 @@ import {
 import dayjs from "dayjs";
 
 import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
-import { CircleX, X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil, Route as RouteIcon, FileText, Truck } from "lucide-react";
+import { CircleX, X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil } from "lucide-react";
 import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
 import { buildMapSearchIndex } from "./mapSearch.utils";
@@ -47,6 +46,7 @@ import TimelineView from "./TimelineView";
 import CandidateMessagesModal from "./CandidateMessagesModal";
 import { candidateMessagesEnabled } from "@/apis/candidateMessages.api";
 import AssignedJobsTable from "./AssignedJobsTable";
+import RouteViewSwitch from "./RouteViewSwitch";
 import VehicleAssignments from "./VehicleAssignments";
 import type { VehicleAssignment } from "./vehicleSchedule.utils";
 import OptimizationIssueBanner from "./OptimizationIssueBanner";
@@ -2229,110 +2229,19 @@ const OptimizationView = ({
           </div>
         </div>
 
-        {/* Keep the three view controls centered between route details and sharing. */}
+        {/* Narrow workspaces use equal-width, labelled view tabs. */}
         <div className="route-view-switch flex items-center min-w-0">
-          <div className="pointer-events-auto flex items-center">
-            <Radio.Group
-              size="small"
-              aria-label="Route view"
-              buttonStyle="solid"
-              className="view-switch-radio whitespace-nowrap inline-flex items-center"
-              value={detailView}
-              onChange={({ target: { value } }) => {
-                setDetailView(value as "timeline" | "table" | "vehicles");
-                if (value === "table") setHasOpenedTable(true);
-                if (value === "vehicles") {
-                  setHasOpenedVehicles(true);
-                  if (mapViewState === "fullscreen") handleToggleFullscreen();
-                }
-              }}
-            >
-              <Radio.Button
-                value="timeline"
-                aria-label="Timeline"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: 24,
-                  width: 32,
-                  padding: 0,
-                  lineHeight: 1,
-                }}
-              >
-                <Tooltip title="Timeline" placement="bottom" mouseEnterDelay={0.15}>
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: "100%",
-                      height: "100%",
-                      lineHeight: 1,
-                    }}
-                  >
-                    <RouteIcon size={16} strokeWidth={2} className="block shrink-0" />
-                  </span>
-                </Tooltip>
-              </Radio.Button>
-              <Radio.Button
-                value="table"
-                aria-label="Jobs"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: 24,
-                  width: 32,
-                  padding: 0,
-                  lineHeight: 1,
-                }}
-              >
-                <Tooltip title="Jobs" placement="bottom" mouseEnterDelay={0.15}>
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: "100%",
-                      height: "100%",
-                      lineHeight: 1,
-                    }}
-                  >
-                    <FileText size={16} strokeWidth={2} className="block shrink-0" />
-                  </span>
-                </Tooltip>
-              </Radio.Button>
-              <Radio.Button
-                value="vehicles"
-                aria-label="Vehicles"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: 24,
-                  width: 32,
-                  padding: 0,
-                  lineHeight: 1,
-                }}
-              >
-                <Tooltip title="Vehicles" placement="bottom" mouseEnterDelay={0.15}>
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: "100%",
-                      height: "100%",
-                      lineHeight: 1,
-                    }}
-                  >
-                    <Truck size={16} strokeWidth={2} className="block shrink-0" />
-                  </span>
-                </Tooltip>
-              </Radio.Button>
-            </Radio.Group>
-          </div>
+          <RouteViewSwitch
+            value={detailView}
+            onChange={value => {
+              setDetailView(value);
+              if (value === "table") setHasOpenedTable(true);
+              if (value === "vehicles") {
+                setHasOpenedVehicles(true);
+                if (mapViewState === "fullscreen") handleToggleFullscreen();
+              }
+            }}
+          />
         </div>
       </nav>
 

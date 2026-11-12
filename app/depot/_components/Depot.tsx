@@ -147,14 +147,14 @@ const Depot = () => {
   const splitContent = (
     <div className="responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
       {/* ── Page header ─────────────────────────────────────────── */}
-      <div className="flex items-center justify-between pb-3 shrink-0 border-b border-gray-200 mb-0">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 pb-3 shrink-0 border-b border-gray-200 mb-0">
         <div>
           <h1 className="text-lg font-bold text-gray-900 m-0">Depots</h1>
           <p className="text-xs text-gray-500 mt-0.5">
             Pick a depot in the list to edit it. Drag the pin on the map to adjust its location.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {checkedIds.length > 0 && (
             <Button
               danger
