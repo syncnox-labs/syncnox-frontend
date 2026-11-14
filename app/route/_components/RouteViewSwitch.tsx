@@ -20,7 +20,7 @@ export default function RouteViewSwitch({ value, onChange }: {
       size="small"
       aria-label="Route view"
       buttonStyle="solid"
-      className="pointer-events-auto inline-flex! h-6! items-center! whitespace-nowrap @max-[640px]:h-7! @max-[640px]:w-full!"
+      className="pointer-events-auto inline-flex! h-6! items-center! whitespace-nowrap lg:h-8! @max-[640px]:h-7! @max-[640px]:w-full!"
       value={value}
       onChange={event => onChange(event.target.value as RouteDetailView)}
     >
@@ -29,7 +29,7 @@ export default function RouteViewSwitch({ value, onChange }: {
           key={option}
           value={option}
           aria-label={label}
-          className="inline-flex! h-6! w-8! min-w-8! items-center! justify-center! p-0! leading-none! @max-[640px]:h-7! @max-[640px]:w-auto! @max-[640px]:min-w-0! @max-[640px]:flex-1! @max-[640px]:px-1.5!"
+          className="inline-flex! h-6! w-8! min-w-8! items-center! justify-center! p-0! leading-none! lg:h-8! @max-[640px]:h-7! @max-[640px]:w-auto! @max-[640px]:min-w-0! @max-[640px]:flex-1! @max-[640px]:px-1.5!"
         >
           <Tooltip title={label} placement="bottom" mouseEnterDelay={0.15}>
             <span className="inline-flex h-full w-full items-center justify-center gap-1.5 @max-[640px]:gap-1">

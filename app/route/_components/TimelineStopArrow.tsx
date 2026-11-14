@@ -186,7 +186,7 @@ export const TimelineStopArrow = React.forwardRef<
     : isStopNew
     ? "drop-shadow(0 0 6px rgba(16, 185, 129, 0.75)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12))"
     : isStopEdited
-    ? "drop-shadow(0 0 6px rgba(147, 51, 234, 0.75)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12))"
+    ? undefined
     : isDropTarget
     ? "drop-shadow(0 0 8px rgba(16, 185, 129, 0.85))"
     : "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12))";
@@ -235,7 +235,7 @@ export const TimelineStopArrow = React.forwardRef<
 
       {/* Edited Job Badge */}
       {!isStopNew && isStopEdited && !isStopSelected && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded shadow-xs flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
           <ClockCircleOutlined className="text-[8px]" /> EDITED
         </div>
       )}
@@ -255,7 +255,7 @@ export const TimelineStopArrow = React.forwardRef<
       {/* Corner edited indicator */}
       {isStopEdited && !isStopNew && (
         <div
-          className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-full border border-white shadow-xs z-20 pointer-events-none"
+          className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-full border border-white z-20 pointer-events-none"
           title="Job edited"
         >
           <ClockCircleOutlined className="text-[7.5px]" />

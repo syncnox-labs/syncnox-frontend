@@ -187,7 +187,7 @@ export const createCustomMarkerIcon = (
             <feMergeNode in="SourceGraphic"/>
           </feMerge>
         </filter>
-        ${(isNew || isTimeEdited) ? `
+        ${isNew ? `
         <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur"/>
           <feComponentTransfer in="blur" result="glow">
@@ -204,7 +204,7 @@ export const createCustomMarkerIcon = (
       <!-- Main pin body (teardrop for stops and additional locations, rounded square for depot) -->
       ${
         isDepot
-          ? `<rect x="2" y="2" width="28" height="28" rx="6" fill="${fillColor}" filter="url(#${(isNew || isTimeEdited) ? 'glow' : 'shadow'})"/>
+          ? `<rect x="2" y="2" width="28" height="28" rx="6" fill="${fillColor}" filter="${isNew ? 'url(#glow)' : isTimeEdited ? 'none' : 'url(#shadow)'}"/>
              ${depotIconSvg}
             `
           : `<path 
@@ -212,7 +212,7 @@ export const createCustomMarkerIcon = (
             fill="${fillColor}"
             stroke="${isNew ? '#059669' : isTimeEdited ? '#9333ea' : strokeColor}"
             stroke-width="${(isNew || isTimeEdited) ? 4 : strokeWidth}"
-            filter="url(#${(isNew || isTimeEdited) ? 'glow' : 'shadow'})"
+            filter="${isNew ? 'url(#glow)' : isTimeEdited ? 'none' : 'url(#shadow)'}"
           />
           
           ${

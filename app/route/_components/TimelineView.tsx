@@ -3296,14 +3296,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           } ${
                                             isDropTarget ? "ring-2 ring-emerald-400 ring-offset-1" : ""
                                           } ${
-                                            isStopNew ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg" : isStopEdited ? "ring-2 ring-purple-500 ring-offset-1 shadow-lg" : ""
+                                            isStopNew ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg" : ""
                                           } ${
                                             isStopSelected
                                               ? "ring-2 ring-emerald-500 ring-offset-2 scale-105 z-30 shadow-lg"
                                               : isStopNew
                                               ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg"
-                                              : isStopEdited
-                                              ? "ring-2 ring-purple-500 ring-offset-1 shadow-lg"
                                               : ""
                                           } ${
                                             isGroupPendingDelete ? "opacity-35 border-dashed border-red-500 bg-red-100" : ""
@@ -3311,6 +3309,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           style={{
                                             left: left,
                                             width: Math.max(blockWidth, 28),
+                                            boxShadow: isStopEdited && !isStopSelected && !isStopNew && !isDropTarget && !isDraggingThis ? "none" : undefined,
                                             backgroundColor: isGroupPendingDelete ? undefined : blockBgColor,
                                             borderColor: isGroupPendingDelete ? undefined : isStopSelected || isStopNew ? "#059669" : isStopEdited ? "#9333ea" : blockBorderColor,
                                             opacity: isDimmed ? 0.4 : isDraggingThis ? 0.3 : 1,
@@ -3335,7 +3334,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                                           {/* Edited Job Badge */}
                                           {!isStopNew && isStopEdited && !isStopSelected && (
-                                            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded-none shadow-xs flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
+                                            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded-none flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
                                               <ClockCircleOutlined className="text-[8px]" /> EDITED
                                             </div>
                                           )}
@@ -3367,7 +3366,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           {/* Corner edited indicator */}
                                           {!isDepot && isStopEdited && !isStopNew && (
                                             <div 
-                                              className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-none border border-white shadow-xs z-20"
+                                              className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-none border border-white z-20"
                                               title="Job edited"
                                             >
                                               <ClockCircleOutlined className="text-[7.5px]" />
@@ -3475,8 +3474,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             ? "ring-2 ring-emerald-500 ring-offset-2 scale-105 z-30 shadow-lg"
                                             : isStopNew
                                             ? "ring-2 ring-emerald-500 ring-offset-1 shadow-lg"
-                                            : isStopEdited
-                                            ? "ring-2 ring-purple-500 ring-offset-1 shadow-lg"
                                             : ""
                                         } ${
                                           isGroupPendingDelete
@@ -3485,6 +3482,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         }`}
                                         style={{
                                           left: left - 14,
+                                          boxShadow: isStopEdited && !isStopSelected && !isStopNew && !isDropTarget && !isDraggingThis ? "none" : undefined,
                                           backgroundColor: isGroupPendingDelete
                                             ? undefined
                                             : "#ffffff",
@@ -3517,7 +3515,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                                         {/* Edited Job Badge */}
                                         {!isStopNew && isStopEdited && !isDepot && !isStopSelected && (
-                                          <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded shadow-xs flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
+                                          <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
                                             <ClockCircleOutlined className="text-[8px]" /> EDITED
                                           </div>
                                         )}
@@ -3553,7 +3551,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             ) : null}
                                             {!isDepot && isStopEdited && !isStopNew && (
                                               <div 
-                                                className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-full border border-white shadow-xs z-20"
+                                                className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-full border border-white z-20"
                                                 title="Job edited"
                                               >
                                                 <ClockCircleOutlined className="text-[7.5px]" />

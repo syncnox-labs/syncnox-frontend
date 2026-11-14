@@ -415,10 +415,18 @@ body {
   .route-map-search { max-width: 100%; }
   .route-map-search-toggle.is-expanded { width: min(288px, 100%); }
   .route-map-search button { min-width: 44px; min-height: 44px; }
-  .route-map-overlay { top: 64px; max-width: calc(100% - 24px) !important; }
+  .route-map-overlay { top: 12px; max-width: calc(100% - 24px) !important; }
 }
 
+@media (max-width: 319px) {
+  .route-map-overlay { top: 64px; }
+}
+
+.job-details-actions button.ant-btn { height: 32px; min-height: 32px; }
+
 @media (max-width: 639px) {
+  .map-comparison-overlay { top: auto; right: 12px; height: min(55%, 340px); }
+  .map-comparison-overlay > section { width: 100%; max-width: none; height: 100%; }
   .responsive-toolbar { gap: 8px !important; }
   .responsive-settings > div:first-child > div:last-child { flex-wrap: wrap; gap: 8px; }
   .responsive-entity-page > div:first-child p { max-width: 36rem; }
@@ -526,6 +534,17 @@ body {
 }
 .route-header .ant-btn-icon-only { width: 24px; padding-inline: 0; }
 .route-header .ant-input { height: 24px; min-height: 24px; font-size: 12px !important; }
+
+@media (min-width: 1024px) {
+  .route-header button.ant-btn {
+    height: 32px;
+    min-height: 32px;
+    padding-inline: 15px;
+    font-size: 14px;
+    gap: 8px;
+  }
+  .route-header button.ant-btn-icon-only { width: 32px; padding-inline: 0; }
+}
 
 .route-actions-menu .ant-dropdown-menu-item {
   min-height: 28px;
