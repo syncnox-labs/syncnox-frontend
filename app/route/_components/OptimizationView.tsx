@@ -40,6 +40,8 @@ import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
 import { CircleX, X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil } from "lucide-react";
 import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
+import MapComparePanel from "./MapComparePanel";
+import { buildMapCompareItems } from "./mapCompare.utils";
 import { buildMapSearchIndex } from "./mapSearch.utils";
 import { getRouteStopDisplay } from "./stopDisplay.utils";
 import TimelineView from "./TimelineView";
@@ -47,6 +49,7 @@ import CandidateMessagesModal from "./CandidateMessagesModal";
 import { candidateMessagesEnabled } from "@/apis/candidateMessages.api";
 import AssignedJobsTable from "./AssignedJobsTable";
 import RouteViewSwitch from "./RouteViewSwitch";
+import RouteShareButton from "./RouteShareButton";
 import VehicleAssignments from "./VehicleAssignments";
 import type { VehicleAssignment } from "./vehicleSchedule.utils";
 import OptimizationIssueBanner from "./OptimizationIssueBanner";
@@ -234,8 +237,9 @@ const OptimizationView = ({
 
   const planJobIds = useMemo(() => [...new Set([
     ...(route.job_ids || []),
+    ...(route.result?.unassigned_jobs || []).map(job => job.job_id),
     ...(route.result?.routes || []).flatMap(trip => (trip.stops || []).map(stop => stop.job_id).filter((id): id is number => typeof id === "number")),
-  ])], [route.job_ids, route.result?.routes]);
+  ])], [route.job_ids, route.result?.routes, route.result?.unassigned_jobs]);
 
   useEffect(() => {
     if (planJobIds.length > 0) {
@@ -1104,6 +1108,37 @@ const OptimizationView = ({
     [route, jobs, focusedRouteIndex, allowedRouteIndices],
   );
   const unassignedTableJobs = useMemo(() => getUnassignedRouteJobs(route, jobs), [route, jobs]);
+  const [comparingStops, setComparingStops] = useState(false);
+  const [comparisonKeys, setComparisonKeys] = useState<string[]>([]);
+  const compareButtonRef = useRef<HTMLButtonElement>(null);
+  const comparisonItems = useMemo(() => buildMapCompareItems(candidateIndex, unassignedTableJobs), [candidateIndex, unassignedTableJobs]);
+  const comparisonItemsByKey = useMemo(() => new Map(comparisonItems.map(item => [item.key, item])), [comparisonItems]);
+  const selectedComparisonItems = useMemo(() => comparisonKeys.flatMap(key => {
+    const item = comparisonItemsByKey.get(key);
+    return item?.marker ? [item] : [];
+  }), [comparisonKeys, comparisonItemsByKey]);
+  const comparisonMarkers = useMemo<MarkerData[]>(() => selectedComparisonItems.map((item, index) => ({
+    ...item.marker!, iconLabel: String(index + 1),
+  })), [selectedComparisonItems]);
+  const comparisonPoints = useMemo(() => comparisonMarkers.map(marker => marker.position), [comparisonMarkers]);
+
+  useEffect(() => {
+    setComparingStops(false);
+    setComparisonKeys([]);
+  }, [route.id]);
+
+  useEffect(() => {
+    if (isJobsLoading) return;
+    setComparisonKeys(current => {
+      const available = current.filter(key => comparisonItemsByKey.get(key)?.marker);
+      return available.length === current.length ? current : available;
+    });
+  }, [comparisonItemsByKey, isJobsLoading]);
+
+  const toggleComparisonItem = useCallback((key: string) => {
+    setComparisonKeys(current => current.includes(key) ? current.filter(item => item !== key) : [...current, key]);
+    setSelectedMarkerId(null);
+  }, []);
   const tableTeamsMap = useMemo(() => ({
     ...Object.fromEntries(teams.map(team => [team.id, team.name])),
     ...Object.fromEntries((route.result?.routes || []).map(trip => [trip.team_member_id, trip.team_member_name])),
@@ -2204,17 +2239,10 @@ const OptimizationView = ({
                   />
                 </Tooltip>
               )}
-              <Tooltip title="Share ready driver routes. Routes with unresolved issues are skipped and listed in the result.">
-                <Button size="small" type="primary" aria-label="Share saved route to drivers" icon={<ShareAltOutlined />} loading={isSharing}
-                  disabled={isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued"}
-                  onClick={() => handleShareToApp()} className="shrink-0">
-                  <span className="route-action-label">{shareButtonLabel}</span>
-                </Button>
-              </Tooltip>
-              {isWorkerShuttle && messagingEnabled && <Tooltip title="Send WhatsApp">
-                <Button size="small" aria-label="Send WhatsApp" icon={<MessageOutlined />} className="shrink-0"
-                  onClick={() => setMessageSelection({ planId: route.id })}><span className="route-action-label">Send WhatsApp</span></Button>
-              </Tooltip>}
+              <RouteShareButton showWhatsApp={Boolean(isWorkerShuttle && messagingEnabled)} isSharing={isSharing}
+                shareDisabled={isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued"}
+                shareLabel={shareButtonLabel} onShare={() => void handleShareToApp()}
+                onWhatsApp={() => setMessageSelection({ planId: route.id })} />
             </div>}
             <div className="shrink-0">
               <Dropdown
@@ -2298,22 +2326,23 @@ const OptimizationView = ({
               }`}
             >
               <GoogleMaps
-                polylines={routePolylines}
-                markers={markers}
+                polylines={comparingStops ? [] : routePolylines}
+                markers={comparingStops ? comparisonMarkers : markers}
+                comparisonPoints={comparingStops ? comparisonPoints : null}
                 center={center}
                 zoom={12}
                 selectedMarkerId={selectedMarkerId}
-                onMarkerSelect={handleMarkerSelect}
-                onMapClick={clearFocus}
+                onMarkerSelect={comparingStops ? setSelectedMarkerId : handleMarkerSelect}
+                onMapClick={comparingStops ? () => setSelectedMarkerId(null) : clearFocus}
                 showDirectionArrows={true}
                 onToggleFullscreen={handleToggleFullscreen}
                 onToggleCollapse={handleToggleCollapse}
                 mapViewState={mapViewState}
                 InfoWindowModal={RouteInfoWindow}
-                isDrawingArea={isDrawingArea}
+                isDrawingArea={!comparingStops && isDrawingArea}
                 onAreaDrawn={handleAreaDrawn}
-                selectionArea={selectionArea}
-                mapToolbarExtra={
+                selectionArea={comparingStops ? null : selectionArea}
+                mapToolbarExtra={!comparingStops ? (
                   <Popover
                     title="Map settings"
                     trigger="click"
@@ -2361,9 +2390,9 @@ const OptimizationView = ({
                       }}
                     />
                   </Popover>
-                }
-                showInfoWindow={(m) => Boolean(m.isDepot || m.isAdditionalLocation)}
-                layersDropdownExtra={
+                ) : null}
+                showInfoWindow={(m) => comparingStops || Boolean(m.isDepot || m.isAdditionalLocation)}
+                layersDropdownExtra={!comparingStops ? (
                   <div className="flex flex-col gap-2.5 text-xs font-sans w-[min(240px,calc(100vw-64px))] max-w-[280px]">
                     <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
                       Map Overlays
@@ -2553,7 +2582,7 @@ const OptimizationView = ({
                       )}
                     </div>
                   </div>
-                }
+                ) : null}
               />
 
               <DrawingStatusTip active={isDrawingArea} />
@@ -2619,7 +2648,21 @@ const OptimizationView = ({
               </Modal>
 
               {/* Top-left overlay column: focus chip + in-map search stacked */}
-              <div className="route-map-overlay absolute top-3 left-3 z-40 flex flex-col gap-1.5" style={{ maxWidth: "calc(100% - 120px)" }}>
+              <div className={`${comparingStops ? "map-comparison-overlay bottom-3" : "route-map-overlay"} absolute top-3 left-3 z-40 flex flex-col gap-1.5`} style={{ maxWidth: comparingStops ? "calc(100% - 24px)" : "calc(100% - 120px)" }}>
+                {comparingStops ? <MapComparePanel
+                  items={comparisonItems}
+                  selected={selectedComparisonItems}
+                  onToggle={toggleComparisonItem}
+                  onClear={() => { setComparisonKeys([]); setSelectedMarkerId(null); }}
+                  onClose={() => {
+                    setComparingStops(false);
+                    setComparisonKeys([]);
+                    setSelectedMarkerId(null);
+                    requestAnimationFrame(() => compareButtonRef.current?.focus());
+                  }}
+                  loading={isJobsLoading}
+                  error={jobsError}
+                /> : <>
                 {/* Clear-focus chip */}
                 {focusedRouteIndex !== null && (
                   <div className="flex items-center gap-2 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-none shadow-md pl-3 pr-1.5 py-1.5 self-start">
@@ -2655,6 +2698,16 @@ const OptimizationView = ({
                   onSelect={handleSelectCandidate}
                   onOpenAddJob={() => setIsAddJobOpen(true)}
                 />
+                <button ref={compareButtonRef} type="button" onClick={() => {
+                  clearAreaSelection();
+                  setIsMapSettingsOpen(false);
+                  setSelectedDrawerJob(null);
+                  setSelectedMarkerId(null);
+                  setComparingStops(true);
+                }} className="flex min-h-9 cursor-pointer items-center gap-2 self-start border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 shadow-md hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-700">
+                  <ArrowRightLeft size={14} /> Compare stops
+                </button>
+                </>}
               </div>
             </div>
           </Panel>

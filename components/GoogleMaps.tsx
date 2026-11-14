@@ -68,6 +68,15 @@ export interface MarkerData {
   isAdditionalLocation?: boolean;
   locationType?: string;
   zIndex?: number;
+  comparison?: {
+    jobId: string;
+    name?: string;
+    driverName?: string;
+    stopNumber?: number;
+    leg?: string;
+    arrivalTime?: string;
+    unassigned: boolean;
+  };
 }
 
 export interface PolylineData {
@@ -105,6 +114,8 @@ export interface GoogleMapsProps {
   onAreaDrawn?: (path: google.maps.LatLngLiteral[]) => void;
   /** A finished selection polygon to render on the map. */
   selectionArea?: google.maps.LatLngLiteral[] | null;
+  /** When set, frame these comparison points and restore the previous viewport on exit. */
+  comparisonPoints?: google.maps.LatLngLiteral[] | null;
 }
 
 const GoogleMaps: React.FC<GoogleMapsProps> = ({
@@ -129,6 +140,7 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
   isDrawingArea = false,
   onAreaDrawn,
   selectionArea = null,
+  comparisonPoints = null,
 }) => {
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script",
@@ -143,6 +155,7 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
   const [map, setMap] = useState<google.maps.Map | null>(null);
   // Hold references to all native google.maps.Polyline instances currently on the map.
   const nativePolylinesRef = useRef<google.maps.Polyline[]>([]);
+  const previousViewportRef = useRef<{ center: google.maps.LatLngLiteral; zoom: number } | null>(null);
 
   const onLoad = useCallback(
     function callback(mapInstance: google.maps.Map) {
@@ -217,6 +230,47 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [polylines, map]);
+
+  useEffect(() => {
+    if (!map) return;
+    if (comparisonPoints === null) {
+      const previous = previousViewportRef.current;
+      if (previous) {
+        map.setCenter(previous.center);
+        map.setZoom(previous.zoom);
+        previousViewportRef.current = null;
+      }
+      return;
+    }
+    if (!previousViewportRef.current) {
+      const currentCenter = map.getCenter();
+      const currentZoom = map.getZoom();
+      if (currentCenter && currentZoom !== undefined) {
+        previousViewportRef.current = { center: currentCenter.toJSON(), zoom: currentZoom };
+      }
+    }
+    if (!comparisonPoints.length) return;
+    const bounds = new google.maps.LatLngBounds();
+    comparisonPoints.forEach(point => bounds.extend(point));
+    const div = map.getDiv();
+    if (!div.clientWidth || !div.clientHeight) return;
+    const compact = window.matchMedia("(max-width: 639px)").matches;
+    const padding = {
+      left: compact ? 20 : Math.min(380, Math.floor(div.clientWidth * 0.45)),
+      right: Math.min(60, Math.floor(div.clientWidth * 0.1)),
+      top: Math.min(60, Math.floor(div.clientHeight * 0.15)),
+      bottom: compact ? Math.floor(div.clientHeight * 0.58) : Math.min(60, Math.floor(div.clientHeight * 0.15)),
+    };
+    map.fitBounds(bounds, padding);
+    const listener = google.maps.event.addListenerOnce(map, "idle", () => {
+      if ((map.getZoom() ?? 0) > 15) {
+        map.setCenter(bounds.getCenter());
+        map.setZoom(15);
+        map.panBy((padding.right - padding.left) / 2, (padding.bottom - padding.top) / 2);
+      }
+    });
+    return () => google.maps.event.removeListener(listener);
+  }, [comparisonPoints, map, mapViewState]);
 
   if (!isLoaded) {
     return <></>;

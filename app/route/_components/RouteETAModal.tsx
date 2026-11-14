@@ -44,7 +44,7 @@ export default function RouteETAModal({ plan, selection, onClose, onSaved }: {
       const arrival = dayjs(stop.arrival_time);
       if (!arrival.isValid()) throw new Error("This stop has no saved ETA to edit.");
       setSource({ route, requestId, routeIndex, stopIndex });
-      setValue(arrival);
+      setValue(arrival.startOf("minute"));
     }).catch(reason => { if (current === session.current) setError(manualRoutingError(reason)); })
       .finally(() => { if (current === session.current) setBusy(null); });
     return () => { session.current = current + 1; };
@@ -88,8 +88,8 @@ export default function RouteETAModal({ plan, selection, onClose, onSaved }: {
     {source && <div className="space-y-4">
       <div>
         <label htmlFor="route-eta-arrival" className="block mb-2 font-semibold">New arrival date and time</label>
-        <DatePicker id="route-eta-arrival" value={value} onChange={next => { setValue(next); setError(undefined); }}
-          showTime needConfirm={false} format="YYYY-MM-DD HH:mm:ss" className="w-full" disabled={Boolean(busy)} />
+        <DatePicker id="route-eta-arrival" value={value} onChange={next => { setValue(next?.startOf("minute") ?? null); setError(undefined); }}
+          showTime={{ format: "HH:mm", showSecond: false }} needConfirm={false} format="YYYY-MM-DD HH:mm" className="w-full" disabled={Boolean(busy)} />
         <p className="mt-2 text-slate-500 text-sm">Use the route&apos;s local time. This stop and all following stops move by the same amount. Earlier stops keep their times.</p>
       </div>
       {value?.isValid() && <div className="max-h-56 overflow-auto custom-scrollbar border border-slate-200">
@@ -97,8 +97,8 @@ export default function RouteETAModal({ plan, selection, onClose, onSaved }: {
           <th className="p-2">Stop</th><th className="p-2">Current</th><th className="p-2">After saving</th>
         </tr></thead><tbody>{source.route.stops.slice(source.stopIndex).map((item, index) => <tr key={index} className="border-t border-slate-100">
           <td className="p-2 capitalize">{item.stop_type.replaceAll("_", " ")}{item.job_id ? ` · #${item.job_id}` : ""}</td>
-          <td className="p-2 whitespace-nowrap">{dayjs(item.arrival_time).format("MMM D, HH:mm:ss")}</td>
-          <td className="p-2 whitespace-nowrap font-semibold">{dayjs(item.arrival_time).add(delta, "second").format("MMM D, HH:mm:ss")}</td>
+          <td className="p-2 whitespace-nowrap">{dayjs(item.arrival_time).format("MMM D, HH:mm")}</td>
+          <td className="p-2 whitespace-nowrap font-semibold">{dayjs(item.arrival_time).add(delta, "second").format("MMM D, HH:mm")}</td>
         </tr>)}</tbody></table>
       </div>}
     </div>}

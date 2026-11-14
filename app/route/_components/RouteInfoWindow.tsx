@@ -1,4 +1,5 @@
 import { useState } from "react";
+import dayjs from "dayjs";
 import { Typography, Tag, Button, message, App } from "antd";
 import {
   ClockCircleOutlined,
@@ -8,32 +9,19 @@ import {
   UserDeleteOutlined,
   CopyOutlined,
 } from "@ant-design/icons";
-import { Job, JobStatus } from "@/types/job.type";
+import { JobStatus } from "@/types/job.type";
 import { STATUS_COLORS } from "@/utils/jobs.utils";
 import { formatTime12h } from "@/utils/app.utils";
 import { updateJobStatus } from "@/apis/jobs.api";
 import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
-import { MarkerJobData } from "./optimizationView.utils";
+import type { MarkerData } from "@/components/GoogleMaps";
 
-import { Home, MapPin, Building2, X } from "lucide-react";
+import { MapPin, Building2, X } from "lucide-react";
 import { LOCATION_TYPE_OPTIONS } from "@/apis/location-mapping.api";
-import { LOCATION_TYPE_COLORS, getLocationTypeColor } from "@/utils/customMapMarker";
+import { getLocationTypeColor } from "@/utils/customMapMarker";
 
 const { Text } = Typography;
-
-interface MarkerData {
-  id: string | number;
-  position: google.maps.LatLngLiteral;
-  title?: string;
-  description?: string;
-  jobData?: Job | MarkerJobData | any;
-  isDepot?: boolean;
-  depotKind?: string;
-  isAdditionalLocation?: boolean;
-  locationType?: string;
-  zIndex?: number;
-}
 
 interface RouteInfoWindowProps {
   marker: MarkerData;
@@ -46,7 +34,6 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
   marker,
   onClose,
   onRemoveJob,
-  onViewDetails,
 }) => {
   const { jobData, title, description } = marker;
   const { patchJobLocally } = useJobsStore();
@@ -193,7 +180,7 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
     );
   }
 
-  const stopType = String((jobData as any)?.stop_type || "").toLowerCase();
+  const stopType = String(jobData?.stop_type || "").toLowerCase();
   const isPickupStop = stopType === "pickup";
   const isDropoffStop = stopType === "dropoff" || stopType === "drop_off";
 
@@ -217,7 +204,7 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
             ? "Job marked as completed"
             : "Job marked as skipped",
       );
-    } catch (error) {
+    } catch {
       message.error(
         status === "completed"
           ? "Failed to mark job as completed"
@@ -255,6 +242,55 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
       onOk: () => handleUpdateJobStatus(status),
     });
   };
+
+  if (marker.comparison) {
+    const detail = marker.comparison;
+    const type = marker.stopType?.toLowerCase();
+    const typeLabel = type === "pickup" || type === "pick_up" ? "Pickup"
+      : type === "dropoff" || type === "drop_off" ? "Drop-off" : "Stop";
+    const statusLabel = detail.unassigned ? "Unassigned"
+      : status && !["draft", "assigned"].includes(status) ? String(status).replaceAll("_", " ") : "Assigned";
+    const start = jobData?.time_window_start || jobData?.pickup_delivery_detail?.time_window_start || jobData?.custom_fields?.time_window_start;
+    const end = jobData?.time_window_end || jobData?.pickup_delivery_detail?.time_window_end || jobData?.custom_fields?.time_window_end;
+    const eta = detail.arrivalTime && dayjs(detail.arrivalTime).isValid()
+      ? dayjs(detail.arrivalTime).format("MMM D, h:mm A") : null;
+    const address = title && title !== "Address unavailable" ? title : null;
+
+    return <div className="w-[min(270px,calc(100vw-64px))] max-w-full bg-white font-sans text-slate-800">
+      <div className="flex items-center gap-2 border-b border-slate-100 pb-1.5">
+        <span className="min-w-0 flex-1 text-xs font-bold text-slate-900">Job #{detail.jobId}</span>
+        <span className="shrink-0 border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">{typeLabel}</span>
+        <span className={`shrink-0 px-1.5 py-0.5 text-[10px] font-semibold capitalize ${detail.unassigned ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}>{statusLabel}</span>
+        {onClose && <button type="button" onClick={onClose} aria-label="Close"
+          className="flex h-6 w-6 shrink-0 items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-emerald-700"><X size={14} /></button>}
+      </div>
+      {detail.name && detail.name !== `Job #${detail.jobId}` && <div className="pt-2 break-words text-xs font-semibold leading-snug text-slate-900">{detail.name}</div>}
+      <div className="mt-2 flex items-start gap-1.5">
+        <MapPin size={14} className="mt-0.5 shrink-0 text-slate-400" />
+        <span className="min-w-0 flex-1 select-text break-words text-xs leading-snug text-slate-700">{address || "Address unavailable"}</span>
+        {address && <button type="button" aria-label="Copy address" title="Copy address" onClick={() => {
+          void (async () => {
+            try {
+              if (!navigator.clipboard) throw new Error("Clipboard unavailable");
+              await navigator.clipboard.writeText(address);
+              message.success("Address copied");
+            } catch { message.error("Unable to copy address"); }
+          })();
+        }} className="flex h-6 w-6 shrink-0 items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-emerald-700"><CopyOutlined /></button>}
+      </div>
+      {(detail.driverName || detail.stopNumber || detail.leg || eta || (start && end)) && <dl className="mb-0 mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 border-t border-slate-100 pt-2 text-[11px] leading-snug">
+        {detail.driverName && <div className="min-w-0"><dt className="text-slate-500">Driver</dt><dd className="m-0 break-words font-medium text-slate-800">{detail.driverName}</dd></div>}
+        {detail.stopNumber !== undefined && <div><dt className="text-slate-500">Stop</dt><dd className="m-0 font-medium text-slate-800">#{detail.stopNumber}</dd></div>}
+        {eta && <div><dt className="text-slate-500">ETA</dt><dd className="m-0 font-medium text-slate-800">{eta}</dd></div>}
+        {start && end && <div><dt className="text-slate-500">Time window</dt><dd className="m-0 font-medium text-slate-800">{formatTime12h(start)} – {formatTime12h(end)}</dd></div>}
+        {detail.leg && <div><dt className="text-slate-500">Trip</dt><dd className="m-0 font-medium text-slate-800">{detail.leg}</dd></div>}
+      </dl>}
+      {!detail.unassigned && jobData && !showButtons && <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2">
+        <Button size="small" icon={<CheckCircleOutlined />} loading={isMarkingComplete} onClick={() => confirmAction("completed")} className="flex-1">Mark Complete</Button>
+        <Button size="small" disabled={isMarkingComplete} onClick={() => confirmAction("failed")}>Skip</Button>
+      </div>}
+    </div>;
+  }
 
   return (
     <div className="w-[min(270px,calc(100vw-64px))] max-w-full bg-white text-slate-800 p-1">

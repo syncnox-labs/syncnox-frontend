@@ -1210,7 +1210,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
               </Button>
             </div>
           ) : (
-            <div className="flex gap-2">
+            <div className="job-details-actions flex justify-end gap-2">
               <Button
                 type="primary"
                 size="small"
@@ -1218,7 +1218,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                 loading={isUpdating}
                 disabled={selectedProgress.status !== "pending" || status === "completed"}
                 onClick={() => handleUpdateStatus("completed")}
-                className="w-1/2 bg-[#003220] hover:bg-[#002417] text-xs font-semibold h-8"
+                className="w-auto px-3 bg-[#003220] hover:bg-[#002417] text-xs font-semibold h-8"
               >
                 Mark Completed
               </Button>
@@ -1227,7 +1227,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                 size="small"
                 disabled={selectedProgress.status !== "pending" || status === "skipped" || status === "failed"}
                 onClick={() => handleUpdateStatus("failed")}
-                className="w-1/2 text-xs font-semibold h-8"
+                className="w-auto px-3 text-xs font-semibold h-8"
               >
                 Skip Stop
               </Button>
