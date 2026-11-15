@@ -5,6 +5,37 @@ export interface WaitingSelection {
   routeIndex: number;
   afterStopIndex?: number;
   mergeRouteIndex?: number;
+  lockMergeRoute?: boolean;
+}
+
+/** Resolve the adjacent trip for a selected start or finish, including trips
+ * already represented within a single route. */
+export function endpointMergeSelection(routes: Routes[], routeIndex: number, selected: Routes["stops"][number]): WaitingSelection | null {
+  const route = routes[routeIndex];
+  if (!route || route.needs_optimization || route.is_team_leader) return null;
+  let index = route.stops.indexOf(selected);
+  if (index < 0) {
+    const matches = route.stops.flatMap((stop, i) => stop.stop_type === selected.stop_type
+      && stop.arrival_time === selected.arrival_time && stop.latitude === selected.latitude
+      && stop.longitude === selected.longitude ? [i] : []);
+    if (matches.length !== 1) return null;
+    index = matches[0];
+  }
+  const isStart = selected.stop_type === "depot_start";
+  const isEnd = selected.stop_type === "depot_end";
+  if (!isStart && !isEnd) return null;
+  const after = isStart ? index - 1 : index;
+  if (route.stops[after]?.stop_type === "depot_end" && route.stops[after + 1]?.stop_type === "depot_start") {
+    return { routeIndex, afterStopIndex: after };
+  }
+  if ((isStart && index !== 0) || (isEnd && index !== route.stops.length - 1)) return null;
+  const target = waitingMergeCandidates(routes, routeIndex).find(candidate => {
+    const other = routes[candidate];
+    return isStart
+      ? Date.parse(other.stops[other.stops.length - 1].arrival_time) <= Date.parse(selected.arrival_time)
+      : Date.parse(other.stops[0].arrival_time) >= Date.parse(selected.arrival_time);
+  });
+  return target === undefined ? null : { routeIndex, mergeRouteIndex: target, lockMergeRoute: true };
 }
 
 /** The manual editor loads the current plan, while the timeline also shows trips from other plans. */

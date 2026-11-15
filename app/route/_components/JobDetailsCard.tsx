@@ -51,6 +51,7 @@ interface JobDetailsCardProps {
   onShowLocation?: (kind: "pickup" | "dropoff") => void;
   onEditETA?: (kind: "pickup" | "dropoff" | "arrival", arrival: string) => void;
   onEditVehicle?: () => void;
+  onMergeAdjacentRoute?: () => void;
   vehicleName?: string | null;
   isFullscreen?: boolean;
 }
@@ -165,6 +166,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   onShowLocation,
   onEditETA,
   onEditVehicle,
+  onMergeAdjacentRoute,
   vehicleName,
   isFullscreen = false,
 }) => {
@@ -612,6 +614,11 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
       {onEditVehicle && <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-3.5 py-3">
         <div><div className="font-bold text-gray-900">Vehicle</div><div className="mt-1 text-gray-600">{vehicleName || "Unassigned"}</div></div>
         <Button size="small" onClick={onEditVehicle}>Edit vehicle</Button>
+      </div>}
+      {onMergeAdjacentRoute && <div className="border-b border-gray-100 px-3.5 py-3">
+        <Button size="small" onClick={onMergeAdjacentRoute}>
+          {stopType === "depot_start" ? "Merge with previous route" : "Merge with next route"}
+        </Button>
       </div>}
       {/* Scrollable Key-Value Grid / Edit Form */}
       <div className="p-3.5 space-y-3 flex-1 overflow-y-auto custom-scrollbar">

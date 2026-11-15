@@ -1,6 +1,23 @@
 import apiClient from "@/config/apiClient.config";
 import { Job, FetchJobsParams } from "@/types/job.type";
 
+export interface JobsCalendarResponse {
+  date: string | null;
+  status: string;
+  available_dates: string[];
+  unscheduled_count: number;
+  total: number;
+  jobs: Job[];
+}
+
+export const fetchJobsCalendar = async (date: string | null, status: string, skip = 0): Promise<JobsCalendarResponse> => {
+  const query = new URLSearchParams({ status });
+  if (date) query.set("date", date);
+  if (skip) query.set("skip", String(skip));
+  const response = await apiClient.get<JobsCalendarResponse>(`/jobs/calendar?${query}`);
+  return response.data;
+};
+
 export const fetchJobs = async (params?: FetchJobsParams): Promise<Job[]> => {
   const queryParams = new URLSearchParams();
 

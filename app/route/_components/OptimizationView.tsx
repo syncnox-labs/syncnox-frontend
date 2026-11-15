@@ -61,7 +61,7 @@ import PendingOptimizationIndicator from "./PendingOptimizationIndicator";
 import ManualRoutingDrawer from "./ManualRoutingDrawer";
 import RouteWaitingModal from "./RouteWaitingModal";
 import RouteETAModal, { type ETASelection } from "./RouteETAModal";
-import type { WaitingSelection } from "./routeWaiting.utils";
+import { endpointMergeSelection, type WaitingSelection } from "./routeWaiting.utils";
 import AssignJobsModal from "./AssignJobsModal";
 import { useManualRoutingStore } from "@/store/manualRouting.store";
 import { getAssignedRouteJobs, getUnassignedRouteJobs } from "./assignedRouteJobs.utils";
@@ -2837,6 +2837,12 @@ const OptimizationView = ({
                 return index >= 0 && (selected.stop_type === "depot_start" || (index === 0 && selected.stop_type !== "depot_end"));
               })() ? () => setChangeVehicleRouteIndex(selectedDrawerJob.routeIndex!) : undefined}
             onShowLocation={handleShowJobLocation}
+            onMergeAdjacentRoute={!isOptimizing && !isMovingTrip && (route.status === "completed" || route.status === "failed")
+              && selectedDrawerJob.routeIndex !== undefined && !selectedDrawerJob.isUnassigned
+              ? (() => {
+                const selection = endpointMergeSelection(route.result?.routes || [], selectedDrawerJob.routeIndex!, selectedDrawerJob.stopData);
+                return selection ? () => { setSelectedDrawerJob(null); setSelectedMarkerId(null); setWaitingSelection(selection); } : undefined;
+              })() : undefined}
             onEditETA={selectedDrawerJob.routeIndex !== undefined && !selectedDrawerJob.isUnassigned
               && route.status !== "processing" && route.status !== "queued" ? (kind, arrival) => {
                 const routeIndex = selectedDrawerJob.routeIndex!;
