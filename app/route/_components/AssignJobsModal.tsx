@@ -26,6 +26,7 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
   const [routeIndex, setRouteIndex] = useState<number>();
   const [changeFixedDriver, setChangeFixedDriver] = useState(false);
   const [includeExtraHours, setIncludeExtraHours] = useState(false);
+  const [checkSelectedDriver, setCheckSelectedDriver] = useState(false);
   const [advanced, setAdvanced] = useState<string[]>([]);
   const [preview, setPreview] = useState<ManualRoutingPreview | null>(null);
   const [busy, setBusy] = useState<"load" | "preview" | "save" | null>(null);
@@ -48,7 +49,8 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
   const selectedChoices = choices.filter(choice => (driverId === undefined ? !choice.requires_working_time_extension : choice.driver_id === driverId)
     && (vehicleId === undefined || choice.vehicle_id === vehicleId));
   const availabilityReady = Array.isArray(context?.assignment_choices);
-  const canCheck = availabilityReady && choicesCoverJobs(selectedChoices, jobIds);
+  const selectedDriverIsActive = driverId !== undefined && Boolean(context?.drivers?.some(driver => driver.id === driverId));
+  const canCheck = availabilityReady && (choicesCoverJobs(selectedChoices, jobIds) || (checkSelectedDriver && selectedDriverIsActive));
   const requiredJobs = jobIds.map(id => context?.job_summaries?.[String(id)])
     .filter((job): job is ManualJobSummary => Boolean(job?.required_driver_name));
   const withRequiredDriverChange = filterAssignmentChoices(context?.assignment_choices || [], {
@@ -62,7 +64,7 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
   const currentName = driverId === undefined ? undefined : context?.driver_names?.[String(driverId)] || drivers.find(driver => driver.id === driverId)?.name;
   const driverChanged = Boolean(context && driverId !== undefined && expectedName && currentName && cleanName(expectedName) !== cleanName(currentName));
   const driverUnavailable = Boolean(availabilityReady && driverId !== undefined && !drivers.some(driver => driver.id === driverId));
-  const needsDriverChoice = driverChanged || driverUnavailable;
+  const needsDriverChoice = driverChanged || (driverUnavailable && !(checkSelectedDriver && selectedDriverIsActive));
   const selected = jobIds.map(id => context?.job_summaries?.[String(id)] || jobs.find(job => job.id === id) || {
     id, name: plan.result?.unassigned_jobs?.find(job => job.job_id === id)?.worker_name || `Job #${id}`, job_type: "",
   } as ManualJobSummary);
@@ -83,7 +85,7 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
     setExpectedName(intent.driverName ?? source?.team_member_name);
     setVehicleId(undefined);
     setPlacement(intent.placement || "auto"); setRouteIndex(intent.routeIndex);
-    setChangeFixedDriver(false); setIncludeExtraHours(false); setAdvanced([]); setContext(null); setPreview(null); setError(undefined); setBusy("load");
+    setChangeFixedDriver(false); setIncludeExtraHours(false); setCheckSelectedDriver(false); setAdvanced([]); setContext(null); setPreview(null); setError(undefined); setBusy("load");
     saving.current = false;
     getManualRoutingContext(plan.id, jobIds).then(data => {
       if (session.current === current) { setContext(data); setBusy(null); }
@@ -115,7 +117,7 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
 
   const invalidate = () => { requestNumber.current++; setPreview(null); setError(undefined); setBusy(null); };
   const chooseDriver = (id: number | "recommend") => {
-    invalidate(); setDriverId(id === "recommend" ? undefined : id);
+    invalidate(); setCheckSelectedDriver(false); setDriverId(id === "recommend" ? undefined : id);
     if (id === "recommend") setIncludeExtraHours(false);
     setExpectedName(id === "recommend" ? undefined : context?.driver_names?.[String(id)] || drivers.find(driver => driver.id === id)?.name);
     setPlacement("auto"); setRouteIndex(undefined); setVehicleId(undefined);
@@ -177,6 +179,7 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
           placeholder="Choose the intended driver" onChange={chooseDriver}
           notFoundContent="No drivers available for these job times"
           options={[{ value: "recommend", label: "Recommend an available driver", disabled: !choicesCoverJobs(driverChoices.filter(choice => !choice.requires_working_time_extension), jobIds) },
+            ...(checkSelectedDriver && selectedDriverIsActive && driverUnavailable && driverId !== undefined ? [{ value: driverId, label: currentName || expectedName || `Driver #${driverId}` }] : []),
             ...drivers.map(driver => ({ value: driver.id, label: `${driver.name}${choicesCoverJobs(driverChoices.filter(choice => choice.driver_id === driver.id && !choice.requires_working_time_extension), jobIds) ? "" : " · Extra working time needed"}` }))]} />
       </label>
       <label className="block"><span className="block text-sm font-medium mb-1.5">Available vehicle</span>
@@ -198,7 +201,11 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
         <p className="mb-2">To choose another driver, open More options and select “Also change {jobIds.length === 1 ? "this job’s required driver" : "the selected jobs’ required drivers"}”.</p>
         <Button size="small" onClick={() => setAdvanced(["options"])} disabled={busy === "save"}>Open More options</Button>
       </div>} />}
-      {driverUnavailable && !requiredDriverBlocked ? <Alert type="warning" showIcon title="No available trip for this driver" description={`No trip matches ${expectedName || "this driver"} and these job times. Choose another driver or review working time in More options.`} />
+      {driverUnavailable && !checkSelectedDriver && !requiredDriverBlocked ? <Alert type="warning" showIcon title="No quick match for this driver" description={<div>
+        <p className="mb-2">The initial availability check could not find a trip for {expectedName || "this driver"}. A full check can explain any conflict and may find a placement or extra working time.</p>
+        <div className="flex flex-wrap gap-2">{selectedDriverIsActive && !driverChanged && <Button size="small" disabled={Boolean(busy)} onClick={() => { invalidate(); setCheckSelectedDriver(true); }}>Check {expectedName || "this driver"}</Button>}
+          {choicesCoverJobs(driverChoices.filter(choice => !choice.requires_working_time_extension), jobIds) && <Button size="small" disabled={Boolean(busy)} onClick={() => chooseDriver("recommend")}>Find another driver</Button>}</div>
+      </div>} />
         : driverChanged && <Alert type="warning" showIcon title="This driver's name has changed" description={`The saved plan shows ${expectedName}, but the current roster shows ${currentName}. Choose the intended driver above before assigning this job.`} />}
       {context && !availabilityReady && <Alert type="warning" showIcon title="Availability could not be loaded" description="Refresh the plan to load available drivers and vehicles." />}
       {chooseExtraHoursDriver && !requiredDriverBlocked && <Alert type="info" showIcon title="Choose a driver"
@@ -206,7 +213,13 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
       {availabilityReady && !canCheck && !needsDriverChoice && !requiredDriverBlocked && !chooseExtraHoursDriver && <Alert type="info" showIcon title="No available match"
         description="No driver and vehicle match these job times. Review the required driver and working time in More options." />}
       {busy && busy !== "save" && !needsDriverChoice && <div role="status" className="flex gap-2 items-center rounded-lg bg-slate-50 p-3 text-sm text-slate-600"><Spin size="small" />Finding a trip for {currentName || expectedName || "an available driver"} at the job’s requested time…</div>}
-      {error && <Alert type="error" showIcon title={error.title} description={<div><p className="mb-1">{error.message}</p><p className="mb-2">{error.action}</p><div className="flex flex-wrap gap-2"><Button size="small" disabled={Boolean(busy)} onClick={retry}>Check again</Button>{error.showChangeOptions && <Button size="small" disabled={Boolean(busy)} onClick={() => setAdvanced(["options"])}>More options</Button>}</div></div>} />}
+      {error && <Alert type="error" showIcon title={error.title} description={<div>
+        <p className="mb-1">{error.message}</p><p className="mb-2">{error.action}</p>
+        {error.attempts && <ul className="mb-3 space-y-2 pl-0 list-none">{error.attempts.map((attempt, index) => <li key={`${attempt.label}-${index}`} className="rounded border border-red-200 bg-white/60 p-2">
+          <strong>{attempt.label}</strong><div>{attempt.title}: {attempt.message}</div><div className="mt-1">{attempt.action}</div>
+        </li>)}</ul>}
+        <div className="flex flex-wrap gap-2"><Button size="small" disabled={Boolean(busy)} onClick={retry}>Check again</Button>{error.showChangeOptions && <Button size="small" disabled={Boolean(busy)} onClick={() => setAdvanced(["options"])}>More options</Button>}</div>
+      </div>} />}
 
       {workingTimeExtensions.length > 0 && <Alert type="warning" showIcon title={`${extraWorkingMinutes} extra working ${extraWorkingMinutes === 1 ? "minute" : "minutes"} needed`}
         description={<div><p className="mb-2">You can extend working time for this trip and assign the job. The weekly roster stays the same.</p>
@@ -238,7 +251,7 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
       <Collapse ghost activeKey={advanced} onChange={keys => setAdvanced(Array.isArray(keys) ? keys : [keys])} items={[{
         key: "options", label: <span className="text-sm text-slate-600">More options</span>, children: <div className="space-y-4 pb-1">
           <div><span className="block text-sm font-medium mb-2">Trip</span><Radio.Group value={placement} disabled={busy === "save"} onChange={event => { invalidate(); setPlacement(event.target.value); setRouteIndex(undefined); setVehicleId(undefined); }} className="!flex !flex-col gap-2"><Radio value="auto">Choose the right trip automatically</Radio><Radio value="existing">Choose a specific existing trip</Radio><Radio value="new">Create a separate trip</Radio></Radio.Group></div>
-          {placement === "existing" && <label className="block"><span className="block text-sm font-medium mb-1.5">Existing trip times</span><Select className="w-full" value={routeIndex} disabled={busy === "save"} placeholder="Choose an existing trip" options={existingOptions} onChange={index => { invalidate(); setRouteIndex(index); setVehicleId(undefined); setDriverId(routes[index].team_member_id); setExpectedName(context?.driver_names?.[String(routes[index].team_member_id)] || routes[index].team_member_name); }} /><p className="text-xs text-slate-500 mt-1">These times describe the existing trip. The job’s pickup time is shown above.</p></label>}
+          {placement === "existing" && <label className="block"><span className="block text-sm font-medium mb-1.5">Existing trip times</span><Select className="w-full" value={routeIndex} disabled={busy === "save"} placeholder="Choose an existing trip" options={existingOptions} onChange={index => { invalidate(); setCheckSelectedDriver(false); setRouteIndex(index); setVehicleId(undefined); setDriverId(routes[index].team_member_id); setExpectedName(context?.driver_names?.[String(routes[index].team_member_id)] || routes[index].team_member_name); }} /><p className="text-xs text-slate-500 mt-1">These times describe the existing trip. The job’s pickup time is shown above.</p></label>}
           <Checkbox checked={changeFixedDriver} disabled={busy === "save"} onChange={event => { invalidate(); setChangeFixedDriver(event.target.checked); }}>Also change {jobIds.length === 1 ? "this job’s required driver" : "the selected jobs’ required drivers"}</Checkbox>
           <Checkbox checked={includeExtraHours} disabled={busy === "save"} onChange={event => { invalidate(); setIncludeExtraHours(event.target.checked); }}>Show drivers who need extra working time</Checkbox>
         </div>,

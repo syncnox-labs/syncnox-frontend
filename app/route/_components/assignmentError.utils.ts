@@ -4,6 +4,7 @@ export interface AssignmentErrorInfo {
   message: string;
   action: string;
   showChangeOptions: boolean;
+  attempts?: { label: string; title: string; message: string; action: string }[];
 }
 
 const info = (title: string, message: string, action: string, showChangeOptions = true): AssignmentErrorInfo =>
@@ -32,9 +33,26 @@ export function assignmentErrorInfo(detail: unknown, fallback: string, status?: 
   if (status === 403) return info("Permission needed", "You don't have permission to assign this job.",
     "Ask your administrator for assignment access.", false);
 
-  const text = fallback.replace(/^(?:Existing|Separate) trip for [^\n:]+:\s*/gm, "")
-    .replace(/^Extending working time cannot resolve this assignment:\s*/gm, "")
-    .replace(/^Value error,?\s*/i, "").trim();
+  // Each attempt can fail for a different reason. Never combine the reason
+  // from one trip with the advice from another.
+  const labels = [...fallback.matchAll(/^(Existing|Separate) trip for ([^\n:]+):[ \t]*\n?/gm)];
+  if (labels.length) {
+    const attempts = labels.map((label, index) => {
+      const reason = fallback.slice(label.index! + label[0].length, labels[index + 1]?.index ?? fallback.length).trim();
+      const result = assignmentErrorInfo(undefined, reason, status);
+      return { label: `${label[1] === "Existing" ? "Existing trip" : "Separate trip"} · ${label[2]}`,
+        title: result.title, message: result.message, action: result.action };
+    });
+    return { ...info("No suitable trip found", "The checked trips could not accommodate this assignment.",
+      "Review the reasons below, then change the relevant trip, driver, vehicle or job time."), attempts };
+  }
+
+  if (/^Extending working time cannot resolve this assignment:\s*/i.test(fallback)) {
+    const result = assignmentErrorInfo(detail, fallback.replace(/^Extending working time cannot resolve this assignment:\s*/i, ""), status);
+    return { ...result, action: "Extra working time won't resolve this conflict. Try another driver or trip, or review the job times and locations." };
+  }
+
+  const text = fallback.replace(/^Value error,?\s*/i, "").trim();
   let match: RegExpMatchArray | null;
 
   if (/preview.*(?:expired|invalid)|preview expired/i.test(text)) return info("Preview expired",
@@ -48,6 +66,14 @@ export function assignmentErrorInfo(detail: unknown, fallback: string, status?: 
   }
   if (/^Network Error$|^Failed to fetch$|network request failed/i.test(text)) return info("Connection problem",
     "We couldn't reach the server.", "Check your connection, then try again.", false);
+  if (/already assigned|no longer unassigned/i.test(text)) return info("Job status changed",
+    "At least one selected job is no longer in the unassigned list.", "Refresh the plan and select the job again. To move an assigned job, use the route editor.", false);
+  if (/different date|do not belong to this plan/i.test(text)) return info("Job isn't in this plan",
+    "At least one selected job doesn't belong to this plan or its service date.", "Refresh the plan and select jobs for this date.", false);
+  if (/active trip|completed work|driver progress/i.test(text)) return info("Trip already in progress",
+    "This change affects a trip or job that has already started or finished.", "Keep that work on its current trip and select future jobs to move.");
+  if (/route plan not found|preview not found|belongs to another plan/i.test(text) || status === 404) return info("Plan or check not found",
+    "The plan or assignment check is no longer available.", "Refresh the plan and try the assignment again.", false);
   if (/no pickup or drop-off coordinates/i.test(text)) return info("Map location missing",
     "A pickup or drop-off location is missing.", "Edit the job and select the missing address on the map.");
   if (/needs valid pickup\/drop-off times|invalid time window/i.test(text)) return info("Check the job times",
@@ -113,7 +139,8 @@ export function assignmentErrorInfo(detail: unknown, fallback: string, status?: 
   // Unknown cases remain honest. Keep a useful first sentence and an existing
   // remedy, rather than guessing a constraint or displaying multiple attempts.
   const sentences = text.split(/(?<=[.!?])\s+|\n+/).filter(Boolean);
-  const message = sentences[0]?.length <= 200 ? sentences[0] : "This assignment couldn't be completed.";
+  const message = sentences[0]?.length <= 200 && !/^(?:Request failed with status code|Internal Server Error|Unknown error)/i.test(sentences[0])
+    ? sentences[0] : "This assignment couldn't be completed.";
   const remedy = sentences.slice(1).find(sentence => /^(?:Choose|Check|Adjust|Refresh|Review|Open|Select|Try|Use|Keep|Split|Merge|Update|Add|Set|Correct|Wait)\b/.test(sentence));
   return info("Can't assign job", message || "This assignment couldn't be checked.", remedy && remedy.length <= 160
     ? remedy : "Review the driver, vehicle and job times, then try again.");
