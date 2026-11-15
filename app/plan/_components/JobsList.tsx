@@ -9,6 +9,7 @@ import {
   Dropdown,
   Flex,
   Typography,
+  Alert,
   type MenuProps,
 } from "antd";
 import {
@@ -21,12 +22,13 @@ import {
 } from "@ant-design/icons";
 import { Panel, PanelGroup } from "react-resizable-panels";
 import ResizeHandle from "@/components/ResizeHandle";
-import { useJobsStore } from "@/store/jobs.store";
+import { UNSCHEDULED_JOBS_DATE, useJobsStore } from "@/store/jobs.store";
 import { useTeamStore } from "@/store/team.store";
 import { useIndexStore } from "@/store/index.store";
 import { ColDef } from "ag-grid-community";
 import { Job, JobStatus } from "@/types/job.type";
 import { CustomFieldDefinition, getCustomFields } from "@/apis/custom-fields.api";
+import dayjs from "dayjs";
 
 type JobTab = "all" | JobStatus;
 
@@ -48,11 +50,15 @@ const { Title } = Typography;
 export default function JobsList() {
   const {
     jobs,
-    draftJobs,
     isLoading: isJobsLoading,
-    initializeJobs,
-    fetchJobsByStatus,
-    fetchAllJobs,
+    startJobsList,
+    stopJobsList,
+    loadJobsList,
+    jobsListActive,
+    jobsListStatus,
+    jobsListDate,
+    unscheduledJobsCount,
+    error: jobsError,
     deleteJobAction,
     deleteJobsAction,
     resetAllJobs,
@@ -83,21 +89,17 @@ export default function JobsList() {
 
   // Initialize jobs and load custom field definitions on mount
   useEffect(() => {
-    initializeJobs();
+    void startJobsList();
     getCustomFields("job")
       .then((defs) => setCustomFields(defs.filter((d) => d.is_visible_in_list)))
       .catch((err) => console.error("Failed to fetch custom fields for jobs", err));
-  }, [initializeJobs]);
+  }, [startJobsList]);
 
   const handleJobStatusChange = (e: any) => {
     const value = e.target.value as JobTab;
     setSelectedJobTab(value);
     setSelectedJobIds([]);
-    if (value === "all") {
-      fetchAllJobs();
-    } else {
-      fetchJobsByStatus(value as JobStatus);
-    }
+    void loadJobsList(jobsListDate || selectedDate || dayjs().format("YYYY-MM-DD"), value);
   };
 
   const handleDeleteJobsRequest = () => {
@@ -129,9 +131,10 @@ export default function JobsList() {
 
   useEffect(() => {
     return () => {
+      stopJobsList();
       resetAllJobs();
     };
-  }, [resetAllJobs]);
+  }, [resetAllJobs, stopJobsList]);
 
   // Status and Date Filtered Jobs
   const sourceJobs = jobs;
@@ -141,7 +144,7 @@ export default function JobsList() {
       ? sourceJobs
       : sourceJobs.filter((j) => j.status === selectedJobTab);
 
-  const availableJobDates = Array.from(
+  const availableJobDates = jobsListActive ? draftJobDates : Array.from(
     new Set(
       statusFilteredJobs
         .map((j) => j.scheduled_date)
@@ -311,7 +314,7 @@ export default function JobsList() {
       <BaseTable<Job>
         columnDefs={deliveryColumns}
         rowData={displayedJobs}
-        loading={isJobsLoading}
+        loading={isJobsLoading || !jobsListActive}
         pagination={true}
         paginationPageSize={100}
         rowSelection="multiple"
@@ -337,9 +340,16 @@ export default function JobsList() {
           </Title>
           <DraftJobsDatePicker
             selectedDate={selectedDate}
-            setSelectedDate={setSelectedDate}
+            setSelectedDate={date => { setSelectedJobIds([]); setSelectedMarkerId(null); setSelectedDate(date); }}
             draftJobDates={availableJobDates}
           />
+          {jobsListActive && (unscheduledJobsCount > 0 || jobsListDate === UNSCHEDULED_JOBS_DATE) && <Button
+            size="small" aria-pressed={jobsListDate === UNSCHEDULED_JOBS_DATE}
+            type={jobsListDate === UNSCHEDULED_JOBS_DATE ? "primary" : "default"}
+            onClick={() => {
+              setSelectedJobIds([]); setSelectedMarkerId(null);
+              void loadJobsList(UNSCHEDULED_JOBS_DATE, selectedJobTab);
+            }}>Unscheduled ({unscheduledJobsCount})</Button>}
         </Flex>
 
         <Flex wrap gap={8} align="center" className={jobsActionsClassName}>
@@ -378,6 +388,9 @@ export default function JobsList() {
           </Dropdown>
         </Flex>
       </Flex>
+
+      {jobsListActive && jobsError && <Alert type="error" showIcon title="Unable to load jobs" description={jobsError}
+        action={<Button size="small" onClick={() => void loadJobsList(jobsListDate || selectedDate || dayjs().format("YYYY-MM-DD"), jobsListStatus)}>Retry</Button>} />}
 
       {/* ── Table & Map Area ── */}
       <div className="flex-1 min-h-0 mt-2">

@@ -180,7 +180,7 @@ export default function RouteWaitingModal({ plan, selection, onClose }: {
         </div>
         {selection?.afterStopIndex === undefined && <div className={styles.field}>
           <label htmlFor="waiting-merge-route" className={styles.label}>Merge with</label>
-          <Select id="waiting-merge-route" className={styles.select} value={target} disabled={Boolean(busy) || Boolean(crossPlan.current)} placeholder="Choose a consecutive route" onChange={setTarget}
+          <Select id="waiting-merge-route" className={styles.select} value={target} disabled={Boolean(busy) || Boolean(crossPlan.current) || Boolean(selection?.lockMergeRoute)} placeholder="Choose a consecutive route" onChange={setTarget}
             options={candidates.map(index => {
               const route = context!.result.routes[index];
               return { value: index, label: manualRouteLabel(route, index) };

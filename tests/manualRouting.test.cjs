@@ -58,6 +58,37 @@ test("routing account failures show the provider remedy instead of changing the 
   assert.equal(conflict.showChangeOptions, true);
 });
 
+test("each checked trip keeps its own conflict and suggested next step", () => {
+  const { manualRoutingErrorInfo } = load("app/route/_components/manualRouting.utils.ts");
+  const detail = "Existing trip for Mohamed:\nJob #14987 requires 5 seats, but Van A has 4. Choose a vehicle with enough seats.\n" +
+    "Separate trip for Mohamed:\nJob #14987's pickup window 18:00–18:10 is outside Mohamed's working hours (09:00–17:00). Choose an available driver.";
+  const result = manualRoutingErrorInfo({ detail });
+  assert.equal(result.title, "No suitable trip found");
+  assert.equal(result.attempts.length, 2);
+  assert.equal(result.attempts[0].label, "Existing trip · Mohamed");
+  assert.equal(result.attempts[0].title, "Not enough seats");
+  assert.match(result.attempts[0].action, /5 seats/);
+  assert.equal(result.attempts[1].label, "Separate trip · Mohamed");
+  assert.equal(result.attempts[1].title, "Driver is off duty");
+  assert.match(result.attempts[1].message, /6:00 PM/);
+});
+
+test("a conflict that extra working time cannot solve does not recommend extending it", () => {
+  const { manualRoutingErrorInfo } = load("app/route/_components/manualRouting.utils.ts");
+  const result = manualRoutingErrorInfo({ detail: "Extending working time cannot resolve this assignment:\nJob #14987's pickup window 18:00–18:10 is outside Mohamed's working hours (09:00–17:00)." });
+  assert.match(result.action, /Extra working time won't resolve/);
+  assert.doesNotMatch(result.action, /review extra working time/);
+});
+
+test("changed job status and technical failures give clear next steps", () => {
+  const { manualRoutingErrorInfo } = load("app/route/_components/manualRouting.utils.ts");
+  const changed = manualRoutingErrorInfo({ detail: "A selected job is no longer unassigned. Refresh before assigning it." });
+  assert.equal(changed.title, "Job status changed");
+  assert.match(changed.action, /Refresh the plan/);
+  const technical = manualRoutingErrorInfo({ message: "Request failed with status code 418" });
+  assert.doesNotMatch(technical.message, /status code/);
+});
+
 test("local route times keep the plan's clock time", () => {
   const { localRouteTime } = load("app/route/_components/manualRouting.utils.ts");
   assert.equal(localRouteTime("2026-10-27T06:15:00"), "2026-10-27T06:15");

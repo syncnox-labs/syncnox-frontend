@@ -7,7 +7,7 @@ const source = fs.readFileSync(path.join(__dirname, "../app/route/_components/ro
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
 const utils = {};
 new Function("exports", compiled)(utils);
-const { sameWaitingRoute, waitingMergeCandidates, waitingMergeButtonLayout, waitingPlanIssue, crossPlanWaitingReferences } = utils;
+const { sameWaitingRoute, waitingMergeCandidates, waitingMergeButtonLayout, waitingPlanIssue, crossPlanWaitingReferences, endpointMergeSelection } = utils;
 
 test("cross-plan merge resolves real plan and trip identities", () => {
   const routes = [{ ...trip("17:12", "17:55"), team_member_name: "Sablond" },
@@ -67,6 +67,25 @@ test("a vehicle mismatch, overlap, or pending route prevents a merge option", ()
   assert.deepEqual(waitingMergeCandidates([trip("06:00", "08:00"), trip("07:00", "09:00")], 0), []);
   assert.deepEqual(waitingMergeCandidates([trip("06:00", "07:00"), { ...trip("08:00", "09:00"), needs_optimization: true }], 0), []);
   assert.deepEqual(waitingMergeCandidates([], 0), []);
+});
+
+test("endpoint actions select the preceding or following eligible trip", () => {
+  const routes = [trip("06:00", "07:00"), trip("08:00", "09:00"), trip("10:00", "11:00")];
+  assert.deepEqual(endpointMergeSelection(routes, 1, routes[1].stops[0]), { routeIndex: 1, mergeRouteIndex: 0, lockMergeRoute: true });
+  assert.deepEqual(endpointMergeSelection(routes, 1, { ...routes[1].stops[1] }), { routeIndex: 1, mergeRouteIndex: 2, lockMergeRoute: true });
+  assert.equal(endpointMergeSelection(routes, 0, routes[0].stops[0]), null);
+  routes[2].vehicle_id = 2;
+  assert.equal(endpointMergeSelection(routes, 1, routes[1].stops[1]), null);
+});
+
+test("endpoint actions join consecutive trips within one route and reject ambiguous stops", () => {
+  const route = trip("06:00", "07:00");
+  route.stops = [...route.stops, ...trip("08:00", "09:00").stops];
+  assert.deepEqual(endpointMergeSelection([route], 0, route.stops[1]), { routeIndex: 0, afterStopIndex: 1 });
+  assert.deepEqual(endpointMergeSelection([route], 0, route.stops[2]), { routeIndex: 0, afterStopIndex: 1 });
+  const ambiguous = { ...route, stops: [...route.stops, { ...route.stops[2] }] };
+  assert.equal(endpointMergeSelection([ambiguous], 0, { ...route.stops[2] }), null);
+  assert.equal(endpointMergeSelection([{ ...route, is_team_leader: true }], 0, route.stops[1]), null);
 });
 
 test("consecutive overnight routes retain their chronological order", () => {

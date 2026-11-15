@@ -2,8 +2,10 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import { Job, JobStatus, FetchJobsParams } from "@/types/job.type";
+import dayjs from "dayjs";
 import {
   fetchJobs,
+  fetchJobsCalendar,
   createJob,
   updateJob,
   deleteJob as deleteJobApi,
@@ -12,7 +14,7 @@ import {
 import { findClosestDateToToday } from "@/utils/date.utils";
 import { refreshRoutesAfterDeletion } from "@/utils/refreshRoutesAfterDeletion.utils";
 
-// The table filters dates locally, so its cache must include every API page.
+// Legacy consumers may still request a complete history; the Jobs screen uses its scoped loader.
 async function fetchAllJobPages(
   params: Pick<FetchJobsParams, "status" | "date"> = {},
 ): Promise<Job[]> {
@@ -26,6 +28,11 @@ async function fetchAllJobPages(
   return jobs;
 }
 
+type JobsListStatus = JobStatus | "all";
+export const UNSCHEDULED_JOBS_DATE = "unscheduled";
+let jobsListGeneration = 0;
+let jobsListPending: { key: string; generation: number; promise: Promise<void> } | null = null;
+
 interface JobsState {
   // Data
   jobs: Job[];
@@ -34,12 +41,19 @@ interface JobsState {
   allJobs: Job[];
   draftJobDates: string[];
   selectedDate: string | null;
+  jobsListActive: boolean;
+  jobsListStatus: JobsListStatus;
+  jobsListDate: string | null;
+  unscheduledJobsCount: number;
 
   isLoading: boolean;
   error: string | null;
 
   // Actions
   initializeJobs: () => Promise<void>;
+  startJobsList: () => Promise<void>;
+  stopJobsList: () => void;
+  loadJobsList: (date: string, status: JobsListStatus, chooseClosest?: boolean, force?: boolean) => Promise<void>;
   fetchJobsByStatus: (status: JobStatus) => Promise<void>;
   fetchAllJobs: () => Promise<void>;
   setSelectedDate: (date: string | null) => void;
@@ -65,8 +79,95 @@ export const useJobsStore = create<JobsState>()(
       allJobs: [],
       draftJobDates: [],
       selectedDate: null,
+      jobsListActive: false,
+      jobsListStatus: "draft",
+      jobsListDate: null,
+      unscheduledJobsCount: 0,
       isLoading: false,
       error: null,
+
+      startJobsList: () => {
+        const currentDate = get().selectedDate || (get().jobsListDate === UNSCHEDULED_JOBS_DATE ? UNSCHEDULED_JOBS_DATE : null);
+        set(state => {
+          state.jobsListActive = true;
+          state.jobs = []; state.draftJobs = []; state.allJobs = []; state.allDraftJobs = [];
+          state.draftJobDates = [];
+          state.unscheduledJobsCount = 0;
+        });
+        return get().loadJobsList(currentDate || dayjs().format("YYYY-MM-DD"), "draft", !currentDate);
+      },
+
+      stopJobsList: () => {
+        jobsListGeneration++;
+        const wasLoadingList = Boolean(jobsListPending);
+        jobsListPending = null;
+        set(state => { state.jobsListActive = false; if (wasLoadingList) state.isLoading = false; });
+      },
+
+      loadJobsList: (date, status, chooseClosest = false, force = false) => {
+        const key = `${date}:${status}`;
+        if (!force && jobsListPending?.key === key) return jobsListPending.promise;
+        const generation = ++jobsListGeneration;
+        set(state => {
+          if (state.jobsListStatus !== status) { state.draftJobDates = []; state.unscheduledJobsCount = 0; }
+          if (state.jobsListDate !== date || state.jobsListStatus !== status) {
+            state.jobs = []; state.draftJobs = []; state.allJobs = []; state.allDraftJobs = [];
+          }
+          state.jobsListDate = date;
+          state.selectedDate = date === UNSCHEDULED_JOBS_DATE ? null : date;
+          state.jobsListStatus = status;
+          state.isLoading = true;
+          state.error = null;
+        });
+        const isCurrent = () => generation === jobsListGeneration && get().jobsListActive;
+        const promise = (async () => {
+          try {
+            let result = await fetchJobsCalendar(date === UNSCHEDULED_JOBS_DATE ? null : date, status);
+            if (!isCurrent()) return;
+            let resolvedDate = date;
+            if (chooseClosest && result.available_dates.length && !result.available_dates.includes(date)) {
+              resolvedDate = findClosestDateToToday(result.available_dates);
+              result = await fetchJobsCalendar(resolvedDate, status);
+              if (!isCurrent()) return;
+            } else if (chooseClosest && !result.available_dates.length && result.unscheduled_count > 0) {
+              resolvedDate = UNSCHEDULED_JOBS_DATE;
+              result = await fetchJobsCalendar(null, status);
+              if (!isCurrent()) return;
+            }
+            const items = [...result.jobs];
+            while (items.length < result.total) {
+              const page = resolvedDate === UNSCHEDULED_JOBS_DATE
+                ? (await fetchJobsCalendar(null, status, items.length)).jobs
+                : await fetchJobs({ date: resolvedDate, status: status === "all" ? undefined : status,
+                  skip: items.length, limit: 1000 });
+              if (!isCurrent()) return;
+              if (!page.length) throw new Error("Could not load all jobs for this date. Please retry.");
+              items.push(...page);
+            }
+            if (!isCurrent()) return;
+            set(state => {
+              state.jobsListDate = resolvedDate;
+              state.selectedDate = resolvedDate === UNSCHEDULED_JOBS_DATE ? null : resolvedDate;
+              state.jobs = items;
+              state.draftJobs = items;
+              state.allJobs = items;
+              state.allDraftJobs = items;
+              state.draftJobDates = result.available_dates;
+              state.unscheduledJobsCount = result.unscheduled_count || 0;
+              state.isLoading = false;
+            });
+          } catch (error) {
+            if (isCurrent()) set(state => {
+              state.error = error instanceof Error ? error.message : "Failed to load jobs";
+              state.isLoading = false;
+            });
+          } finally {
+            if (jobsListPending?.generation === generation) jobsListPending = null;
+          }
+        })();
+        jobsListPending = { key, generation, promise };
+        return promise;
+      },
 
       // Initialize with all jobs
       initializeJobs: async () => {
@@ -145,6 +246,10 @@ export const useJobsStore = create<JobsState>()(
 
       // Fetch all jobs without status filter
       fetchAllJobs: async () => {
+        if (get().jobsListActive && get().jobsListDate) {
+          return get().loadJobsList(get().jobsListDate!, get().jobsListStatus, false, true);
+        }
+        const listGenerationAtStart = jobsListGeneration;
         set((state) => {
           state.isLoading = true;
           state.error = null;
@@ -152,6 +257,7 @@ export const useJobsStore = create<JobsState>()(
 
         try {
           const jobsData = await fetchAllJobPages();
+          if (get().jobsListActive && listGenerationAtStart !== jobsListGeneration) return;
 
           set((state) => {
             state.jobs = jobsData;
@@ -186,6 +292,7 @@ export const useJobsStore = create<JobsState>()(
             state.isLoading = false;
           });
         } catch (error) {
+          if (get().jobsListActive && listGenerationAtStart !== jobsListGeneration) return;
           set((state) => {
             state.error =
               error instanceof Error ? error.message : "Failed to fetch all jobs";
@@ -207,6 +314,7 @@ export const useJobsStore = create<JobsState>()(
             state.draftJobs = state.allJobs;
           }
         });
+        if (date && get().jobsListActive) void get().loadJobsList(date, get().jobsListStatus);
       },
 
       // Create job and refresh
@@ -220,12 +328,12 @@ export const useJobsStore = create<JobsState>()(
           const res = await createJob(job);
           const firstJob = Array.isArray(res) ? res[0] : res;
 
-          // Refresh all jobs so allStores remain in sync
-          await get().fetchAllJobs();
-
-          // Auto-select scheduled_date of the newly created job
-          if (firstJob && firstJob.scheduled_date) {
-            get().setSelectedDate(firstJob.scheduled_date);
+          if (get().jobsListActive) {
+            const date = firstJob?.scheduled_date || get().jobsListDate || dayjs().format("YYYY-MM-DD");
+            await get().loadJobsList(date, get().jobsListStatus, false, true);
+          } else {
+            await get().fetchAllJobs();
+            if (firstJob?.scheduled_date) get().setSelectedDate(firstJob.scheduled_date);
           }
 
           return res;
@@ -255,10 +363,12 @@ export const useJobsStore = create<JobsState>()(
           // global table filter or making an additional fetch for each leg.
           const savedJobs = updatedJob.updated_jobs?.length ? updatedJob.updated_jobs : [updatedJob];
           savedJobs.forEach(saved => get().patchJobLocally(saved));
-          if (originalDate && originalDate !== updatedJob.scheduled_date) {
+          if (get().jobsListActive && get().jobsListDate) {
+            await get().loadJobsList(get().jobsListDate!, get().jobsListStatus, false, true);
+          } else if (originalDate && originalDate !== updatedJob.scheduled_date) {
             await get().fetchAllJobs();
           }
-          set((state) => { state.isLoading = false; });
+          if (!get().jobsListActive || !jobsListPending) set((state) => { state.isLoading = false; });
 
           return updatedJob;
         } catch (error) {
@@ -280,7 +390,9 @@ export const useJobsStore = create<JobsState>()(
 
         try {
           await deleteJobApi(jobId);
-          await Promise.all([get().fetchAllJobs(), refreshRoutesAfterDeletion()]);
+          const reload = get().jobsListActive && get().jobsListDate
+            ? get().loadJobsList(get().jobsListDate!, get().jobsListStatus, false, true) : get().fetchAllJobs();
+          await Promise.all([reload, refreshRoutesAfterDeletion()]);
         } catch (error) {
           set((state) => {
             state.isLoading = false;
@@ -300,7 +412,9 @@ export const useJobsStore = create<JobsState>()(
 
         try {
           await deleteJobsBulk(jobIds);
-          await Promise.all([get().fetchAllJobs(), refreshRoutesAfterDeletion()]);
+          const reload = get().jobsListActive && get().jobsListDate
+            ? get().loadJobsList(get().jobsListDate!, get().jobsListStatus, false, true) : get().fetchAllJobs();
+          await Promise.all([reload, refreshRoutesAfterDeletion()]);
         } catch (error) {
           set((state) => {
             state.isLoading = false;
@@ -313,24 +427,31 @@ export const useJobsStore = create<JobsState>()(
 
       // Refresh draft jobs (used after bulk upload)
       refreshDraftJobs: async () => {
-        await get().fetchAllJobs();
+        if (get().jobsListActive && get().jobsListDate) {
+          await get().loadJobsList(get().jobsListDate!, get().jobsListStatus, false, true);
+        } else {
+          await get().fetchAllJobs();
+        }
       },
 
       // Fetch all jobs for a specific date
       fetchJobsByDate: async (date: string) => {
-        set((state) => {
+        const updateList = !get().jobsListActive;
+        if (updateList) set((state) => {
           state.isLoading = true;
           state.error = null;
         });
 
         try {
           const jobsData = await fetchAllJobPages({ date });
+          if (!updateList || get().jobsListActive) return;
 
           set((state) => {
             state.jobs = jobsData;
             state.isLoading = false;
           });
         } catch (error) {
+          if (!updateList || get().jobsListActive) return;
           set((state) => {
             state.error =
               error instanceof Error
@@ -343,8 +464,9 @@ export const useJobsStore = create<JobsState>()(
 
       fetchJobsByIds: async (jobIds: number[]) => {
         if (jobIds.length === 0) return;
+        const updateList = !get().jobsListActive;
 
-        set((state) => {
+        if (updateList) set((state) => {
           state.isLoading = true;
           state.error = null;
         });
@@ -354,12 +476,14 @@ export const useJobsStore = create<JobsState>()(
             job_ids: jobIds.join(","),
             limit: 1000,
           });
+          if (!updateList || get().jobsListActive) return;
 
           set((state) => {
             state.jobs = jobsData;
             state.isLoading = false;
           });
         } catch (error) {
+          if (!updateList || get().jobsListActive) return;
           set((state) => {
             state.error =
               error instanceof Error

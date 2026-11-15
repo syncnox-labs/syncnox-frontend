@@ -8,7 +8,6 @@ import { useSession } from "next-auth/react";
 import { Drawer, Spin } from "antd";
 import { Menu, X } from "lucide-react";
 import { useIndexStore } from "@/store/index.store";
-import { useJobsStore } from "@/store/jobs.store";
 import { useTeamStore } from "@/store/team.store";
 import SideBar from "@/components/Layout/SideBar";
 import NavBar from "@/components/Layout/NavBar";
@@ -76,19 +75,17 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
     }
   }, [session, sessionStatus, isSignInPage, setUser, clearUser, fetchOnboardingStatus]);
 
-  // Initialize jobs and resources for authenticated pages
-  const { initializeJobs } = useJobsStore();
+  // Initialize shared resources for authenticated pages. Jobs are loaded by the active view.
   useEffect(() => {
     if (!isSignInPage && !hasInitialized.current) {
       hasInitialized.current = true;
-      initializeJobs();
       initializeTeams();
       initializeRoutes();
       initializeDepots();
       initializeVehicles();
       initializeLocationMappings();
     }
-  }, [isSignInPage, initializeJobs, initializeTeams, initializeRoutes, initializeDepots, initializeVehicles, initializeLocationMappings]);
+  }, [isSignInPage, initializeTeams, initializeRoutes, initializeDepots, initializeVehicles, initializeLocationMappings]);
 
   if (isSignInPage) {
     return <>{children}</>;
