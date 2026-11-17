@@ -51,6 +51,7 @@ import TimelineTooltip, { TimelineTooltipProvider } from "./TimelineTooltip";
 import { getTimelineSegment } from "./timelineSegment.utils";
 import { TIMELINE_INTERVALS } from "./optimizationShortcuts.utils";
 import { useTimelineZoom } from "./useTimelineZoom";
+import { moveVisibleDriver, orderDrivers } from "./timelineDriverOrder.utils";
 import { waitingMergeButtonLayout, waitingMergeCandidates } from "./routeWaiting.utils";
 import { isRedundantLeaderClientStart } from "./leaderRoute.utils";
 import { getRouteStopDisplay, getStopTooltipStops, type GroupedStop as DisplayStopGroup } from "./stopDisplay.utils";
@@ -68,6 +69,7 @@ type GroupedStop = DisplayStopGroup<any>;
 
 interface TimelineViewProps {
   routes: any[];
+  planId?: number | string;
   jobs?: Job[];
   teams?: Team[];
   scheduledDate?: string | null;
@@ -393,6 +395,7 @@ const getVehicleCapacity = (v?: Vehicle): number | null => {
 
 const TimelineView: React.FC<TimelineViewProps> = ({
   routes,
+  planId,
   jobs = [],
   teams = [],
   scheduledDate,
@@ -442,6 +445,23 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   const [savingShiftTeamId, setSavingShiftTeamId] = useState<number | null>(null);
   const [confirmingShiftTeamId, setConfirmingShiftTeamId] = useState<number | null>(null);
   const [openStopTooltipKey, setOpenStopTooltipKey] = useState<string | null>(null);
+  const [driverOrder, setDriverOrder] = useState<{ planId: number | string | undefined; keys: string[] }>({ planId, keys: [] });
+  const [draggedDriver, setDraggedDriver] = useState<string | null>(null);
+  const [driverDrop, setDriverDrop] = useState<{ key: string; side: "before" | "after" } | null>(null);
+  const [orderAnnouncement, setOrderAnnouncement] = useState("");
+
+  useEffect(() => {
+    let keys: string[] = [];
+    if (planId != null) {
+      try {
+        const stored = JSON.parse(localStorage.getItem(`syncnox.timeline.driver-order.${planId}`) || "[]");
+        if (Array.isArray(stored)) keys = stored.filter((key): key is string => typeof key === "string");
+      } catch { /* Storage can be unavailable or contain an older invalid value. */ }
+    }
+    setDriverOrder({ planId, keys });
+    setDraggedDriver(null);
+    setDriverDrop(null);
+  }, [planId]);
 
   const { activeJobTemplate } = useIndexStore();
 
@@ -570,24 +590,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     }
   }, [driverSearch]);
 
-  const filteredRoutes = useMemo(() => {
-    const indexed = routes.map((route, originalIndex) => ({
-      route,
-      originalIndex,
-    }));
-    if (!driverSearch.trim()) return indexed;
-    return indexed.filter(({ route, originalIndex }) => {
-      const driverName = String(
-        route.team_member_name || "Driver name unavailable"
-      );
-      return isDriverMatch(driverName, driverSearch, exactMatch);
-    });
-  }, [routes, driverSearch, exactMatch]);
-
-  const driverGroups = useMemo(() => {
+  const allDriverGroups = useMemo(() => {
     const groupsMap = new Map<string, DriverGroup>();
 
-    filteredRoutes.forEach(({ route, originalIndex }) => {
+    routes.forEach((route, originalIndex) => {
       const key =
         route.team_member_id != null
           ? `driver-id-${route.team_member_id}`
@@ -609,8 +615,23 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       groupsMap.get(key)!.routes.push({ route, originalIndex });
     });
 
-    return Array.from(groupsMap.values());
-  }, [filteredRoutes]);
+    return orderDrivers(Array.from(groupsMap.values()), driverOrder.planId === planId ? driverOrder.keys : []);
+  }, [routes, driverOrder, planId]);
+
+  const driverGroups = useMemo(() => allDriverGroups.filter(group =>
+    isDriverMatch(group.driverName, driverSearch, exactMatch)), [allDriverGroups, driverSearch, exactMatch]);
+
+  const moveDriver = (source: string, target: string, side: "before" | "after") => {
+    const keys = moveVisibleDriver(allDriverGroups.map(group => group.driverKey),
+      driverGroups.map(group => group.driverKey), source, target, side);
+    setDriverOrder({ planId, keys });
+    if (planId != null) {
+      try { localStorage.setItem(`syncnox.timeline.driver-order.${planId}`, JSON.stringify(keys)); }
+      catch { /* Reordering still works for the current session. */ }
+    }
+    const name = allDriverGroups.find(group => group.driverKey === source)?.driverName || "Driver";
+    setOrderAnnouncement(`${name} moved to position ${keys.indexOf(source) + 1} of ${keys.length}.`);
+  };
 
   const baseTimeRange = useMemo(() => calculateTimeRange(routes), [routes]);
 
@@ -785,7 +806,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   }, [vehicles]);
 
   const { intervalMinutes, changeInterval, skipSelectionScrollRef } = useTimelineZoom(
-    containerRef, DRIVER_COLUMN_WIDTH, Boolean(shiftDrag || draggedStopInfo || draggedTrip),
+    containerRef, DRIVER_COLUMN_WIDTH, Boolean(shiftDrag || draggedStopInfo || draggedTrip || draggedDriver),
   );
 
   // Dynamic pixels per minute based on interval - smaller intervals get more spread
@@ -1678,6 +1699,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         }
       }}
     >
+      <span className="sr-only" aria-live="polite">{orderAnnouncement}</span>
       {compactTimeline && <div className="timeline-mobile-toolbar timeline-compact-controls flex items-center gap-2 p-2 border-b border-gray-200 shrink-0">
         <Input size="small" aria-label="Search driver" placeholder="Search driver…" value={driverSearch}
           onChange={event => setDriverSearch(event.target.value)} allowClear className="!flex-1 !min-w-0" />
@@ -1918,7 +1940,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                 No drivers found matching "{driverSearch}"
               </div>
             ) : (
-              driverGroups.map((driverGroup) => {
+              driverGroups.map((driverGroup, driverIndex) => {
                 const activeGroupRoute =
                   (focusedRouteIndex !== null
                     ? driverGroup.routes.find((r) => r.originalIndex === focusedRouteIndex)
@@ -2075,12 +2097,30 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                   >
                     {/* Sticky Driver Info */}
                     <div
-                      className="sticky left-0 z-20 bg-white border-r border-gray-200 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)] cursor-pointer"
+                      className={`sticky left-0 z-20 bg-white border-r border-gray-200 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)] cursor-pointer ${driverDrop?.key === driverGroup.driverKey ? driverDrop.side === "before" ? "border-t-2 border-t-emerald-600" : "border-b-2 border-b-emerald-600" : ""}`}
                       style={{
                         width: DRIVER_COLUMN_WIDTH,
                         minWidth: DRIVER_COLUMN_WIDTH,
                       }}
                       onClick={() => onFocusRoute?.(primaryIndex)}
+                      onDragOver={event => {
+                        if (!event.dataTransfer.types.includes("application/x-syncnox-driver-order")) return;
+                        event.preventDefault(); event.stopPropagation();
+                        event.dataTransfer.dropEffect = "move";
+                        const bounds = event.currentTarget.getBoundingClientRect();
+                        setDriverDrop({ key: driverGroup.driverKey, side: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after" });
+                      }}
+                      onDragLeave={event => {
+                        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDriverDrop(null);
+                      }}
+                      onDrop={event => {
+                        if (!event.dataTransfer.types.includes("application/x-syncnox-driver-order")) return;
+                        event.preventDefault(); event.stopPropagation();
+                        const source = event.dataTransfer.getData("application/x-syncnox-driver-order");
+                        const bounds = event.currentTarget.getBoundingClientRect();
+                        moveDriver(source, driverGroup.driverKey, event.clientY < bounds.top + bounds.height / 2 ? "before" : "after");
+                        setDraggedDriver(null); setDriverDrop(null);
+                      }}
                       title={
                         isGroupFocused
                           ? "Showing this driver's route — press Esc to show all"
@@ -2091,6 +2131,30 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                         className="h-full px-3 flex items-center gap-2.5 transition-opacity"
                         style={{ opacity: isDimmed ? 0.4 : 1 }}
                       >
+                        <div className="flex items-center gap-0.5 shrink-0" onClick={event => event.stopPropagation()}>
+                          <button type="button" draggable={driverGroups.length > 1} aria-label={`Reorder ${driverGroup.driverName}`}
+                            title={`Drag or use arrow keys to reorder ${driverGroup.driverName}`}
+                            disabled={driverGroups.length <= 1}
+                            className={`hidden sm:inline-flex items-center text-gray-400 ${driverGroups.length > 1 ? "cursor-grab active:cursor-grabbing" : ""} ${draggedDriver === driverGroup.driverKey ? "opacity-50" : ""}`}
+                            onKeyDown={event => {
+                              if (event.key === "ArrowUp" && driverIndex > 0) {
+                                event.preventDefault(); event.stopPropagation();
+                                moveDriver(driverGroup.driverKey, driverGroups[driverIndex - 1].driverKey, "before");
+                              } else if (event.key === "ArrowDown" && driverIndex < driverGroups.length - 1) {
+                                event.preventDefault(); event.stopPropagation();
+                                moveDriver(driverGroup.driverKey, driverGroups[driverIndex + 1].driverKey, "after");
+                              }
+                            }}
+                            onDragStart={event => {
+                              event.stopPropagation();
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData("application/x-syncnox-driver-order", driverGroup.driverKey);
+                              setDraggedDriver(driverGroup.driverKey);
+                            }}
+                            onDragEnd={() => { setDraggedDriver(null); setDriverDrop(null); }}>
+                            <GripVertical size={14} />
+                          </button>
+                        </div>
                         <Avatar
                           icon={<UserOutlined />}
                           className="!hidden sm:!inline-flex bg-gray-100 text-gray-500 shrink-0"

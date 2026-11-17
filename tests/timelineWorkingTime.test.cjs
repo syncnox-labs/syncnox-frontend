@@ -27,11 +27,13 @@ let renderedLanes = [];
 let renderedTracks = [];
 let renderedStops = [];
 let renderedMergeButtons = [];
+let renderedDriverOrderButtons = [];
 let renderedRouteMenus = [];
 let renderedStopTooltips = [];
 function recordElement(factory, type, props, key) {
   if (String(key).startsWith("stop-")) renderedStopTooltips.push(props.title);
   if (type === "button" && /^Merge .*waiting time$/.test(props["aria-label"] || "")) renderedMergeButtons.push(props);
+  if (type === "button" && /^Reorder .+/.test(props["aria-label"] || "")) renderedDriverOrderButtons.push(props);
   if (type === "div" && props["data-driver-key"]) renderedRows.push(props);
   if (type === "div" && props["data-timeline-driver-track"]) renderedTracks.push(props);
   if (type === "div" && /^route-\d+$/.test(String(key))) {
@@ -69,6 +71,7 @@ const TimelineView = load("app/route/_components/TimelineView.tsx", {
   },
   "./timelineSegment.utils": load("app/route/_components/timelineSegment.utils.ts"),
   "./optimizationShortcuts.utils": load("app/route/_components/optimizationShortcuts.utils.ts"),
+  "./timelineDriverOrder.utils": load("app/route/_components/timelineDriverOrder.utils.ts"),
   "./useTimelineZoom": load("app/route/_components/useTimelineZoom.ts", {
     "./optimizationShortcuts.utils": load("app/route/_components/optimizationShortcuts.utils.ts"),
     "@/utils/timeline.utils": load("utils/timeline.utils.ts", { "./app.utils": load("utils/app.utils.ts") }),
@@ -135,6 +138,20 @@ const route = {
   ],
 };
 const team = { id: 8, name: "Driver Example", work_start_time: "06:00", work_end_time: "18:00" };
+
+test("driver rows expose a draggable keyboard reorder handle", () => {
+  renderedDriverOrderButtons = [];
+  const second = { ...route, team_member_id: 9, team_member_name: "Second Driver" };
+  renderToStaticMarkup(React.createElement(TimelineView, {
+    routes: [route, second], scheduledDate: "2026-09-29", showDriverWorkingTime: false,
+  }));
+  assert.deepEqual(renderedDriverOrderButtons.map(({ disabled }) => disabled), [false, false]);
+  assert.deepEqual(renderedDriverOrderButtons.map(button => button["aria-label"]), [
+    "Reorder Driver Example", "Reorder Second Driver",
+  ]);
+  assert.ok(renderedDriverOrderButtons.every(button => button.draggable && typeof button.onKeyDown === "function"));
+});
+
 function render(showDriverWorkingTime, driver = team) {
   return renderToStaticMarkup(React.createElement(TimelineView, {
     routes: [route], teams: [driver], scheduledDate: "2026-09-29",

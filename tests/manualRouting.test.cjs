@@ -94,6 +94,20 @@ test("local route times keep the plan's clock time", () => {
   assert.equal(localRouteTime("2026-10-27T06:15:00"), "2026-10-27T06:15");
 });
 
+test("scheduled pickup is distinct from a job's requested time and keeps the service-day context", () => {
+  const { manualJobTrip, scheduledJobPickup, formatScheduledClock } = load("app/route/_components/manualRouting.utils.ts");
+  const job = { id: 18830, job_type: "return_only", start_hour: "20:00", end_hour: "04:30" };
+  const route = { stops: [
+    { job_id: 18830, stop_type: "pickup", arrival_time: "2026-11-18T05:30:00" },
+    { job_id: 18830, stop_type: "dropoff", arrival_time: "2026-11-18T06:00:00" },
+  ] };
+  assert.equal(manualJobTrip(job).timeLabel, "Requested pickup: 4:30 AM (next day)");
+  assert.equal(scheduledJobPickup(route, job.id, "2026-11-17"), "5:30 AM (next day)");
+  assert.equal(scheduledJobPickup(route, 999, "2026-11-17"), undefined);
+  assert.equal(formatScheduledClock("2026-11-16T23:00:00", "2026-11-17"), "11:00 PM (previous day)");
+  assert.equal(formatScheduledClock("2026-11-19T05:30:00", "2026-11-17"), "5:30 AM (day +2)");
+});
+
 test("ride duration shows longer and overnight trips from their actual stop times", () => {
   const { formatRideDuration } = load("app/route/_components/manualRouting.utils.ts");
   assert.equal(formatRideDuration("2026-10-23T04:30:00", "2026-10-23T07:40:00"), "3h 10m");

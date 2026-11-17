@@ -24,6 +24,21 @@ export function formatRouteClock(value?: string | null): string {
   return `${hour % 12 || 12}:${match[2]} ${hour < 12 ? "AM" : "PM"}`;
 }
 
+/** Format a saved stop time in the plan's local calendar, including overnight trips. */
+export function formatScheduledClock(value?: string | null, serviceDate?: string | null): string {
+  const clock = formatRouteClock(value);
+  if (!value || !serviceDate || !/^\d{4}-\d{2}-\d{2}T/.test(value) || !/^\d{4}-\d{2}-\d{2}/.test(serviceDate)) return clock;
+  const day = Date.parse(`${value.slice(0, 10)}T00:00:00Z`);
+  const planDay = Date.parse(`${serviceDate.slice(0, 10)}T00:00:00Z`);
+  const offset = (day - planDay) / 86400000;
+  return `${clock}${offset === 1 ? " (next day)" : offset === -1 ? " (previous day)" : Number.isInteger(offset) && offset > 1 ? ` (day +${offset})` : ""}`;
+}
+
+export function scheduledJobPickup(route: Routes | undefined, jobId: number, serviceDate?: string | null): string | undefined {
+  const stop = route?.stops.find(item => item.job_id === jobId && (item.stop_type === "pickup" || item.stop_type === "job"));
+  return stop?.arrival_time ? formatScheduledClock(stop.arrival_time, serviceDate) : undefined;
+}
+
 export function rideDurationSeconds(pickup?: string | null, dropoff?: string | null): number | undefined {
   if (!pickup || !dropoff) return undefined;
   const timestamp = (value: string) => Date.parse(
