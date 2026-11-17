@@ -9,6 +9,7 @@ import { editRouteETA } from "@/apis/routeEta.api";
 import { useOptimizationStore } from "@/store/optimization.store";
 import { useJobsStore } from "@/store/jobs.store";
 import { manualRoutingError } from "./manualRouting.utils";
+import { routeNeedsOptimization } from "./jobAddition.utils";
 
 export interface ETASelection { routeIndex: number; stopIndex: number }
 
@@ -86,6 +87,9 @@ export default function RouteETAModal({ plan, selection, onClose, onSaved }: {
     {error && <Alert type="error" showIcon title="This change needs attention" description={error} className="mb-4" />}
     {busy === "load" && <div className="py-6 text-center"><Spin /></div>}
     {source && <div className="space-y-4">
+      {routeNeedsOptimization(source.route) && <Alert type="warning" showIcon
+        title="Route changes need review"
+        description="You can edit these estimated times, but travel times and constraints have not been fully checked. The route will remain pending; optimizing it may change the stop order and times." />}
       <div>
         <label htmlFor="route-eta-arrival" className="block mb-2 font-semibold">New arrival date and time</label>
         <DatePicker id="route-eta-arrival" value={value} onChange={next => { setValue(next?.startOf("minute") ?? null); setError(undefined); }}
