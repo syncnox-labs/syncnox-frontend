@@ -34,7 +34,7 @@ test("ETA API sends the selected route snapshot and local date/time", async () =
 });
 
 test("selecting a time immediately updates the form and saving updates timeline state", async () => {
-  const route = { team_member_id: 7, vehicle_id: 9, stops: [
+  const route = { team_member_id: 7, vehicle_id: 9, needs_optimization: true, stops: [
     { job_id: 42, stop_type: "pickup", arrival_time: "2026-10-13T06:00:00" },
     { job_id: 42, stop_type: "dropoff", arrival_time: "2026-10-13T07:00:00" },
   ] };
@@ -50,7 +50,7 @@ test("selecting a time immediately updates the form and saving updates timeline 
   const Modal = load("app/route/_components/RouteETAModal.tsx", {
     react: { ...React, useEffect() {}, useRef: value => ({ current: value }),
       useState: initial => { const index = stateIndex++; return [states[index] ?? initial, value => { states[index] = value; }]; } },
-    antd: { Alert: container, Spin: () => null, Button: container,
+    antd: { Alert: ({ title, description }) => React.createElement("div", null, title, description), Spin: () => null, Button: container,
       Modal: props => { footer = props.footer; return container(props); },
       DatePicker: props => { picker = props; return null; }, message: { success() {}, warning() {} } },
     "@/apis/routes.api": {},
@@ -58,6 +58,7 @@ test("selecting a time immediately updates the form and saving updates timeline 
     "@/store/optimization.store": { useOptimizationStore: { getState: () => store } },
     "@/store/jobs.store": { useJobsStore: { getState: () => ({ fetchJobsByIds: async () => {} }) } },
     "./manualRouting.utils": { manualRoutingError: reason => reason.message },
+    "./jobAddition.utils": load("app/route/_components/jobAddition.utils.ts"),
   }).default;
   const render = () => {
     stateIndex = 0;
@@ -70,6 +71,7 @@ test("selecting a time immediately updates the form and saving updates timeline 
   assert.deepEqual(picker.showTime, { format: "HH:mm", showSecond: false });
   picker.onChange(dayjs("2026-10-13T06:10:37"));
   const preview = render();
+  assert.match(preview, /route will remain pending/);
   assert.equal(picker.value.format("HH:mm:ss"), "06:10:00");
   assert.match(preview, /Oct 13, 07:10/);
   assert.doesNotMatch(preview, /\d{2}:\d{2}:\d{2}/);
