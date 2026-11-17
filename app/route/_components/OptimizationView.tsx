@@ -2735,6 +2735,7 @@ const OptimizationView = ({
                 <div className="h-full" hidden={detailView !== "timeline"}>
                   <TimelineView
                     routes={route.result?.routes || []}
+                    planId={route.id}
                     jobs={jobs}
                     teams={teams}
                     scheduledDate={route.scheduled_date}
