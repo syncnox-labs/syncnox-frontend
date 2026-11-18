@@ -101,6 +101,27 @@ export function getStopTooltipStops<T extends DisplayStop>(group: GroupedStop<T>
   return [...group.rawStops.filter(isDropoff), ...group.rawStops.filter(stop => !isDropoff(stop))];
 }
 
+/** Keep stops at their true time while separating simultaneous visits vertically. */
+export function getSimultaneousStopLayout<T extends DisplayStop>(groups: readonly GroupedStop<T>[]) {
+  const byTime = new Map<number, number[]>();
+  groups.forEach((group, index) => {
+    const value = group.representative.arrival_time;
+    const time = value ? Date.parse(value) : NaN;
+    if (!Number.isFinite(time)) return;
+    const indices = byTime.get(time) ?? [];
+    indices.push(index);
+    byTime.set(time, indices);
+  });
+  const offsets = new Map<number, number>();
+  let maxStack = 1;
+  for (const indices of byTime.values()) {
+    if (indices.length < 2) continue;
+    maxStack = Math.max(maxStack, indices.length);
+    indices.forEach((index, position) => offsets.set(index, (position - (indices.length - 1) / 2) * 50));
+  }
+  return { offsets, maxStack };
+}
+
 /** Shared presentation model for timeline arrows, map markers, and candidate search.
  * Raw indices remain unchanged for selecting and editing individual passengers.
  */

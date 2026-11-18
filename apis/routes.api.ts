@@ -327,9 +327,12 @@ export const reverseRoute = async (
 export const reOptimizeRoute = async (
   optimizationId: number,
   routeIndex: number,
+  preserveOrder = false,
 ): Promise<RouteOperationResponse> => {
   const response = await apiClient.post(
     `optimization/requests/${optimizationId}/routes/${routeIndex}/re-optimize`,
+    undefined,
+    preserveOrder ? { params: { preserve_order: true } } : undefined,
   );
   return response.data;
 };

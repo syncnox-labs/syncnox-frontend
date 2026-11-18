@@ -16,25 +16,32 @@ const declarations = new Map();
 for (const name of ["handleReOptimize", "handleSaveAndReOptimize"]) {
   function setup({ error, enqueueError, status = "completed", currentId = 47 }) {
     let confirmation;
-    const updates = [], notices = [];
+    const updates = [], notices = [], requests = [];
     const context = {
       useCallback: fn => fn,
       route: { id: 47, result: { routes: [{ team_member_name: "Driver" }] } },
       pendingDeletedJobIds: new Set(), applyStagedRemovals: async () => {},
       reorderRouteStops: async () => ({ success: true }),
-      reOptimizeRoute: async () => { if (enqueueError) throw enqueueError; return { success: true }; },
+      reOptimizeRoute: async (...args) => { requests.push(args); if (enqueueError) throw enqueueError; return { success: true }; },
       setPendingDeletedJobIds: () => {},
       waitUntilComplete: async () => { throw error; },
       fetchOptimization: async () => {},
       setOptimizationResult: (...args) => updates.push(args),
       useOptimizationStore: { getState: () => ({ currentOptimization: { id: currentId, status } }) },
       Modal: { confirm: options => { confirmation = options; } },
+      React: require("react"), Checkbox: () => null,
       message: Object.fromEntries(["loading", "success", "error"].map(kind => [kind, value => notices.push([kind, value])])),
     };
     assert.ok(declarations.has(name));
     const compiled = ts.transpileModule(declarations.get(name), { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
     const fn = new Function(...Object.keys(context), compiled + `; return ${name};`)(...Object.values(context));
-    return { updates, notices, run: async () => { await fn(0, [1]); if (confirmation) await confirmation.onOk(); } };
+    return { updates, notices, requests, run: async (keepOrder = false) => {
+      await fn(0, [1]);
+      if (confirmation) {
+        if (keepOrder) require("react").Children.toArray(confirmation.content.props.children)[1].props.onChange({ target: { checked: true } });
+        await confirmation.onOk();
+      }
+    } };
   }
 
   test(`${name} preserves the worker's detailed conflict in the banner and toast`, async () => {
@@ -57,5 +64,11 @@ for (const name of ["handleReOptimize", "handleSaveAndReOptimize"]) {
     const ctx = setup({ error: new Error("Old route conflict"), currentId: 48 });
     await ctx.run();
     assert.equal(ctx.updates.filter(([status]) => status !== "processing").length, 0);
+  });
+
+  if (name === "handleReOptimize") test("keep stop order is sent to the route optimizer", async () => {
+    const ctx = setup({ error: new Error("stop") });
+    await ctx.run(true);
+    assert.deepEqual(ctx.requests[0], [47, 0, true]);
   });
 }

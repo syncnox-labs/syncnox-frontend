@@ -70,6 +70,7 @@ test("selecting a time immediately updates the form and saving updates timeline 
   assert.equal(picker.format, "YYYY-MM-DD HH:mm");
   assert.deepEqual(picker.showTime, { format: "HH:mm", showSecond: false });
   picker.onChange(dayjs("2026-10-13T06:10:37"));
+  states[4] = { arrival: "2026-10-13T06:10:00", stops: saved.routes[0].stops };
   const preview = render();
   assert.match(preview, /route will remain pending/);
   assert.equal(picker.value.format("HH:mm:ss"), "06:10:00");
@@ -78,6 +79,7 @@ test("selecting a time immediately updates the form and saving updates timeline 
   const saveButton = React.Children.toArray(footer.props.children).at(-1);
   await saveButton.props.onClick();
   assert.equal(calls[0][3], "2026-10-13T06:10:00");
+  assert.deepEqual(calls[0][5], saved.routes[0].stops.map(stop => stop.arrival_time));
   assert.deepEqual(updates, [["completed", saved]]);
   assert.equal(closed, true);
 });
