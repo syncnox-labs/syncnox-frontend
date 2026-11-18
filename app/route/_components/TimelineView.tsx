@@ -54,7 +54,7 @@ import { useTimelineZoom } from "./useTimelineZoom";
 import { moveVisibleDriver, orderDrivers } from "./timelineDriverOrder.utils";
 import { waitingMergeButtonLayout, waitingMergeCandidates } from "./routeWaiting.utils";
 import { isRedundantLeaderClientStart } from "./leaderRoute.utils";
-import { getRouteStopDisplay, getStopTooltipStops, type GroupedStop as DisplayStopGroup } from "./stopDisplay.utils";
+import { getRouteStopDisplay, getSimultaneousStopLayout, getStopTooltipStops, type GroupedStop as DisplayStopGroup } from "./stopDisplay.utils";
 import {
   calculateTimeRange,
   generateTimeMarkers,
@@ -1090,6 +1090,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         nonDepotGroups: GroupedStop[];
         startPosition: number | null;
         endPosition: number | null;
+        simultaneous: ReturnType<typeof getSimultaneousStopLayout>;
       }
     >();
 
@@ -1129,6 +1130,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         nonDepotGroups: nonDepot,
         startPosition: positions.length ? Math.min(...positions) : null,
         endPosition: positions.length ? Math.max(...positions) : null,
+        simultaneous: getSimultaneousStopLayout(grouped),
       });
     });
 
@@ -1941,6 +1943,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               </div>
             ) : (
               driverGroups.map((driverGroup, driverIndex) => {
+                const driverRowHeight = Math.max(ROW_HEIGHT, ...driverGroup.routes.map(({ originalIndex }) => {
+                  const count = routeDataMap.get(originalIndex)?.simultaneous.maxStack ?? 1;
+                  return count > 1 ? count * 50 + 20 : ROW_HEIGHT;
+                }));
                 const activeGroupRoute =
                   (focusedRouteIndex !== null
                     ? driverGroup.routes.find((r) => r.originalIndex === focusedRouteIndex)
@@ -2093,7 +2099,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                       }
                     }}
                     className={`flex border-b border-gray-100 hover:bg-gray-50 transition-colors ${tripDropRouteIndex != null && routes[tripDropRouteIndex]?.team_member_id === routes[primaryIndex]?.team_member_id ? "bg-emerald-50 ring-2 ring-inset ring-emerald-500" : ""}`}
-                    style={{ height: ROW_HEIGHT }}
+                    style={{ height: driverRowHeight }}
                   >
                     {/* Sticky Driver Info */}
                     <div
@@ -2438,7 +2444,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             .diff(startTime, "minute", true) * pixelsPerMinute,
                                         ),
                                       ),
-                                top: ROW_HEIGHT - 3,
+                                top: driverRowHeight - 3,
                               }}
                             >
                               {shiftDrag.edge === "start" ? "Starts" : "Ends"}{" "}
@@ -2518,7 +2524,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                             aria-label={`${driverGroup.driverName} ${route.leg || "route"}`}
                             // Share a row origin without letting empty track overlays
                             // intercept stops and drop targets on another trip.
-                            style={{ height: ROW_HEIGHT, pointerEvents: "none" }}
+                            style={{ height: driverRowHeight, pointerEvents: "none" }}
                             className={`absolute inset-0 z-10 [&>*]:pointer-events-auto transition-colors duration-150 ${
                               isTrackBeingDraggedOver
                                 ? "bg-emerald-50/25 ring-1 ring-emerald-400/40 rounded-sm"
@@ -2818,6 +2824,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                             {(() => {
                               return groupedStops.map((group, groupIndex) => {
                                 const stop = group.representative;
+                                const simultaneousOffset = routeData?.simultaneous.offsets.get(groupIndex);
+                                const stackStyle = simultaneousOffset === undefined ? undefined
+                                  : { top: `calc(50% + ${simultaneousOffset}px)` };
                                 const count = group.candidateCount;
                                 const isMixed = group.hasPickup && group.hasDropoff;
                                 
@@ -2984,6 +2993,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 const stopTooltipKey = `${routeIndex}-${groupIndex}`;
                                 const tooltipContent = (
                                   <div className="pointer-events-auto select-text p-1 space-y-2.5 w-[310px] text-slate-800">
+                                    {simultaneousOffset !== undefined && <p className="text-xs text-slate-500">Multiple stops have the same scheduled time; they are stacked on the timeline.</p>}
                                     {/* Header Badge Row */}
                                     <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200 select-none">
                                       {isMixed ? (
@@ -3371,6 +3381,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             isGroupPendingDelete ? "opacity-35 border-dashed border-red-500 bg-red-100" : ""
                                           }`}
                                           style={{
+                                            ...stackStyle,
                                             left: left,
                                             width: Math.max(blockWidth, 28),
                                             boxShadow: isStopEdited && !isStopSelected && !isStopNew && !isDropTarget && !isDraggingThis ? "none" : undefined,
@@ -3481,6 +3492,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           isDropTarget={isDropTarget}
                                           isDimmed={isDimmed}
                                           left={left}
+                                          style={stackStyle}
                                           onClick={handleStopItemClick}
                                           draggable={!isDepot && Boolean(firstJobId)}
                                           onDragStart={(e) =>
@@ -3545,6 +3557,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             : ""
                                         }`}
                                         style={{
+                                          ...stackStyle,
                                           left: left - 14,
                                           boxShadow: isStopEdited && !isStopSelected && !isStopNew && !isDropTarget && !isDraggingThis ? "none" : undefined,
                                           backgroundColor: isGroupPendingDelete

@@ -422,6 +422,26 @@ test("a shared pickup/drop-off visit renders one double arrow and drop-off detai
   assert.deepEqual(selectedRoute.stops, originalStops);
 });
 
+test("different stops at the same time stay visible and selectable at their true time", () => {
+  const first = { ...route.stops[0], job_id: 41, candidate_name: "Larryduru", arrival_time: "2026-09-29T09:00:00" };
+  const second = { ...first, job_id: 42, candidate_name: "Another passenger", latitude: 45.7, longitude: -73.7 };
+  const selectedRoute = { ...route, stops: [first, second] };
+  const clicked = [];
+  renderedStops = [];
+  renderedRows = [];
+  renderToStaticMarkup(React.createElement(TimelineView, {
+    routes: [selectedRoute], scheduledDate: "2026-09-29", showDriverWorkingTime: false,
+    onStopClick: (...args) => clicked.push(args),
+  }));
+  assert.equal(renderedStops.length, 2);
+  assert.equal(renderedStops[0].left, renderedStops[1].left, "both stops retain their scheduled time");
+  assert.notEqual(renderedStops[0].style.top, renderedStops[1].style.top);
+  assert.ok(renderedRows[0].style.height >= 120);
+  renderedStops.forEach(stop => stop.onClick({ stopPropagation() {} }));
+  assert.deepEqual(clicked.map(call => call[0].job_id), [41, 42]);
+  assert.deepEqual(clicked.map(call => call[2]), [1, 2]);
+});
+
 test("a shared pickup shows the driver's earlier arrival and waiting after a drop-off", () => {
   const pickup = { ...route.stops[0], leg: "GO", arrival_time: "2026-09-29T15:59:20",
     driver_arrival_time: "2026-09-29T15:30:32", service_duration_seconds: 0 };

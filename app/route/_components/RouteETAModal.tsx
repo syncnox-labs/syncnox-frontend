@@ -5,7 +5,7 @@ import { Alert, Button, DatePicker, Modal, Spin, message } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import type { Route, Routes } from "@/types/routes.type";
 import { getOptimizationRequest } from "@/apis/routes.api";
-import { editRouteETA } from "@/apis/routeEta.api";
+import { editRouteETA, previewRouteETA } from "@/apis/routeEta.api";
 import { useOptimizationStore } from "@/store/optimization.store";
 import { useJobsStore } from "@/store/jobs.store";
 import { manualRoutingError } from "./manualRouting.utils";
@@ -21,13 +21,16 @@ export default function RouteETAModal({ plan, selection, onClose, onSaved }: {
   const [value, setValue] = useState<Dayjs | null>(null);
   const [busy, setBusy] = useState<"load" | "save" | null>(null);
   const [error, setError] = useState<string>();
+  const [preview, setPreview] = useState<{ arrival: string; stops: Routes["stops"] } | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewAttempt, setPreviewAttempt] = useState(0);
   const session = useRef(0);
   const saving = useRef(false);
 
   useEffect(() => {
     if (!selection) return;
     const current = ++session.current;
-    setSource(null); setValue(null); setError(undefined); setBusy("load");
+    setSource(null); setValue(null); setPreview(null); setError(undefined); setBusy("load");
     const displayed = plan.result.routes[selection.routeIndex];
     const selected = displayed?.stops[selection.stopIndex];
     const requestId = displayed?.source_optimization_id ?? plan.id;
@@ -53,12 +56,26 @@ export default function RouteETAModal({ plan, selection, onClose, onSaved }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection, plan.id]);
 
+  const arrival = value?.isValid() ? value.format("YYYY-MM-DDTHH:mm:ss") : null;
+  useEffect(() => {
+    if (!source || !arrival) { setPreview(null); setPreviewing(false); return; }
+    let active = true;
+    setPreview(null); setPreviewing(true);
+    const timer = setTimeout(() => {
+      previewRouteETA(source.requestId, source.routeIndex, source.stopIndex, arrival, source.route)
+        .then(result => { if (active) setPreview({ arrival, stops: result.stops }); })
+        .catch(reason => { if (active) setError(manualRoutingError(reason)); })
+        .finally(() => { if (active) setPreviewing(false); });
+    }, 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [source, arrival, previewAttempt]);
+
   const save = async () => {
-    if (!source || !value?.isValid() || busy || saving.current) return;
+    if (!source || !arrival || preview?.arrival !== arrival || busy || saving.current) return;
     saving.current = true; setBusy("save"); setError(undefined);
     try {
       const saved = await editRouteETA(source.requestId, source.routeIndex, source.stopIndex,
-        value.format("YYYY-MM-DDTHH:mm:ss"), source.route);
+        arrival, source.route, preview.stops.map(stop => stop.arrival_time));
       if (source.requestId === plan.id) {
         if (useOptimizationStore.getState().currentOptimization?.id === plan.id) {
           useOptimizationStore.getState().setOptimizationResult("completed", saved.result);
@@ -70,19 +87,18 @@ export default function RouteETAModal({ plan, selection, onClose, onSaved }: {
       // Refresh neighboring-plan projections and job details after the immediate update.
       void useOptimizationStore.getState().fetchOptimization(plan.id).catch(() => message.warning("ETA saved. Refresh to reload the full plan."));
       void useJobsStore.getState().fetchJobsByIds(plan.job_ids || []).catch(() => message.warning("ETA saved. Refresh to reload job details."));
-    } catch (reason) { setError(manualRoutingError(reason)); }
+    } catch (reason) { setError(manualRoutingError(reason)); setPreview(null); setPreviewAttempt(attempt => attempt + 1); }
     finally { saving.current = false; setBusy(null); }
   };
   const stop = source?.route.stops[source.stopIndex];
   const label = stop?.stop_type === "pickup" || stop?.stop_type === "job" ? "pickup"
     : stop?.stop_type === "dropoff" ? "dropoff" : "arrival";
-  const delta = source && value?.isValid() ? value.diff(dayjs(stop!.arrival_time), "second") : 0;
 
   return <Modal open={selection !== null} title={`Edit estimated ${label} time`} centered width={640}
     onCancel={busy === "save" ? undefined : onClose} closable={busy !== "save"} maskClosable={!busy}
     footer={<>
       <Button disabled={Boolean(busy)} onClick={onClose}>Cancel</Button>
-      <Button type="primary" loading={busy === "save"} disabled={!source || !value?.isValid() || Boolean(busy)} onClick={save}>Save ETA</Button>
+      <Button type="primary" loading={busy === "save"} disabled={!source || !arrival || preview?.arrival !== arrival || Boolean(busy) || previewing} onClick={save}>Save ETA</Button>
     </>}>
     {error && <Alert type="error" showIcon title="This change needs attention" description={error} className="mb-4" />}
     {busy === "load" && <div className="py-6 text-center"><Spin /></div>}
@@ -94,15 +110,16 @@ export default function RouteETAModal({ plan, selection, onClose, onSaved }: {
         <label htmlFor="route-eta-arrival" className="block mb-2 font-semibold">New arrival date and time</label>
         <DatePicker id="route-eta-arrival" value={value} onChange={next => { setValue(next?.startOf("minute") ?? null); setError(undefined); }}
           showTime={{ format: "HH:mm", showSecond: false }} needConfirm={false} format="YYYY-MM-DD HH:mm" className="w-full" disabled={Boolean(busy)} />
-        <p className="mt-2 text-slate-500 text-sm">Use the route&apos;s local time. This stop and all following stops move by the same amount. Earlier stops keep their times.</p>
+        <p className="mt-2 text-slate-500 text-sm">Use the route&apos;s local time. Following stops adjust as needed; the driver may wait until a return passenger&apos;s shift ends.</p>
       </div>
-      {value?.isValid() && <div className="max-h-56 overflow-auto custom-scrollbar border border-slate-200">
+      {previewing && <div className="text-sm text-slate-500"><Spin size="small" /> Checking updated times…</div>}
+      {preview && preview.arrival === arrival && <div className="max-h-56 overflow-auto custom-scrollbar border border-slate-200">
         <table className="w-full text-left text-xs"><thead className="sticky top-0 bg-slate-50"><tr>
           <th className="p-2">Stop</th><th className="p-2">Current</th><th className="p-2">After saving</th>
         </tr></thead><tbody>{source.route.stops.slice(source.stopIndex).map((item, index) => <tr key={index} className="border-t border-slate-100">
           <td className="p-2 capitalize">{item.stop_type.replaceAll("_", " ")}{item.job_id ? ` · #${item.job_id}` : ""}</td>
           <td className="p-2 whitespace-nowrap">{dayjs(item.arrival_time).format("MMM D, HH:mm")}</td>
-          <td className="p-2 whitespace-nowrap font-semibold">{dayjs(item.arrival_time).add(delta, "second").format("MMM D, HH:mm")}</td>
+          <td className="p-2 whitespace-nowrap font-semibold">{dayjs(preview.stops[source.stopIndex + index].arrival_time).format("MMM D, HH:mm")}</td>
         </tr>)}</tbody></table>
       </div>}
     </div>}

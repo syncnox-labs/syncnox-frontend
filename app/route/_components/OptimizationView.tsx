@@ -1573,9 +1573,15 @@ const OptimizationView = ({
     async (routeIndex: number) => {
       const driverName =
         route.result?.routes?.[routeIndex]?.team_member_name || "Driver";
+      let preserveOrder = false;
       Modal.confirm({
         title: "Reoptimize Route",
-        content: `Run the routing engine again just for ${driverName}'s route to find a better sequence?`,
+        content: React.createElement("div", { className: "space-y-3" },
+          React.createElement("p", null, `Recalculate ${driverName}'s route using current travel times and constraints.`),
+          React.createElement(Checkbox, { onChange: event => { preserveOrder = event.target.checked; } },
+            "Keep the current stop order"),
+          React.createElement("p", { className: "text-sm text-slate-500" },
+            "With this option, pickup and drop-off times can change, but stops stay in order. If no valid schedule is found, no changes are saved.")),
         okText: "Reoptimize",
         okButtonProps: { style: { backgroundColor: "#003220" } },
         onOk: async () => {
@@ -1589,7 +1595,7 @@ const OptimizationView = ({
             setOptimizationResult("processing");
             const targetSourceOptId =
               route.result?.routes?.[routeIndex]?.source_optimization_id || route.id;
-            const res = await reOptimizeRoute(route.id, routeIndex);
+            const res = await reOptimizeRoute(route.id, routeIndex, preserveOrder);
             if (res.success) {
               if (!res.is_async && res.result) {
                 if (targetSourceOptId !== route.id) {
