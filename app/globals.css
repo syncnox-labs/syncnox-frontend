@@ -580,3 +580,19 @@ body {
 }
 .timeline-compact-controls .ant-select-content,
 .timeline-compact-controls .ant-select-selection-item { font-size: 12px !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   Ant Design Checkbox — force green theme in static modals
+   (Modal.confirm creates its own root outside ConfigProvider)
+═══════════════════════════════════════════════════════════ */
+.ant-checkbox-checked .ant-checkbox-inner {
+  background-color: #003220 !important;
+  border-color: #003220 !important;
+}
+.ant-checkbox-wrapper:hover .ant-checkbox-inner,
+.ant-checkbox:hover .ant-checkbox-inner {
+  border-color: #003220 !important;
+}
+.ant-checkbox-inner {
+  border-radius: 0 !important;
+}
