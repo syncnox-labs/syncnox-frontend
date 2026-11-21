@@ -7,7 +7,7 @@ import type { Route } from "@/types/routes.type";
 import { useJobsStore } from "@/store/jobs.store";
 import { useOptimizationStore } from "@/store/optimization.store";
 import { useManualRoutingStore } from "@/store/manualRouting.store";
-import { commitManualRouting, getManualRoutingContext, previewManualRouting, type ManualJobSummary, type ManualRoutingContext, type ManualRoutingPreview, type ManualRoutingRequest } from "@/apis/manualRouting.api";
+import { commitManualRouting, getAssignmentRoutingContext, previewManualRouting, type ManualJobSummary, type ManualRoutingContext, type ManualRoutingPreview, type ManualRoutingRequest } from "@/apis/manualRouting.api";
 import { assignmentProposal, formatRideDuration, formatRouteClock, manualJobLabel, manualJobTrip, manualRouteLabel, manualRoutingErrorInfo, otherLongRides } from "./manualRouting.utils";
 import { choicesCoverJobs, filterAssignmentChoices } from "./assignmentChoices.utils";
 
@@ -87,10 +87,11 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
     setPlacement(intent.placement || "auto"); setRouteIndex(intent.routeIndex);
     setChangeFixedDriver(false); setIncludeExtraHours(false); setCheckSelectedDriver(false); setAdvanced([]); setContext(null); setPreview(null); setError(undefined); setBusy("load");
     saving.current = false;
-    getManualRoutingContext(plan.id, jobIds).then(data => {
+    const controller = new AbortController();
+    getAssignmentRoutingContext(plan.id, jobIds, controller.signal).then(data => {
       if (session.current === current) { setContext(data); setBusy(null); }
     }).catch(reason => { if (session.current === current) { setError(manualRoutingErrorInfo(reason)); setBusy(null); } });
-    return () => { session.current = current + 1; };
+    return () => { session.current = current + 1; controller.abort(); };
   // The intent starts a session. Live plan events must not reset a selection.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, intent, plan.id]);
@@ -125,7 +126,7 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
   const retry = async () => {
     invalidate(); setBusy("load");
     const active = session.current;
-    try { const data = await getManualRoutingContext(plan.id, jobIds); if (session.current === active) setContext(data); }
+    try { const data = await getAssignmentRoutingContext(plan.id, jobIds); if (session.current === active) setContext(data); }
     catch (reason) { if (session.current === active) setError(manualRoutingErrorInfo(reason)); }
     finally { if (session.current === active) setBusy(null); }
   };

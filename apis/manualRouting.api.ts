@@ -43,12 +43,38 @@ export interface AssignmentChoice {
   requires_working_time_extension: boolean; changes_required_driver: boolean;
   job_ids: number[];
 }
-export const getManualRoutingContext = async (id: number, jobIds: number[] = []): Promise<ManualRoutingContext> => {
+const assignmentTimeout = () => Object.assign(new Error("The assignment check took too long. No jobs were assigned."), {
+  detail: { category: "assignment_timeout", message: "The assignment check took too long. No jobs were assigned." },
+});
+
+/** Bound the entire operation, including stalled HTTP requests and queue time. */
+async function withAssignmentTimeLimit<T>(operation: (signal: AbortSignal) => Promise<T>, ms: number, signal?: AbortSignal): Promise<T> {
+  if (signal?.aborted) throw new Error("Preview canceled");
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => { reject(assignmentTimeout()); controller.abort(); }, ms);
+    onAbort = () => { controller.abort(); reject(new Error("Preview canceled")); };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([operation(controller.signal), limit]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+export const getManualRoutingContext = async (id: number, jobIds: number[] = [], signal?: AbortSignal): Promise<ManualRoutingContext> => {
   const query = jobIds.map(jobId => `job_ids=${encodeURIComponent(jobId)}`).join("&");
-  const { data } = await apiClient.get(`optimization/requests/${id}/manual-routing/context${query ? `?${query}` : ""}`);
+  const { data } = await apiClient.get(`optimization/requests/${id}/manual-routing/context${query ? `?${query}` : ""}`, { signal });
   return data;
 };
-export const previewManualRouting = async (id: number, proposal: ManualRoutingRequest, signal?: AbortSignal): Promise<ManualRoutingPreview> => {
+export const getAssignmentRoutingContext = (id: number, jobIds: number[], signal?: AbortSignal) =>
+  withAssignmentTimeLimit(inner => getManualRoutingContext(id, jobIds, inner), 20_000, signal);
+
+const pollManualRoutingPreview = async (id: number, proposal: ManualRoutingRequest, signal?: AbortSignal): Promise<ManualRoutingPreview> => {
   const response = await apiClient.post(`optimization/requests/${id}/manual-routing/preview?background=true`, proposal, { signal });
   let data = response.data;
   const deadline = Date.now() + 10 * 60 * 1000;
@@ -61,6 +87,10 @@ export const previewManualRouting = async (id: number, proposal: ManualRoutingRe
   }
   return data;
 };
+export const previewManualRouting = (id: number, proposal: ManualRoutingRequest, signal?: AbortSignal): Promise<ManualRoutingPreview> =>
+  proposal.action === "assign"
+    ? withAssignmentTimeLimit(inner => pollManualRoutingPreview(id, proposal, inner), 60_000, signal)
+    : pollManualRoutingPreview(id, proposal, signal);
 export const commitManualRouting = async (id: number, previewToken: string, requestToken: string, approveWorkingTimeExtension = false): Promise<{
   success: boolean; message: string; result: Route["result"]; affected_route_indices: number[];
 }> => {

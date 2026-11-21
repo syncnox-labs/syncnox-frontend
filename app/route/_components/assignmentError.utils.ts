@@ -19,6 +19,9 @@ const clock = (value: string) => value.replace(/(?:(next day|day \+\d+)\s+)?(\d{
 export function assignmentErrorInfo(detail: unknown, fallback: string, status?: number): AssignmentErrorInfo {
   const record = detail && !Array.isArray(detail) && typeof detail === "object"
     ? detail as Record<string, unknown> : undefined;
+  if (record?.category === "assignment_timeout") return info("Check took too long",
+    "The check did not finish in time. No jobs were assigned.",
+    "Try again, choose a driver or trip, or select fewer jobs.");
   if (record?.category === "routing_provider_unavailable") {
     if (record.code === "insufficient_credits") return info("Routing service unavailable",
       "The routing service has run out of credits.", "Ask your administrator to restore routing credits, then try again.", false);
@@ -60,7 +63,7 @@ export function assignmentErrorInfo(detail: unknown, fallback: string, status?: 
   if (/changed.*(?:refresh|review)|refresh.*(?:changed|again)|since this preview/i.test(text)) return info("Availability changed",
     "The plan or availability changed since the last check.", "Click Check again to refresh and retry.", false);
   if (/took too long|taking too long|search time.*exceeded/i.test(text)) return info("Check took too long",
-    "We couldn't finish checking this assignment.", "Choose a driver or select fewer jobs, then try again.");
+    "The check did not finish in time. No jobs were assigned.", "Try again, choose a driver or trip, or select fewer jobs.");
   if ((status !== undefined && status >= 500) || /could not be queued|preview (?:failed|stopped)|temporarily unavailable|could not be completed|route directions (?:could not be loaded|are unavailable)|road travel could not be checked|route could not be checked/i.test(text)) {
     return info("Assignment check unavailable", "We couldn't check this assignment right now.", "Try again in a moment.", false);
   }

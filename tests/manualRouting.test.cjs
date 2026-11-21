@@ -5,7 +5,7 @@ const { test } = require("node:test");
 const { runInNewContext } = require("node:vm");
 const ts = require("typescript");
 
-function load(relative, dependencies = {}) {
+function load(relative, dependencies = {}, globals = {}) {
   const source = fs.readFileSync(path.join(__dirname, "..", relative), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true,
@@ -14,7 +14,8 @@ function load(relative, dependencies = {}) {
   runInNewContext(compiled, { exports, require: name => dependencies[name] || (name === "./assignmentError.utils"
     ? load("app/route/_components/assignmentError.utils.ts") : name === "./tripLabel.utils"
       ? load("app/route/_components/tripLabel.utils.ts") : require(name)),
-    setTimeout: callback => { callback(); return 0; }, Date, encodeURIComponent });
+    setTimeout: (callback, ms) => ms >= 5000 ? setTimeout(callback, ms) : (callback(), 0),
+    clearTimeout, AbortController, Date, encodeURIComponent, ...globals });
   return exports;
 }
 
@@ -145,6 +146,57 @@ test("background preview retrieves only its own result and never saves automatic
   assert.equal(calls[0].url, "optimization/requests/48/manual-routing/preview?background=true");
   assert.equal(calls.length, 3);
   assert.ok(calls.every(call => !call.url.endsWith("/commit")));
+});
+
+test("assignment check times out even if the initial HTTP request hangs", async () => {
+  let expire, requestSignal, cleared = false;
+  const api = load("apis/manualRouting.api.ts", { "@/config/apiClient.config": {
+    post: async (_url, _body, options) => { requestSignal = options.signal; return new Promise(() => {}); },
+  } }, { setTimeout: (callback, ms) => { assert.equal(ms, 60000); expire = callback; return 8; },
+         clearTimeout: id => { assert.equal(id, 8); cleared = true; } });
+  const pending = api.previewManualRouting(48, { action: "assign", job_ids: [1] });
+  expire();
+  await assert.rejects(pending, error => error.detail?.category === "assignment_timeout");
+  assert.equal(requestSignal.aborted, true);
+  assert.equal(cleared, true);
+});
+
+test("assignment timeout includes queue polling and cannot commit", async () => {
+  let expire, polls = 0, commits = 0;
+  const api = load("apis/manualRouting.api.ts", { "@/config/apiClient.config": {
+    post: async url => { if (url.endsWith("/commit")) commits++; return { data: { pending: true, preview_id: "p" } }; },
+    get: async () => { polls++; return new Promise(() => {}); },
+  } }, { setTimeout: (callback, ms) => { if (ms === 60000) { expire = callback; return 8; } callback(); return 0; },
+         clearTimeout: () => {} });
+  const pending = api.previewManualRouting(48, { action: "assign", job_ids: [1] });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(polls, 1);
+  expire();
+  await assert.rejects(pending, error => error.detail?.category === "assignment_timeout");
+  assert.equal(commits, 0);
+});
+
+test("assignment context timeout and cancellation stop waiting", async () => {
+  let expire, requestSignal;
+  const api = load("apis/manualRouting.api.ts", { "@/config/apiClient.config": {
+    get: async (_url, options) => { requestSignal = options.signal; return new Promise(() => {}); },
+  } }, { setTimeout: (callback, ms) => { assert.equal(ms, 20000); expire = callback; return 8; }, clearTimeout: () => {} });
+  const pending = api.getAssignmentRoutingContext(48, [1]);
+  expire();
+  await assert.rejects(pending, error => error.detail?.category === "assignment_timeout");
+  assert.equal(requestSignal.aborted, true);
+  const controller = new AbortController();
+  const canceled = api.getAssignmentRoutingContext(48, [1], controller.signal);
+  controller.abort();
+  await assert.rejects(canceled, /canceled/);
+});
+
+test("timeout diagnostics do not claim the job is impossible", () => {
+  const { manualRoutingErrorInfo } = load("app/route/_components/manualRouting.utils.ts");
+  const info = manualRoutingErrorInfo({ detail: { category: "assignment_timeout" } });
+  assert.equal(info.title, "Check took too long");
+  assert.match(info.message, /No jobs were assigned/);
+  assert.match(info.action, /Try again/);
 });
 
 test("save sends the signed preview and stable retry token once", async () => {
