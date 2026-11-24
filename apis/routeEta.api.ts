@@ -11,7 +11,17 @@ function etaPayload(stopIndex: number, arrival: string, route: Routes) {
   };
 }
 
-export async function previewRouteETA(requestId: number, routeIndex: number, stopIndex: number, arrival: string, route: Routes): Promise<{ stops: Routes["stops"] }> {
+export interface ETAConflict {
+  previous_stop_index: number;
+  stop_index: number;
+  available_seconds: number;
+  minimum_seconds: number | null;
+  service_seconds: number;
+  travel_seconds: number | null;
+  out_of_order: boolean;
+}
+
+export async function previewRouteETA(requestId: number, routeIndex: number, stopIndex: number, arrival: string, route: Routes): Promise<{ stops: Routes["stops"]; conflicts: ETAConflict[] }> {
   const { data } = await apiClient.post(`optimization/requests/${requestId}/routes/${routeIndex}/eta/preview`, etaPayload(stopIndex, arrival, route));
   return data;
 }

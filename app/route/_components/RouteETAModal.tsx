@@ -5,7 +5,7 @@ import { Alert, Button, DatePicker, Modal, Spin, message } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import type { Route, Routes } from "@/types/routes.type";
 import { getOptimizationRequest } from "@/apis/routes.api";
-import { editRouteETA, previewRouteETA } from "@/apis/routeEta.api";
+import { editRouteETA, previewRouteETA, type ETAConflict } from "@/apis/routeEta.api";
 import { useOptimizationStore } from "@/store/optimization.store";
 import { useJobsStore } from "@/store/jobs.store";
 import { manualRoutingError } from "./manualRouting.utils";
@@ -21,7 +21,7 @@ export default function RouteETAModal({ plan, selection, onClose, onSaved }: {
   const [value, setValue] = useState<Dayjs | null>(null);
   const [busy, setBusy] = useState<"load" | "save" | null>(null);
   const [error, setError] = useState<string>();
-  const [preview, setPreview] = useState<{ arrival: string; stops: Routes["stops"] } | null>(null);
+  const [preview, setPreview] = useState<{ arrival: string; stops: Routes["stops"]; conflicts: ETAConflict[] } | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewAttempt, setPreviewAttempt] = useState(0);
   const session = useRef(0);
@@ -63,7 +63,7 @@ export default function RouteETAModal({ plan, selection, onClose, onSaved }: {
     setPreview(null); setPreviewing(true);
     const timer = setTimeout(() => {
       previewRouteETA(source.requestId, source.routeIndex, source.stopIndex, arrival, source.route)
-        .then(result => { if (active) setPreview({ arrival, stops: result.stops }); })
+        .then(result => { if (active) { setError(undefined); setPreview({ arrival, stops: result.stops, conflicts: result.conflicts ?? [] }); } })
         .catch(reason => { if (active) setError(manualRoutingError(reason)); })
         .finally(() => { if (active) setPreviewing(false); });
     }, 250);
@@ -113,6 +113,22 @@ export default function RouteETAModal({ plan, selection, onClose, onSaved }: {
         <p className="mt-2 text-slate-500 text-sm">Use the route&apos;s local time. Following stops adjust as needed; the driver may wait until a return passenger&apos;s shift ends.</p>
       </div>
       {previewing && <div className="text-sm text-slate-500"><Spin size="small" /> Checking updated times…</div>}
+      {preview?.arrival === arrival && preview.conflicts.length > 0 && <Alert type="warning" showIcon
+        title={preview.conflicts.some(conflict => conflict.out_of_order) ? "The new ETA is before a previous stop" : "The new ETA is earlier than the saved travel estimate"}
+        description={<div>
+          <p>You can still save this ETA. The stop order stays the same, and following times adjust as shown below.</p>
+          {preview.conflicts.map(conflict => {
+            const previous = source.route.stops[conflict.previous_stop_index];
+            return <p key={conflict.stop_index}>
+              Previous stop ({previous.stop_type.replaceAll("_", " ")}{previous.job_id ? ` · #${previous.job_id}` : ""}): {dayjs(preview.stops[conflict.previous_stop_index].arrival_time).format("MMM D, HH:mm")}.
+              {conflict.out_of_order
+                ? ` The next stop is ${Math.round(-conflict.available_seconds / 60 * 10) / 10} min earlier.`
+                : ` Available: ${Math.round(conflict.available_seconds / 60 * 10) / 10} min.`}
+              {conflict.minimum_seconds != null && ` Saved minimum: ${Math.round(conflict.minimum_seconds / 60 * 10) / 10} min`}
+              {conflict.travel_seconds != null && ` (${Math.round(conflict.service_seconds / 60 * 10) / 10} min service + ${Math.round(conflict.travel_seconds / 60 * 10) / 10} min travel)`}{conflict.minimum_seconds != null && "."}
+            </p>;
+          })}
+        </div>} />}
       {preview && preview.arrival === arrival && <div className="max-h-56 overflow-auto custom-scrollbar border border-slate-200">
         <table className="w-full text-left text-xs"><thead className="sticky top-0 bg-slate-50"><tr>
           <th className="p-2">Stop</th><th className="p-2">Current</th><th className="p-2">After saving</th>
