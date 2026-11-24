@@ -445,6 +445,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   const [savingShiftTeamId, setSavingShiftTeamId] = useState<number | null>(null);
   const [confirmingShiftTeamId, setConfirmingShiftTeamId] = useState<number | null>(null);
   const [openStopTooltipKey, setOpenStopTooltipKey] = useState<string | null>(null);
+  const [overlappingStops, setOverlappingStops] = useState<{ routeIndex: number; groups: GroupedStop[] } | null>(null);
   const [driverOrder, setDriverOrder] = useState<{ planId: number | string | undefined; keys: string[] }>({ planId, keys: [] });
   const [draggedDriver, setDraggedDriver] = useState<string | null>(null);
   const [driverDrop, setDriverDrop] = useState<{ key: string; side: "before" | "after" } | null>(null);
@@ -1943,10 +1944,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               </div>
             ) : (
               driverGroups.map((driverGroup, driverIndex) => {
-                const driverRowHeight = Math.max(ROW_HEIGHT, ...driverGroup.routes.map(({ originalIndex }) => {
-                  const count = routeDataMap.get(originalIndex)?.simultaneous.maxStack ?? 1;
-                  return count > 1 ? count * 50 + 20 : ROW_HEIGHT;
-                }));
+                const driverRowHeight = ROW_HEIGHT;
                 const activeGroupRoute =
                   (focusedRouteIndex !== null
                     ? driverGroup.routes.find((r) => r.originalIndex === focusedRouteIndex)
@@ -2825,8 +2823,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               return groupedStops.map((group, groupIndex) => {
                                 const stop = group.representative;
                                 const simultaneousOffset = routeData?.simultaneous.offsets.get(groupIndex);
-                                const stackStyle = simultaneousOffset === undefined ? undefined
-                                  : { top: `calc(50% + ${simultaneousOffset}px)` };
                                 const count = group.candidateCount;
                                 const isMixed = group.hasPickup && group.hasDropoff;
                                 
@@ -2993,7 +2989,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 const stopTooltipKey = `${routeIndex}-${groupIndex}`;
                                 const tooltipContent = (
                                   <div className="pointer-events-auto select-text p-1 space-y-2.5 w-[310px] text-slate-800">
-                                    {simultaneousOffset !== undefined && <p className="text-xs text-slate-500">Multiple stops have the same scheduled time; they are stacked on the timeline.</p>}
+                                    {simultaneousOffset !== undefined && <p className="text-xs text-slate-500">Multiple stops have the same scheduled time. Click to choose a stop.</p>}
                                     {/* Header Badge Row */}
                                     <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200 select-none">
                                       {isMixed ? (
@@ -3320,6 +3316,15 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       }
                                       return;
                                     }
+                                    if (simultaneousOffset !== undefined) {
+                                      const time = Date.parse(stop.arrival_time);
+                                      const groups = groupedStops.filter(candidate =>
+                                        candidate.representative.arrival_time && Date.parse(candidate.representative.arrival_time) === time
+                                      );
+                                      setOpenStopTooltipKey(null);
+                                      setOverlappingStops({ routeIndex, groups });
+                                      return;
+                                    }
                                     onStopClick?.(
                                       group.rawStops[0],
                                       routeIndex,
@@ -3381,7 +3386,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             isGroupPendingDelete ? "opacity-35 border-dashed border-red-500 bg-red-100" : ""
                                           }`}
                                           style={{
-                                            ...stackStyle,
                                             left: left,
                                             width: Math.max(blockWidth, 28),
                                             boxShadow: isStopEdited && !isStopSelected && !isStopNew && !isDropTarget && !isDraggingThis ? "none" : undefined,
@@ -3492,7 +3496,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           isDropTarget={isDropTarget}
                                           isDimmed={isDimmed}
                                           left={left}
-                                          style={stackStyle}
                                           onClick={handleStopItemClick}
                                           draggable={!isDepot && Boolean(firstJobId)}
                                           onDragStart={(e) =>
@@ -3557,7 +3560,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             : ""
                                         }`}
                                         style={{
-                                          ...stackStyle,
                                           left: left - 14,
                                           boxShadow: isStopEdited && !isStopSelected && !isStopNew && !isDropTarget && !isDraggingThis ? "none" : undefined,
                                           backgroundColor: isGroupPendingDelete
@@ -3695,6 +3697,26 @@ const TimelineView: React.FC<TimelineViewProps> = ({
           setSelectionSourceRouteIndex(null);
         }}
       />
+
+      <Modal title="Choose a stop" open={overlappingStops !== null} onCancel={() => setOverlappingStops(null)} footer={null}>
+        <p className="text-sm text-slate-500 mb-3">These stops share the same scheduled time.</p>
+        <div className="flex flex-col gap-2">
+          {overlappingStops?.groups.map((group) => {
+            const stop = group.representative;
+            const label = group.displayStopNumber ? `Stop ${group.displayStopNumber}` : "Depot";
+            return (
+              <button key={group.firstRawIndex} type="button" className="w-full text-left border border-slate-200 bg-white hover:bg-slate-50 px-3 py-2 cursor-pointer"
+                onClick={() => {
+                  onStopClick?.(group.rawStops[0], overlappingStops.routeIndex, group.displayStopNumber);
+                  setOverlappingStops(null);
+                }}>
+                <span className="font-semibold">{label}</span>
+                <span className="text-slate-500"> · {stop.stop_type === "drop_off" ? "dropoff" : stop.stop_type} · {stop.address_formatted || `Job #${stop.job_id ?? "—"}`}</span>
+              </button>
+            );
+          })}
+        </div>
+      </Modal>
 
       {/* Floating Bulk Action Bar when Stops are Selected on Timeline */}
       {selectedStopJobIds.size > 0 && selectionSourceRouteIndex !== null && (
