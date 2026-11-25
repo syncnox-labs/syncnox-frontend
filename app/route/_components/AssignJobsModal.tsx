@@ -148,6 +148,7 @@ export default function AssignJobsModal({ plan }: { plan: Route }) {
   const changedRoutes = preview?.affected_route_indices.filter(index => !preview.deleted_route_indices.includes(index)) || [];
   const existingOptions = routes.flatMap((route, index) => {
     if (driverId !== undefined && route.team_member_id !== driverId) return [];
+    if (onlyReturns && route.leg === "GO") return [];
     if (!choicesCoverJobs(choices.filter(choice => choice.route_index === index && (vehicleId === undefined || choice.vehicle_id === vehicleId)), jobIds)) return [];
     return [{ value: index, label: manualRouteLabel({ ...route, team_member_name: context?.driver_names?.[String(route.team_member_id)] || route.team_member_name }, index) }];
   });
