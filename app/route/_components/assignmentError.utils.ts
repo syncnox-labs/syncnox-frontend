@@ -19,6 +19,8 @@ const clock = (value: string) => value.replace(/(?:(next day|day \+\d+)\s+)?(\d{
 export function assignmentErrorInfo(detail: unknown, fallback: string, status?: number): AssignmentErrorInfo {
   const record = detail && !Array.isArray(detail) && typeof detail === "object"
     ? detail as Record<string, unknown> : undefined;
+  if (record?.category === "assignment_busy") return info("Assignment checks are busy",
+    "Other assignment checks are running. No jobs were assigned.", "Try again shortly.", false);
   if (record?.category === "assignment_timeout") return info("Check took too long",
     "The check did not finish in time. No jobs were assigned.",
     "Try again, choose a driver or trip, or select fewer jobs.");
