@@ -48,7 +48,9 @@ export default function RouteETAModal({ plan, selection, onClose, onSaved }: {
       const arrival = dayjs(stop.arrival_time);
       if (!arrival.isValid()) throw new Error("This stop has no saved ETA to edit.");
       setSource({ route, requestId, routeIndex, stopIndex });
-      setValue(arrival.startOf("minute"));
+      // The picker displays minutes, but preserve the saved seconds until
+      // the user actually chooses a different time.
+      setValue(arrival);
     }).catch(reason => { if (current === session.current) setError(manualRoutingError(reason)); })
       .finally(() => { if (current === session.current) setBusy(null); });
     return () => { session.current = current + 1; };
