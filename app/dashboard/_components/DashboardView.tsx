@@ -8,6 +8,7 @@ import {
   MagnifyingGlass, Plus, SlidersHorizontal, SquaresFour, X,
 } from "@phosphor-icons/react/ssr";
 import { useIndexStore } from "@/store/index.store";
+import AddJobsModal from "@/app/plan/AddJobsModal";
 import { useDashboardStore, defaultDashboard } from "@/store/dashboard.store";
 import { fetchRoutes } from "@/apis/routes.api";
 import { fetchJobs } from "@/apis/jobs.api";
@@ -120,6 +121,7 @@ export default function DashboardView() {
     try { window.localStorage.setItem(PERIOD_KEY, JSON.stringify(next)); } catch { /* applies for this visit */ }
   };
 
+  const [addJobOpen, setAddJobOpen] = useState(false);
   const go = (path: string, tab?: string) => () => { router.push(path); if (tab) setCurrentTab(tab as Parameters<typeof setCurrentTab>[0]); };
   const context: WidgetContext = {
     data: dashboardData ?? defaultDashboard, go, selectedDate, onDateChange: handleDateChange, dateRoutes: selectedDateRoutes, loadingDateRoutes: isLoadingRoutes, extras, period, periodEnd: range[1], periodLabel,
@@ -195,6 +197,7 @@ export default function DashboardView() {
                 <SlidersHorizontal size={18} weight="light" />
               </button>
             </Tooltip>
+            <ActionButton variant="primary" icon={<Plus size={16} weight="light" />} onClick={() => setAddJobOpen(true)}>Add job</ActionButton>
           </>
         )}
       />
@@ -269,6 +272,8 @@ export default function DashboardView() {
         <p className="m-0 mt-5 text-xs leading-[18px]" style={{ color: ink.muted }}>Your arrangement is saved in this browser on this device.</p>
       </Drawer>
 
+      {/* Same Add job dialog as the Plan screen; the dashboard counts refresh after a job is saved. */}
+      <AddJobsModal open={addJobOpen} setOpen={setAddJobOpen} onJobCreated={() => { fetchDashboard(); }} />
     </div>
   );
 }
