@@ -60,6 +60,15 @@ export interface MarkerData {
   isDepot?: boolean;
   /** "start" | "end" | "depot" — which route endpoint this depot marker is. */
   depotKind?: string;
+  /** Route depot markers only: whose trip this is and when it leaves or returns, for the map card. */
+  depotInfo?: {
+    time?: string;
+    driverName?: string | null;
+    vehicleName?: string | null;
+    tripStart?: string;
+    tripEnd?: string;
+    jobCount?: number;
+  };
   stopType?: string;
   /** The visit's own progress (completed, partly_done, failed, skipped); wins over the job's status. */
   stopStatus?: string;

@@ -203,6 +203,14 @@ export const generateMapMarkers = (
               ? "end"
               : "depot"
           : undefined,
+        depotInfo: isDepot ? {
+          time: stop.arrival_time,
+          driverName: routeItem.team_member_name || null,
+          vehicleName: routeItem.vehicle_name || null,
+          tripStart: routeItem.stops?.[0]?.arrival_time,
+          tripEnd: routeItem.stops?.[routeItem.stops.length - 1]?.arrival_time,
+          jobCount: new Set((routeItem.stops ?? []).map(s => s.job_id).filter(id => id != null)).size,
+        } : undefined,
         stopType: group.hasPickup && group.hasDropoff ? "pickup_dropoff" : stop.stop_type,
         color: color,
         routeIndex: index,

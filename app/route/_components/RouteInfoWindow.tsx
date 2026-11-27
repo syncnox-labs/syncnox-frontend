@@ -45,51 +45,86 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
   const showButtons = status === "completed" || status === "failed";
 
   if (marker.isDepot) {
-    const rawName = marker.jobData?.name || title || "Depot";
-    const cleanDepotName =
-      rawName.replace(/\s*\((Depot|Operational Base|Start|End)\)/gi, "").trim() || "Depot";
-    const address = description || marker.jobData?.address || "Operational Base";
-    const depotKindLabel =
-      marker.depotKind === "start"
-        ? "Start Depot"
-        : marker.depotKind === "end"
-          ? "End Depot"
-          : "Depot";
+    // Route depots carry the address as title and "End Time: …" as description; plain depots carry a name.
+    const info = marker.depotInfo;
+    const rawName = marker.jobData?.name || "";
+    const depotName = rawName.replace(/\s*\((Depot|Operational Base|Start|End)\)/gi, "").trim();
+    const address = (info ? title : description || marker.jobData?.address || title) || "";
+    const kind = marker.depotKind === "start" ? "start" : marker.depotKind === "end" ? "end" : "depot";
+    const when = info?.time && dayjs(info.time).isValid() ? dayjs(info.time) : null;
+    const start = info?.tripStart && dayjs(info.tripStart).isValid() ? dayjs(info.tripStart) : null;
+    const end = info?.tripEnd && dayjs(info.tripEnd).isValid() ? dayjs(info.tripEnd) : null;
+    const minutes = start && end ? end.diff(start, "minute") : null;
+    const length = minutes != null && minutes > 0
+      ? `${Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)} h ` : ""}${minutes % 60 ? `${minutes % 60} min` : ""}`.trim()
+      : null;
+    const crossesDay = Boolean(start && end && !end.isSame(start, "day"));
+    const kicker = kind === "start" ? "Trip starts here" : kind === "end" ? "Trip ends here" : "Depot";
+    const coords = `${marker.position.lat.toFixed(5)}, ${marker.position.lng.toFixed(5)}`;
+    const copy = async (text: string, what: string) => {
+      try {
+        if (!navigator.clipboard) throw new Error("Clipboard unavailable");
+        await navigator.clipboard.writeText(text);
+        message.success(`${what} copied`);
+      } catch { message.error(`Could not copy the ${what.toLowerCase()}`); }
+    };
 
     return (
-      <div className="w-[230px] max-w-[245px] text-slate-800 font-sans select-none">
-        {/* Header: Badge & Coordinates on the left, Close Cross Button on the right (same line) */}
-        <div className="flex items-center justify-between pb-1.5 border-b border-gray-100">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-[#003220] text-white rounded shrink-0">
-              <Building2 size={10} />
-              <span>{depotKindLabel}</span>
-            </span>
-            <span className="text-[10px] font-mono font-semibold text-gray-600 select-all truncate" title="Coordinates">
-              {marker.position.lat.toFixed(4)}, {marker.position.lng.toFixed(4)}
-            </span>
+      <div className="lang w-[264px] font-sans text-[#12211A]" role="dialog" aria-label={`${kicker}${when ? `, ${when.format("h:mm A")}` : ""}`}>
+        {/* Kicker in the route's colour, so the card reads as part of that driver's line on the map */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2 pt-0.5">
+            <span aria-hidden="true" className="h-3 w-3 shrink-0" style={{ backgroundColor: info && marker.color ? marker.color : "#12211A" }} />
+            <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#4A5750]">{kicker}</span>
           </div>
           {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="flex items-center justify-center w-5 h-5 -mr-0.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors cursor-pointer border-none bg-transparent outline-none focus:outline-none shrink-0"
-            >
-              <X size={13} />
+            <button type="button" onClick={onClose} aria-label="Close"
+              className="-mr-1.5 -mt-1 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent text-[#626E67] hover:bg-[#F3F6F4] hover:text-[#12211A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0B5D3B]">
+              <X size={15} />
             </button>
           )}
         </div>
 
-        {/* Name */}
-        <div className="text-[13px] font-bold text-gray-900 leading-snug mt-1.5 mb-0.5 truncate" title={cleanDepotName}>
-          {cleanDepotName}
-        </div>
+        {when ? (
+          <div className="mt-1.5">
+            <div className="flex items-baseline gap-2">
+              <span className="text-[22px] font-medium leading-none tracking-[-0.02em] tabular-nums">{when.format("h:mm A")}</span>
+              <span className="text-[13px] text-[#4A5750]">{when.format("ddd, MMM D")}</span>
+            </div>
+            {(info?.driverName || info?.vehicleName) && (
+              <div className="mt-1.5 text-[13px] leading-snug text-[#12211A] break-words">
+                {[info?.driverName, info?.vehicleName].filter(Boolean).join(" · ")}
+              </div>
+            )}
+            {start && end && kind !== "depot" && (
+              <div className="mt-1 text-[12px] leading-[18px] text-[#626E67] tabular-nums">
+                <div>Trip {start.format("h:mm A")} to {end.format("h:mm A")}{crossesDay ? " next day" : ""}</div>
+                {(length || info?.jobCount) ? <div>{[length, info?.jobCount ? `${info.jobCount} ${info.jobCount === 1 ? "job" : "jobs"}` : null].filter(Boolean).join(" · ")}</div> : null}
+              </div>
+            )}
+          </div>
+        ) : depotName ? (
+          <div className="mt-1.5 text-[15px] font-medium leading-snug break-words">{depotName}</div>
+        ) : null}
 
-        {/* Address */}
-        <div className="flex items-start gap-1 text-[11px] font-medium text-gray-700 leading-snug pt-0.5 pb-0.5">
-          <MapPin size={11} className="shrink-0 text-gray-500 mt-0.5" />
-          <span className="line-clamp-2 select-text">{address}</span>
+        <div className="mt-3 border-t border-[#E3E8E5] pt-2.5">
+          <div className="flex items-start gap-2">
+            <Building2 size={15} aria-hidden="true" className="mt-0.5 shrink-0 text-[#626E67]" />
+            <div className="min-w-0 flex-1">
+              {when && depotName && <div className="text-[13px] font-medium leading-snug break-words">{depotName}</div>}
+              <div className="text-[13px] leading-snug text-[#12211A] break-words select-text">{address || "Address not set"}</div>
+              <button type="button" onClick={() => void copy(coords, "Coordinates")} title="Copy coordinates"
+                className="mt-1 cursor-pointer border-0 bg-transparent p-0 text-[12px] text-[#626E67] tabular-nums hover:text-[#12211A] hover:underline">
+                {coords}
+              </button>
+            </div>
+            {address && (
+              <button type="button" aria-label="Copy address" title="Copy address" onClick={() => void copy(address, "Address")}
+                className="-mr-1 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent text-[#626E67] hover:bg-[#F3F6F4] hover:text-[#12211A]">
+                <CopyOutlined />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
