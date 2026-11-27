@@ -28,7 +28,7 @@ export default function RoutesToolbar({ count, search, onSearch, status, onStatu
         <Input allowClear aria-label="Search routes" placeholder="Search routes" prefix={<Search size={14} className="text-[#626E67]" />}
           value={search} onChange={(event) => onSearch(event.target.value)} style={{ width: 200 }} />
         <Select aria-label="Filter by status" value={status} onChange={onStatusChange} options={ROUTE_STATUSES}
-          popupMatchSelectWidth={300} popupClassName="status-filter-menu" style={{ minWidth: 168 }}
+          popupMatchSelectWidth={300} classNames={{ popup: { root: "status-filter-menu" } }} style={{ minWidth: 168 }}
           labelRender={(item) => (
             <span className="flex items-center gap-2">
               <span className="text-[#626E67]">Status</span>

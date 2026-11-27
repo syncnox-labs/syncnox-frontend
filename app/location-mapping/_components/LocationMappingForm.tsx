@@ -296,7 +296,8 @@ const LocationMappingForm = ({
         </div>
 
         {/* Embedded Interactive Map identical to Depots view */}
-        <div className="flex-1 min-h-[280px] border border-gray-200 overflow-hidden relative rounded-none my-2">
+        <div className="shrink-0 border border-gray-200 overflow-hidden relative rounded-none my-2" style={{ height: "clamp(280px, 45vh, 520px)" }}>
+          {/* An explicit height: the map draws at 100% of this box, and a box sized only by min-height gives it 0 px. */}
           <GoogleMaps
             markers={allMarkers}
             center={mapCenter}

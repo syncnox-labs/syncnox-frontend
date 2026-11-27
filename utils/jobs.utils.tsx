@@ -433,6 +433,7 @@ export const createJobTableColumns = (options?: {
         field: "client_pick_up_time",
         headerName: "Client Pickup Time",
         width: 160,
+        valueFormatter: (params) => formatTime12h(params.value),
         valueGetter: (params: any) => {
           const isReturn = params.data?.job_type === "return_only";
           if (isReturn) {

@@ -66,7 +66,7 @@ export default function JobsToolbar(props: {
           onChange={props.onStatusChange}
           options={JOB_STATUSES}
           popupMatchSelectWidth={300}
-          popupClassName="status-filter-menu"
+          classNames={{ popup: { root: "status-filter-menu" } }}
           style={{ minWidth: 168 }}
           labelRender={(item) => (
             <span className="flex items-center gap-2">
@@ -112,7 +112,7 @@ export default function JobsToolbar(props: {
         <Dropdown trigger={["click"]} menu={{ items: [
           { key: "single", label: menuLabel("Add single job", "Enter one job by hand"), icon: <Plus size={18} />, onClick: props.onAddSingle },
           { key: "bulk", label: menuLabel("Bulk import jobs", "Upload a CSV or Excel file"), icon: <Upload size={18} />, onClick: props.onBulkImport },
-        ] }} placement="bottomRight" overlayClassName="action-menu">
+        ] }} placement="bottomRight" classNames={{ root: "action-menu" }}>
           <ActionButton aria-label="Add jobs" variant={hasSelection ? "secondary" : "primary"} trailing={<ChevronDown size={14} />}>Add jobs</ActionButton>
         </Dropdown>
       </div>

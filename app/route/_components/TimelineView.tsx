@@ -3350,6 +3350,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     handleStopItemClick(e as unknown as React.MouseEvent);
                                   };
                                   const handleStopItemClick = (e: React.MouseEvent) => {
+                                    // The hover card would otherwise stay open on top of the stop card that opens now.
+                                    setOpenStopTooltipKey(null);
                                     if (e.shiftKey || e.metaKey || e.ctrlKey) {
                                       e.stopPropagation();
                                       if (firstJobId) {

@@ -62,7 +62,11 @@ export default function DashboardView() {
   useEffect(() => {
     const loaders: Record<Need, () => Promise<unknown>> = {
       routes: () => fetchRoutes(),
-      jobsToday: () => fetchJobs({ date: dayjs().format("YYYY-MM-DD") }),
+      // The jobs endpoint returns 100 rows unless asked for more; page through so "jobs today" is the real total.
+      jobsToday: async () => {
+        const date = dayjs().format("YYYY-MM-DD"), limit = 1000, all: Awaited<ReturnType<typeof fetchJobs>> = [];
+        for (;;) { const page = await fetchJobs({ date, skip: all.length, limit }); all.push(...page); if (page.length < limit) return all; }
+      },
       team: () => fetchTeams(),
       vehicles: () => fetchVehicles(),
     };

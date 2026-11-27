@@ -389,7 +389,7 @@ export const WIDGETS: WidgetDefinition[] = [
   },
   {
     id: "team-workload", title: "Team workload", size: "half", needs: ["routes"], usesPeriod: true,
-    about: {"source": "The routes list, the same one the Routes tab shows.", "how": "For routes scheduled in the chosen period, each route counts once for every team member assigned to it. Stops is the total stops on the routes that person was on.", "note": "A route with several members counts for each of them, so the figures add up to more than the number of routes."},
+    about: {"source": "The routes list, the same one the Routes tab shows.", "how": "For routes scheduled in the chosen period, each route counts once for every team member assigned to it.", "note": "A route with several members counts for each of them, so the figures add up to more than the number of routes. Stops per person are not shown: the routes list only has the stop total of the whole plan, which would show the same number for everyone."},
     description: "Team members ranked by how many routes they were on in the chosen period.",
     render: (ctx) => (
       <Card kicker={`Routes per member, ${ctx.periodLabel}`} title="Team workload" link={{ label: "View all members", onClick: ctx.go("/team", "team") }}>
@@ -401,7 +401,7 @@ export const WIDGETS: WidgetDefinition[] = [
           }));
           const rows = [...tally.values()].sort((a, b) => b.routes - a.routes || b.stops - a.stops).slice(0, 8);
           if (rows.length === 0) return <Empty>No team members were on routes in this period.</Empty>;
-          return <RankBars valueLabel="Routes" noteLabel="Stops" rows={rows.map((row) => ({ name: row.name, value: row.routes, note: row.stops.toLocaleString(), lead: <Initials name={row.name} size={24} /> }))} />;
+          return <RankBars valueLabel="Routes" rows={rows.map((row) => ({ name: row.name, value: row.routes, lead: <Initials name={row.name} size={24} /> }))} />;
         }}</Loaded>
       </Card>
     ),

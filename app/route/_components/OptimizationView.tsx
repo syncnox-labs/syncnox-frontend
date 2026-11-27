@@ -2181,11 +2181,12 @@ const OptimizationView = ({
     <div role="tablist" aria-label="Route view" className="flex items-stretch self-stretch shrink-0 pr-2 mr-1">
       {([["timeline", "Timeline", RouteIcon], ["table", "Jobs", FileText], ["vehicles", "Vehicles", TruckIcon]] as const).map(([value, label, Icon]) => (
         <button key={value} type="button" role="tab" aria-selected={detailView === value} aria-label={label}
-          data-tip={detailView === value ? undefined : label} onClick={() => changeDetailView(value)}
-          className={`tip inline-flex items-center gap-1.5 px-2 text-[12px] whitespace-nowrap bg-transparent cursor-pointer border-0 border-b-2 ${detailView === value
+          onClick={() => changeDetailView(value)}
+          className={`inline-flex items-center gap-1.5 px-2 text-[12px] whitespace-nowrap bg-transparent cursor-pointer border-0 border-b-2 ${detailView === value
             ? "border-[#003220] text-[#12211A] font-medium" : "border-transparent text-[#626E67] hover:text-[#12211A]"}`}>
           <Icon size={16} aria-hidden="true" />
-          {detailView === value && <span>{label}</span>}
+          {/* Every tab keeps its label, so the tabs never move under the pointer when the view changes. */}
+          <span>{label}</span>
         </button>
       ))}
     </div>
