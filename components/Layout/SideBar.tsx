@@ -5,7 +5,6 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { Avatar, Modal, Popover, Tooltip } from "antd";
 import {
-  LogoutOutlined,
   MailOutlined,
   TeamOutlined,
   CarOutlined,
@@ -21,6 +20,7 @@ import { useTeamStore } from "@/store/team.store";
 import { useVehicleStore } from "@/store/vehicle.store";
 import { useDepotStore } from "@/store/depots.store";
 import { signOut } from "next-auth/react";
+import DialogTitle from "@/components/ui/DialogTitle";
 import { MENU_ITEMS } from "./sidebar.constants";
 import { SETTINGS_GROUPS, isSettingsPath } from "@/config/settings.config";
 
@@ -80,19 +80,24 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
 
   const handleLogout = useCallback(() => {
     Modal.confirm({
-      title: "Log out",
-      content: "Are you sure you want to log out?",
+      title: <DialogTitle tone="neutral" icon={<SignOut />} title="Log out of Syncnox?"
+        subtitle={user?.email ? <>You are signed in as <span className="font-medium text-[#12211A]">{user.email}</span>.</> : undefined} />,
+      content: <p className="m-0 pl-[34px] text-[13px] leading-relaxed text-[#4A5750]">
+        Nothing in your account changes. Plans, jobs and the routes drivers already have stay as they are.
+      </p>,
+      icon: null,
       okText: "Log out",
-      cancelText: "Cancel",
-      okButtonProps: { danger: true, type: "primary" },
-      icon: <LogoutOutlined className="text-red-500 text-lg" />,
+      cancelText: "Stay signed in",
+      okButtonProps: { type: "primary" },
+      width: 440,
       centered: true,
+      rootClassName: "lang",
       onOk: async () => {
         clearUser();
         await signOut({ callbackUrl: "/sign-in" });
       },
     });
-  }, [clearUser]);
+  }, [clearUser, user?.email]);
 
   const [showStatsInPopover, setShowStatsInPopover] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);

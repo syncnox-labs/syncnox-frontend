@@ -39,6 +39,7 @@ import dayjs from "dayjs";
 
 import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
 import { Route as RouteIcon, FileText, Truck as TruckIcon, CircleX, X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil } from "lucide-react";
+import ReoptimizeTripModal from "./ReoptimizeTripModal";
 import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
 import MapComparePanel from "./MapComparePanel";
@@ -298,6 +299,8 @@ const OptimizationView = ({
   const [sharingDriverId, setSharingDriverId] = useState<number | null>(null);
   const [messagingEnabled, setMessagingEnabled] = useState(false);
   const [messageSelection, setMessageSelection] = useState<{ planId: number; driverId?: number } | null>(null);
+  // Ticked in the share dialog: after the share result, the next step is the WhatsApp confirmations.
+  const [whatsAppNext, setWhatsAppNext] = useState(false);
   useEffect(() => {
     let active = true;
     candidateMessagesEnabled().then(value => { if (active) setMessagingEnabled(value); })
@@ -2766,7 +2769,7 @@ const OptimizationView = ({
                   />
                 </Tooltip>
               )}
-              <RouteShareButton showWhatsApp={Boolean(isWorkerShuttle && messagingEnabled)} isSharing={isSharing}
+              <RouteShareButton showWhatsApp={false} isSharing={isSharing}
                 shareDisabled={isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued"}
                 shareLabel={shareButtonLabel} onShare={() => setShareDialogOpen(true)}
                 onWhatsApp={() => setMessageSelection({ planId: route.id })} />
@@ -3213,68 +3216,33 @@ const OptimizationView = ({
         const times = (target?.stops ?? []).map((stop: any) => stop.arrival_time).filter(Boolean).sort();
         const first = times[0] ? dayjs(times[0]) : null, last = times.length ? dayjs(times[times.length - 1]) : null;
         const removals = reoptimizeTarget ? pendingDeletedJobIds.size : 0;
-        return <Modal open={reoptimizeTarget !== null} width={520} centered rootClassName="lang" destroyOnHidden
-          onCancel={() => { if (!reoptimizeRunning) setReoptimizeTarget(null); }}
-          title={<div>
-            <div className="text-[16px] font-medium text-[#12211A]">Re-optimize {target?.team_member_name ? `${target.team_member_name}'s trip` : "this trip"}</div>
-            <div className="mt-0.5 text-[12px] font-normal text-[#4A5750] tabular-nums">
-              {[jobCount ? `${jobCount} ${jobCount === 1 ? "job" : "jobs"}` : null, first ? first.format("ddd, MMM D") : null,
-                first && last ? `${first.format("h:mm A")} – ${last.format("h:mm A")}${last.isAfter(first, "day") ? " next day" : ""}` : null,
-                target?.vehicle_name || null].filter(Boolean).join(" · ")}
-            </div>
-          </div>}
-          footer={<div className="flex items-center justify-end gap-2">
-            <Button onClick={() => setReoptimizeTarget(null)} disabled={reoptimizeRunning}>Cancel</Button>
-            <Button type="primary" loading={reoptimizeRunning} onClick={async () => {
+        const who = target?.team_member_name || null;
+        return <ReoptimizeTripModal open={reoptimizeTarget !== null} who={who} jobCount={jobCount} first={first} last={last}
+          vehicleName={target?.vehicle_name} startedStops={startedStops} removals={removals} keep={Boolean(reoptimizeTarget?.keepOrder)}
+          running={reoptimizeRunning} onKeepChange={keepOrder => setReoptimizeTarget(current => current ? { ...current, keepOrder } : current)}
+          onCancel={() => setReoptimizeTarget(null)}
+          onConfirm={async () => {
               if (!reoptimizeTarget) return;
               setReoptimizeRunning(true);
               const { routeIndex, keepOrder } = reoptimizeTarget;
-              setProgressInfo({ title: keepOrder ? `Recalculating ${target?.team_member_name ?? "the trip"}'s times` : `Re-optimizing ${target?.team_member_name ?? "the trip"}'s trip`,
+              setProgressInfo({ title: keepOrder ? `Recalculating ${who ?? "the trip"}'s times` : `Re-optimizing ${who ?? "the trip"}'s trip`,
                 context: `${jobCount} jobs · ${keepOrder ? "keeping your stop order" : "finding the best order"}`, activities: planActivities(routeIndex, keepOrder) });
               setReoptimizeTarget(null);
               try { await runReOptimize(routeIndex, keepOrder); } finally { setReoptimizeRunning(false); }
-            }}>{reoptimizeTarget?.keepOrder ? "Recalculate times" : "Re-optimize trip"}</Button>
-          </div>}>
-          <div className="flex flex-col gap-3 pt-1">
-            <p className="m-0 text-[13px] text-[#4A5750]">Works out this trip again with current travel times and its rules (hours, seats, shifts). Other trips are not touched.</p>
-            <div role="radiogroup" aria-label="How to re-optimize" className="flex flex-col gap-2">
-              {([
-                [false, "Find the best order", "Stops may be put in a new order, and times change to match."],
-                [true, "Keep my stop order", "Stops stay exactly in this order; only the times are worked out again. If that order cannot work, nothing is changed."],
-              ] as const).map(([keep, title, hint]) => {
-                const on = reoptimizeTarget?.keepOrder === keep;
-                return <button key={String(keep)} type="button" role="radio" aria-checked={on}
-                  onClick={() => setReoptimizeTarget(current => current ? { ...current, keepOrder: keep } : current)}
-                  className={`flex items-start gap-2.5 border px-3 py-2.5 text-left cursor-pointer ${on ? "border-[#003220] bg-[#F1F8F4] shadow-[inset_3px_0_0_#003220]" : "border-[#D5DCD8] bg-white hover:border-[#9AA59F]"}`}>
-                  <span aria-hidden="true" className={`mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${on ? "border-[#003220]" : "border-[#9AA59F]"}`}>
-                    {on && <span className="h-1.5 w-1.5 rounded-full bg-[#003220]" />}
-                  </span>
-                  <span>
-                    <span className="block text-[13px] font-medium text-[#12211A]">{title}</span>
-                    <span className="block text-[12px] text-[#4A5750]">{hint}</span>
-                  </span>
-                </button>;
-              })}
-            </div>
-            {startedStops > 0 && <p className="m-0 border-l-2 border-[#0B5D3B] bg-[#F1F8F4] px-3 py-2 text-[12px] text-[#12211A]">
-              {/* Server behaviour (route_operations re_optimize): jobs in transit, completed or failed are kept as a fixed
-                  start of the trip, in their current order; only the open jobs are planned again after them. */}
-              {startedStops} {startedStops === 1 ? "stop on this trip is" : "stops on this trip are"} already worked. Jobs on board, done or failed stay at the start of the trip in their current order; only the open jobs are planned again.
-            </p>}
-            {removals > 0 && <p className="m-0 border-l-2 border-[#B38600] bg-[#FFF8E6] px-3 py-2 text-[12px] text-[#4A5750]">
-              {removals} {removals === 1 ? "job you removed is" : "jobs you removed are"} taken off the plan first.
-            </p>}
-            <p className="m-0 text-[12px] text-[#626E67]">Drivers see the new times only after you share the plan again.</p>
-          </div>
-        </Modal>;
+            }} />;
       })()}
-      <ShareDriversModal open={shareDialogOpen} drivers={shareDrivers} lastSharedAt={sharingState?.last_shared_at}
-        sharing={isSharing} onCancel={() => setShareDialogOpen(false)}
-        onShare={(ids, everyone) => void handleShareSelected(ids, everyone)} />
+      <ShareDriversModal open={shareDialogOpen} drivers={shareDrivers} lastSharedAt={sharingState?.last_shared_at ?? route.last_shared_at}
+        sharing={isSharing} whatsApp={Boolean(isWorkerShuttle && messagingEnabled)} onCancel={() => setShareDialogOpen(false)}
+        onShare={(ids, everyone, thenWhatsApp) => { setWhatsAppNext(thenWhatsApp); void handleShareSelected(ids, everyone); }}
+        onWhatsAppOnly={() => { setShareDialogOpen(false); setMessageSelection({ planId: route.id }); }} />
       <Modal
         open={shareResult !== null}
-        onCancel={() => setShareResult(null)}
-        onOk={() => setShareResult(null)}
+        onCancel={() => { setShareResult(null); setWhatsAppNext(false); }}
+        onOk={() => {
+          const next = whatsAppNext && (shareResult?.shared_count ?? 0) > 0;
+          setShareResult(null); setWhatsAppNext(false);
+          if (next) setMessageSelection({ planId: route.id });
+        }}
         rootClassName="lang"
         width={480}
         title={shareResult && (() => {
@@ -3289,7 +3257,7 @@ const OptimizationView = ({
               : `Shared with ${shared} ${shared === 1 ? "person" : "people"}`}
           </span>;
         })()}
-        okText="Done"
+        okText={whatsAppNext && (shareResult?.shared_count ?? 0) > 0 ? "Next: WhatsApp confirmations" : "Done"}
         cancelButtonProps={{ style: { display: "none" } }}
         centered
       >

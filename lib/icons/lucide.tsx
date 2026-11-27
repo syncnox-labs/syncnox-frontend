@@ -97,6 +97,12 @@ import {
   X as PX,
   XCircle as PXCircle,
   YoutubeLogo as PYoutubeLogo,
+  SignOut as PSignOut,
+  Shuffle as PShuffle,
+  ListNumbers as PListNumbers,
+  PaperPlaneTilt as PPaperPlaneTilt,
+  DeviceMobile as PDeviceMobile,
+  WhatsappLogo as PWhatsappLogo,
 } from "@phosphor-icons/react/ssr";
 
 // @ts-ignore the package's own entry file has no separate type file
@@ -210,3 +216,10 @@ export const Wrench = light(PWrench);
 export const X = light(PX);
 export const Youtube = light(PYoutubeLogo);
 export const Zap = light(PLightning);
+// Added Nov 27 for the dialog headers (log out, re-optimize, share).
+export const LogOut = light(PSignOut);
+export const Shuffle = light(PShuffle);
+export const ListOrdered = light(PListNumbers);
+export const Send = light(PPaperPlaneTilt);
+export const Smartphone = light(PDeviceMobile);
+export const MessageCircle = light(PWhatsappLogo);
