@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ColDef } from "ag-grid-community";
-import { Alert, Radio } from "antd";
+import { Alert, Select } from "antd";
 import { X } from "lucide-react";
+import dayjs from "dayjs";
 import BaseTable from "@/components/Table/BaseTable";
+import { StatusLozenge } from "@/components/Jobs/StatusBanner";
 import { getCustomFields, type CustomFieldDefinition } from "@/apis/custom-fields.api";
 import { createJobTableColumns, STANDARD_JOB_FIELD_KEYS } from "@/utils/jobs.utils";
 import type { Job, JobTemplateType } from "@/types/job.type";
@@ -19,14 +21,31 @@ interface Props {
   onOpenJob: (job: Job) => void;
   driverFilter: string;
   onClearDriverFilter: () => void;
+  /** The plan's own day, marked "plan" in the day tabs. */
+  planDate?: string | null;
+  /** When one trip is in focus, Assigned lists only that trip's jobs; say so and offer the way back. */
+  focusName?: string | null;
+  onClearFocus?: () => void;
 }
 
-export default function AssignedJobsTable({ jobs, unassignedJobs, loading, error, templateType, teamsMap, onOpenJob, driverFilter, onClearDriverFilter }: Props) {
+export default function AssignedJobsTable({ jobs, unassignedJobs, loading, error, templateType, teamsMap, onOpenJob, driverFilter, onClearDriverFilter, planDate, focusName, onClearFocus }: Props) {
   const [assignmentFilter, setAssignmentFilter] = useState<"assigned" | "unassigned">("assigned");
+  const [day, setDay] = useState<string>("all");
   const unassignedIds = useMemo(() => new Set(unassignedJobs.map(job => job.id)), [unassignedJobs]);
-  const rows = useMemo(() => assignmentFilter === "assigned" ? jobs
-    : unassignedJobs,
-  [jobs, unassignedJobs, assignmentFilter]);
+  // A job's day is its scheduled date: the date the job is booked for, shown in the Scheduled Date column.
+  const dayOf = (job: Job) => job.scheduled_date && dayjs(job.scheduled_date).isValid() ? dayjs(job.scheduled_date).format("YYYY-MM-DD") : null;
+  const days = useMemo(() => {
+    const keys = new Set<string>();
+    [...jobs, ...unassignedJobs].forEach(job => { const key = dayOf(job); if (key) keys.add(key); });
+    return [...keys].sort();
+  }, [jobs, unassignedJobs]);
+  const activeDay = day !== "all" && days.includes(day) ? day : "all";
+  const onDay = (job: Job) => activeDay === "all" || dayOf(job) === activeDay;
+  // Plain filters: cheap, and always in step with the chosen day.
+  const assignedShown = jobs.filter(onDay);
+  const unassignedShown = unassignedJobs.filter(onDay);
+  const planDayKey = planDate && dayjs(planDate).isValid() ? dayjs(planDate).format("YYYY-MM-DD") : null;
+  const rows = assignmentFilter === "assigned" ? assignedShown : unassignedShown;
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
 
   useEffect(() => {
@@ -42,14 +61,18 @@ export default function AssignedJobsTable({ jobs, unassignedJobs, loading, error
 
   const columns = useMemo<ColDef<Job>[]>(() => [
     ...createJobTableColumns({ templateType, jobStatus: "assigned", teamsMap, onIdClick: onOpenJob }).map(column =>
-      column.field === "status" ? { ...column, headerName: "Assignment", width: 220, minWidth: 220,
-        valueGetter: ({ data }: { data?: Job }) => data && unassignedIds.has(data.id) ? "Unassigned" : "Assigned",
-        cellRenderer: ({ data }: { data?: Job }) => {
-          const unassigned = Boolean(data && unassignedIds.has(data.id));
-          return <span className="inline-flex items-center gap-1"><span className={`inline-block px-2 text-xs font-semibold border ${unassigned
-            ? "bg-red-50 text-red-700 border-red-200" : "bg-emerald-50 text-emerald-800 border-emerald-200"}`}>
-            {unassigned ? "Unassigned" : "Assigned"}
-          </span>{data?.is_new && <span className="border border-emerald-300 bg-emerald-50 px-1 text-[10px] font-semibold text-emerald-800">Newly added</span>}</span>;
+      // Same status cell as the Plan jobs table (icon + word, no box). A job left out of this plan
+      // reads "Unassigned"; otherwise the job's own status shows, so run-day progress stays visible.
+      column.field === "status" ? { ...column, headerName: "Status", width: 200, minWidth: 180,
+        valueGetter: ({ data }: { data?: Job }) => data && unassignedIds.has(data.id) ? "unassigned" : (data?.status || "assigned"),
+        cellRenderer: ({ value, data }: { value?: string; data?: Job }) => {
+          const shown = value ?? (data && unassignedIds.has(data.id) ? "unassigned" : (data?.status || "assigned"));
+          return (
+          <span className="flex h-full items-center gap-2">
+            <StatusLozenge value={String(shown)} />
+            {data?.is_new && <span className="text-[11px] text-[#0B5D3B]">Newly added</span>}
+          </span>
+          );
         },
       } : column),
     ...customFields.map(field => ({
@@ -67,14 +90,35 @@ export default function AssignedJobsTable({ jobs, unassignedJobs, loading, error
   ], [templateType, teamsMap, onOpenJob, customFields, unassignedIds]);
 
   return (
-    <section aria-label="Optimization jobs" className="flex h-full min-h-0 flex-col bg-white">
-      <div className="flex flex-wrap items-center gap-3 px-3 py-2 border-b border-gray-200 shrink-0">
-        <span className="text-sm font-semibold text-gray-800">Jobs{!loading && ` (${rows.length})`}</span>
-        <Radio.Group aria-label="Filter jobs by assignment" size="small" buttonStyle="solid"
-          value={assignmentFilter} onChange={({ target: { value } }) => setAssignmentFilter(value)}>
-          <Radio.Button value="assigned">Assigned ({jobs.length})</Radio.Button>
-          <Radio.Button value="unassigned">Unassigned ({unassignedJobs.length})</Radio.Button>
-        </Radio.Group>
+    <section aria-label="Optimization jobs" className="lang flex h-full min-h-0 flex-col bg-white">
+      <div className="flex items-stretch gap-1 px-4 border-b border-[#E3E8E5] shrink-0" style={{ height: 41 }}>
+        <div role="tablist" aria-label="Filter jobs by assignment" className="flex items-stretch gap-1">
+        {/* Each tab wears its status: same icon and colour as the Status column below. */}
+        {([["assigned", "Assigned", assignedShown.length, "#1F845A"], ["unassigned", "Unassigned", unassignedShown.length, "#C9372C"]] as const).map(([value, label, count, ink]) => {
+          const active = assignmentFilter === value;
+          return (
+            <button key={value} type="button" role="tab" aria-selected={active} onClick={() => setAssignmentFilter(value)}
+              className={`inline-flex items-center gap-1.5 px-2 text-[12px] bg-transparent cursor-pointer border-0 border-b-2 ${active ? "font-medium" : "opacity-70 hover:opacity-100"}`}
+              style={{ borderBottomColor: active ? ink : "transparent", color: ink }}>
+              <StatusLozenge value={value} label={label} />
+              <span className="tabular-nums">{count}</span>
+            </button>
+          );
+        })}
+        </div>
+        {focusName && assignmentFilter === "assigned" && <span className="ml-3 inline-flex items-center gap-2 self-center text-[12px] text-[#4A5750]">
+          Only {focusName}&apos;s trip
+          {onClearFocus && <button type="button" onClick={onClearFocus}
+            className="border-0 bg-transparent p-0 text-[12px] text-[#0B5D3B] cursor-pointer hover:underline">Show all trips</button>}
+        </span>}
+        {days.length > 1 && <label className="ml-auto inline-flex items-center gap-1.5 self-center text-[12px] text-[#626E67]">
+          Scheduled for
+          <Select size="small" aria-label="Show jobs scheduled for one day" value={activeDay} onChange={setDay} style={{ width: 168 }}
+            popupMatchSelectWidth={false}
+            options={[{ value: "all", label: "All days" }, ...days.map(key => ({
+              value: key, label: `${dayjs(key).format("ddd, MMM D")}${key === planDayKey ? " · plan day" : ""}`,
+            }))]} />
+        </label>}
         {/* <span className="text-xs text-gray-500">Unassigned jobs are shown for the entire plan.</span>
         {driverFilter && (
           <button type="button" onClick={onClearDriverFilter} aria-label="Clear driver search"
@@ -90,7 +134,8 @@ export default function AssignedJobsTable({ jobs, unassignedJobs, loading, error
         loading={loading}
         pagination
         paginationPageSize={100}
-        emptyMessage={`No ${assignmentFilter} jobs in this optimization`}
+        emptyMessage={activeDay === "all" ? `No ${assignmentFilter} jobs in this optimization`
+          : `No ${assignmentFilter} jobs scheduled for ${dayjs(activeDay).format("ddd, MMM D")}`}
         containerClassName="flex-1 min-h-0 w-full"
         containerStyle={{ height: "100%", width: "100%" }}
         minHeight={0}

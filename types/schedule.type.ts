@@ -53,14 +53,33 @@ export const SCHEDULE_STATUS_COLORS: Record<
   ScheduleStatus | "break" | "idle" | "depot",
   string
 > = {
-  scheduled: "#faad14", // Yellow
-  in_transit: "#1890ff", // Blue
-  completed: "#52c41a", // Green
-  failed: "#ff4d4f", // Red
-  break: "#8c8c8c", // Gray
-  idle: "#e6e6e6", // Light Gray
-  depot: "#722ed1", // Purple
+  // The app's own palette (see the route screen): grey-green for planned, greens for moving and done.
+  scheduled: "#626E67",
+  in_transit: "#0B5D3B",
+  completed: "#1F845A",
+  failed: "#C9372C",
+  break: "#9AA59F",
+  idle: "#C4CCC7",
+  depot: "#003220",
 };
+
+// Pale fills for timeline blocks: the status color is a thin marker, the text stays black
+export const SCHEDULE_STATUS_FILLS: Record<keyof typeof SCHEDULE_STATUS_COLORS, string> = {
+  scheduled: "#F3F6F4",
+  in_transit: "#F1F8F4",
+  completed: "#E7F3ED",
+  failed: "#FDECEA",
+  break: "#F3F6F4",
+  idle: "#F8FAF9",
+  depot: "#EEF1EF",
+};
+
+export function getBlockFill(block: ScheduleBlock): string {
+  if (block.type === "break" || block.type === "idle" || block.type === "depot") {
+    return SCHEDULE_STATUS_FILLS[block.type];
+  }
+  return SCHEDULE_STATUS_FILLS[block.status || "scheduled"];
+}
 
 // Helper function to get block color
 export function getBlockColor(block: ScheduleBlock): string {

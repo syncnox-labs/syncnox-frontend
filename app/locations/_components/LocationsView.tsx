@@ -9,8 +9,7 @@ import {
   Trash2,
   FileSpreadsheet,
   Building,
-  Download,
-} from "lucide-react";
+  Download, Upload } from "lucide-react";
 import { useDepotStore } from "@/store/depots.store";
 import { useLocationMappingStore } from "@/store/location-mapping.store";
 import { Depot as DepotType } from "@/types/depots.type";
@@ -363,7 +362,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
   }
 
   return (
-    <div className="responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden font-sans">
+    <div className="lang kit-fluid responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden font-sans">
       {/* Top Header */}
       <div className="flex items-start justify-between pb-3 shrink-0 border-b border-gray-200">
         <SettingsPageTitle
@@ -388,15 +387,17 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                 </Button>
               )}
               <Button
-                icon={<Download size={15} />}
+                type="text"
+                aria-label="Export locations"
+                data-tip="Export locations"
+            className="tip"
+                icon={<Download size={18} />}
                 disabled={depots.length === 0}
                 onClick={() => {
                   triggerDownload("depots_export.csv", generateDepotsCsv(depots));
                   message.success(`Successfully exported ${depots.length} depot(s) to CSV`);
                 }}
-              >
-                Export
-              </Button>
+              />
               <Button
                 type="primary"
                 icon={<Plus size={15} />}
@@ -418,13 +419,19 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                 </Button>
               )}
               <Button
-                icon={<FileSpreadsheet size={15} />}
+                type="text"
+                aria-label="Import locations"
+                data-tip="Import locations"
+                className="tip"
+                icon={<Upload size={18} />}
                 onClick={() => setBulkImportModalOpen(true)}
-              >
-                Bulk Import
-              </Button>
+              />
               <Button
-                icon={<Download size={15} />}
+                type="text"
+                aria-label="Export locations"
+                data-tip="Export locations"
+            className="tip"
+                icon={<Download size={18} />}
                 disabled={locationMappings.length === 0}
                 onClick={() => {
                   triggerDownload(
@@ -433,9 +440,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                   );
                   message.success(`Successfully exported ${locationMappings.length} location(s) to CSV`);
                 }}
-              >
-                Export
-              </Button>
+              />
               <Button
                 type="primary"
                 icon={<Plus size={15} />}
@@ -454,16 +459,16 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
         <button
           type="button"
           onClick={() => handleTabChange("depots")}
-          className={`min-h-11 pb-2.5 px-1 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer bg-transparent border-t-0 border-x-0 outline-none ${
+          className={`h-9 px-1 text-sm font-medium flex items-center gap-2 transition-colors cursor-pointer bg-transparent border-t-0 border-x-0 outline-none ${
             activeTab === "depots"
-              ? "border-b-2 border-[#003220] text-[#003220] font-bold"
+              ? "border-b-2 border-[#003220] text-[#003220] font-medium"
               : "border-b-2 border-transparent text-gray-500 hover:text-gray-800"
           }`}
         >
           <Building className="w-4 h-4" />
           <span>Depots</span>
           <span
-            className={`px-1.5 py-0.2 text-[10px] rounded font-bold ${
+            className={`px-1.5 py-0.2 text-[10px] rounded font-medium ${
               activeTab === "depots"
                 ? "bg-[#003220]/10 text-[#003220]"
                 : "bg-gray-100 text-gray-600"
@@ -476,16 +481,16 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
         <button
           type="button"
           onClick={() => handleTabChange("additional-locations")}
-          className={`min-h-11 pb-2.5 px-1 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer bg-transparent border-t-0 border-x-0 outline-none ${
+          className={`h-9 px-1 text-sm font-medium flex items-center gap-2 transition-colors cursor-pointer bg-transparent border-t-0 border-x-0 outline-none ${
             activeTab === "additional-locations"
-              ? "border-b-2 border-[#003220] text-[#003220] font-bold"
+              ? "border-b-2 border-[#003220] text-[#003220] font-medium"
               : "border-b-2 border-transparent text-gray-500 hover:text-gray-800"
           }`}
         >
           <MapPin className="w-4 h-4" />
           <span>Additional Locations</span>
           <span
-            className={`px-1.5 py-0.2 text-[10px] rounded font-bold ${
+            className={`px-1.5 py-0.2 text-[10px] rounded font-medium ${
               activeTab === "additional-locations"
                 ? "bg-[#003220]/10 text-[#003220]"
                 : "bg-gray-100 text-gray-600"
@@ -520,8 +525,8 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
       {activeTab === "depots" && (
         <div data-detail-open={mobileDetailOpen} className="responsive-entity-split flex min-h-0 min-w-0 overflow-hidden gap-0 flex-1 mt-0">
           {/* Left card list */}
-          <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
-            <div className="p-3 pb-2 border-b border-gray-200 bg-gray-50/70 shrink-0">
+          <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col bg-[#F3F6F4] overflow-hidden">
+            <div className="px-3 pt-3 pb-2 shrink-0">
               <div className="relative flex items-center">
                 <Search
                   className="absolute left-2.5 text-gray-400 pointer-events-none z-10"
@@ -536,16 +541,16 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
-              <div className="flex items-center justify-between px-1 mb-1.5">
-                <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase m-0">
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <div className="flex items-center justify-between px-3 py-1.5">
+                <p className="text-xs text-[#626E67] m-0 lowercase first-letter:uppercase">
                   {filteredDepots.length} depot{filteredDepots.length !== 1 ? "s" : ""}
                 </p>
                 {filteredDepots.length > 0 && (
                   <button
                     type="button"
                     onClick={handleSelectAllDepots}
-                    className="text-[11px] font-medium text-[#003220] hover:underline cursor-pointer bg-transparent border-none p-0"
+                    className="text-xs font-medium text-[#12211A] underline decoration-[#9AA8A0] underline-offset-4 hover:decoration-[#12211A] cursor-pointer bg-transparent border-none p-0"
                   >
                     {depotCheckedIds.length === filteredDepots.length
                       ? "Deselect all"
@@ -582,15 +587,15 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
             {selectedDepot ? (
               <>
                 <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-200 shrink-0 bg-white">
-                  <div className="w-10 h-10 bg-slate-100 flex items-center justify-center text-[#003220] shrink-0">
+                  <div className="w-10 h-10 bg-[#F1F2F4] flex items-center justify-center text-[#4A5750] shrink-0">
                     <MapPin size={20} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-base font-bold text-gray-900 leading-tight">
+                      <span className="text-lg font-medium tracking-[-0.01em] text-[#12211A] leading-tight">
                         {selectedDepot.name}
                       </span>
-                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-100 text-[#003220] rounded">
+                      <span className="inline-flex h-5 items-center border border-[#B3B9C4] bg-[#F1F2F4] px-1.5 text-xs font-medium text-[#12211A]">
                         Depot
                       </span>
                     </div>
@@ -613,7 +618,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
               </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3 p-10">
-                <div className="w-12 h-12 bg-slate-100 flex items-center justify-center text-slate-300">
+                <div className="flex items-center justify-center text-[#9AA8A0]">
                   <MapPin size={24} />
                 </div>
                 <p className="text-xs text-gray-400 text-center max-w-[240px]">
@@ -649,7 +654,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                     >
                       <span>{label}</span>
                       <span
-                        className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                        className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
                           isSelected
                             ? "bg-white/20 text-white"
                             : "bg-gray-200 text-gray-600"
@@ -666,8 +671,8 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
           {/* Split View for Additional Locations */}
           <div data-detail-open={mobileDetailOpen} className="responsive-entity-split flex min-h-0 min-w-0 overflow-hidden gap-0 flex-1">
             {/* Left card list */}
-            <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
-              <div className="p-3 pb-2 border-b border-gray-200 bg-gray-50/70 shrink-0">
+            <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col bg-[#F3F6F4] overflow-hidden">
+              <div className="px-3 pt-3 pb-2 shrink-0">
                 <div className="relative flex items-center">
                   <Search
                     className="absolute left-2.5 text-gray-400 pointer-events-none z-10"
@@ -682,9 +687,9 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
-                <div className="flex items-center justify-between px-1 mb-1.5">
-                  <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase m-0">
+              <div className="flex-1 overflow-y-auto custom-scrollbar">
+                <div className="flex items-center justify-between px-3 py-1.5">
+                  <p className="text-xs text-[#626E67] m-0 lowercase first-letter:uppercase">
                     {filteredLocations.length} location
                     {filteredLocations.length !== 1 ? "s" : ""}
                   </p>
@@ -692,7 +697,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                     <button
                       type="button"
                       onClick={handleSelectAllLocations}
-                      className="text-[11px] font-medium text-[#003220] hover:underline cursor-pointer bg-transparent border-none p-0"
+                      className="text-xs font-medium text-[#12211A] underline decoration-[#9AA8A0] underline-offset-4 hover:decoration-[#12211A] cursor-pointer bg-transparent border-none p-0"
                     >
                       {locationCheckedIds.length === filteredLocations.length
                         ? "Deselect all"
@@ -728,13 +733,13 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
           <button type="button" className="entity-back" onClick={() => setMobileDetailOpen(false)}>← Back to list</button>
               {selectedMapping ? (
                 <>
-                  <div className="flex items-center gap-3 p-3.5 px-5 border-b border-gray-200 shrink-0 bg-white">
-                    <div className="w-10 h-10 bg-slate-100 flex items-center justify-center text-[#003220] shrink-0">
+                  <div className="flex items-center gap-3 py-3 px-5 border-b border-[#D5DCD8] shrink-0 bg-white">
+                    <div className="w-10 h-10 bg-[#F1F2F4] flex items-center justify-center text-[#4A5750] shrink-0">
                       <MapPin size={20} />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-base font-bold text-gray-900 leading-tight">
+                        <span className="text-lg font-medium tracking-[-0.01em] text-[#12211A] leading-tight">
                           {selectedMapping.name}
                         </span>
                         {(() => {
@@ -745,7 +750,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                           );
                           const label = matched ? matched.label : String(raw).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
                           return label ? (
-                            <span className="px-2 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-800 rounded">
+                            <span className="px-2 py-0.5 text-[10px] font-medium bg-blue-100 text-blue-800 rounded">
                               {label}
                             </span>
                           ) : null;
@@ -788,7 +793,7 @@ export default function LocationsView({ defaultTab = "depots" }: LocationsViewPr
                 </>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3 p-10">
-                  <div className="w-12 h-12 bg-slate-100 flex items-center justify-center text-slate-300">
+                  <div className="flex items-center justify-center text-[#9AA8A0]">
                     <MapPin size={24} />
                   </div>
                   <p className="text-xs text-gray-400 text-center max-w-[240px]">

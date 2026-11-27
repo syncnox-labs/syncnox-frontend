@@ -20,6 +20,7 @@ import type { MarkerData } from "@/components/GoogleMaps";
 import { MapPin, Building2, X } from "lucide-react";
 import { LOCATION_TYPE_OPTIONS } from "@/apis/location-mapping.api";
 import { getLocationTypeColor } from "@/utils/customMapMarker";
+import { stopKindOf, stopStatusConfirm } from "./stopStatusConfirm";
 
 const { Text } = Typography;
 
@@ -180,66 +181,37 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
     );
   }
 
-  const stopType = String(jobData?.stop_type || "").toLowerCase();
-  const isPickupStop = stopType === "pickup";
-  const isDropoffStop = stopType === "dropoff" || stopType === "drop_off";
+  const stopType = String(jobData?.stop_type || marker.stopType || "").toLowerCase();
+  const stopKind = stopKindOf(stopType);
+  const isPickupStop = stopKind === "pickup";
+  const isDropoffStop = stopKind === "dropoff";
 
-  const handleUpdateJobStatus = async (status: string) => {
-    if (!jobData?.id) return;
-
-    let targetStatus = status;
-    if (status === "completed" && isPickupStop) {
-      targetStatus = "in_transit";
-    }
-
-    try {
-      setIsMarkingComplete(true);
-      const updatedJob = await updateJobStatus(jobData.id, targetStatus);
-      patchJobLocally(updatedJob);
-      await fetchRoutes(selectedStatus);
-      message.success(
-        isPickupStop
-          ? "Pickup marked as done (In Transit)"
-          : status === "completed"
-            ? "Job marked as completed"
-            : "Job marked as skipped",
-      );
-    } catch {
-      message.error(
-        status === "completed"
-          ? "Failed to mark job as completed"
-          : "Failed to skip job",
-      );
-    } finally {
-      setIsMarkingComplete(false);
-    }
-  };
-
-  const confirmAction = (status: string) => {
-    const isComplete = status === "completed";
-    const title = isPickupStop
-      ? "Mark Pickup as Done?"
-      : isComplete
-        ? "Mark as Completed?"
-        : "Skip this job?";
-    const content = isPickupStop
-      ? "Are you sure you want to mark this pickup as done?"
-      : isComplete
-        ? "Are you sure you want to mark this job as completed?"
-        : "Are you sure you want to skip this job?";
-    const okText = isPickupStop
-      ? "Mark Pickup Done"
-      : isComplete
-        ? "Mark as Completed"
-        : "Skip";
-
+  const confirmAction = (action: "completed" | "failed") => {
+    const jobId = jobData?.id ?? marker.comparison?.jobId;
+    if (!jobId) return;
+    const eta = marker.comparison?.arrivalTime;
+    const who = marker.comparison?.name || [jobData?.first_name, jobData?.last_name].filter(Boolean).join(" ")
+      || jobData?.worker_shuttle_detail?.candidate_name || jobData?.custom_fields?.candidate_name || null;
+    const confirm = stopStatusConfirm({
+      action, kind: stopKind, jobId, who,
+      whenText: eta && dayjs(eta).isValid() ? `${dayjs(eta).format("h:mm A")} · ${dayjs(eta).format("ddd, MMM D")}` : null,
+      address: (title && title !== "Address unavailable" ? title : null) || jobData?.address_formatted || null,
+    });
     modal.confirm({
-      title,
-      content,
-      okText,
-      okType: isComplete ? "primary" : "danger",
-      cancelText: "Cancel",
-      onOk: () => handleUpdateJobStatus(status),
+      ...confirm.modal,
+      onOk: async () => {
+        try {
+          setIsMarkingComplete(true);
+          const updatedJob = await updateJobStatus(jobId, confirm.targetStatus);
+          patchJobLocally(updatedJob);
+          await fetchRoutes(selectedStatus);
+          message.success(confirm.successText);
+        } catch {
+          message.error(confirm.errorText);
+        } finally {
+          setIsMarkingComplete(false);
+        }
+      },
     });
   };
 
@@ -286,8 +258,8 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
         {detail.leg && <div><dt className="text-slate-500">Trip</dt><dd className="m-0 font-medium text-slate-800">{detail.leg}</dd></div>}
       </dl>}
       {!detail.unassigned && jobData && !showButtons && <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2">
-        <Button size="small" icon={<CheckCircleOutlined />} loading={isMarkingComplete} onClick={() => confirmAction("completed")} className="flex-1">Mark Complete</Button>
-        <Button size="small" disabled={isMarkingComplete} onClick={() => confirmAction("failed")}>Skip</Button>
+        <Button size="small" icon={<CheckCircleOutlined />} loading={isMarkingComplete} onClick={() => confirmAction("completed")} className="flex-1">Mark Completed</Button>
+        <Button size="small" disabled={isMarkingComplete} onClick={() => confirmAction("failed")}>Skip Stop</Button>
       </div>}
     </div>;
   }
@@ -414,14 +386,14 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
                   width: "100%",
                 }}
               >
-                Mark Complete
+                Mark Completed
               </Button>
               <Button
                 onClick={() => confirmAction("failed")}
                 type="default"
                 size="small"
               >
-                Skip
+                Skip Stop
               </Button>
             </div>
           )}

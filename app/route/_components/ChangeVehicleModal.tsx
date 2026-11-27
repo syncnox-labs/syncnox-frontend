@@ -129,7 +129,7 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
 
   return (
     <Modal
-      open title="Change vehicle" onCancel={onClose} width={520} centered
+      open title="Change vehicle" onCancel={onClose} width={560} centered rootClassName="lang"
       closable={!saving} maskClosable={!saving} keyboard={!saving}
       footer={[
         <Button key="cancel" onClick={onClose} disabled={saving}>Cancel</Button>,
@@ -140,19 +140,20 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
       ]}
     >
       <div className="flex flex-col gap-4 pt-1">
-        <div>
-          <p className="m-0 font-semibold text-gray-900">{routes[routeIndex]?.team_member_name || "Driver"}</p>
-          <p className="mt-1 mb-0 text-xs text-gray-500">Choose a replacement for this plan. Your choice is kept when you reoptimize.</p>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-[#E3E8E5] pb-3">
+          <p className="m-0 text-[14px] font-medium text-[#12211A]">{routes[routeIndex]?.team_member_name || "Driver"}</p>
+          <p className="m-0 text-[12px] text-[#4A5750]">Now driving <span className="text-[#12211A]">{options?.current_vehicle_name || current?.vehicle_name || "no vehicle"}</span></p>
+          <p className="m-0 w-full text-[12px] text-[#626E67]">Stops and pickup times stay the same. The choice is kept when you re-optimize.</p>
         </div>
         {!leader && tripChoices.length > 1 ? (
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="vehicle-trip" className="text-xs font-medium text-gray-700">Change vehicle for</label>
+            <label htmlFor="vehicle-trip" className="text-[13px] font-medium text-[#12211A]">Which trip</label>
             <Select id="vehicle-trip" aria-label="Trips to change vehicle for" value={trip} onChange={setTrip} disabled={saving || loading}
               options={tripChoices}
             />
           </div>
         ) : (
-          <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+          <div className="border border-[#E3E8E5] bg-[#F8FAF9] px-3 py-2 text-[13px]">
             <span className="text-gray-500">Current vehicle: </span>
             <span className="font-medium">{options?.current_vehicle_name || current?.vehicle_name || "Unassigned"}</span>
             <p className="mb-0 mt-1 text-xs text-gray-500">
@@ -160,35 +161,55 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
             </p>
           </div>
         )}
-        {leader && <p className="m-0 text-xs text-gray-600">This team leader uses one vehicle for GO and RETURN. Both legs will be updated together.</p>}
+        {leader && <p className="m-0 text-[12px] text-[#4A5750]">This team leader uses one vehicle for GO and RETURN. Both legs will be updated together.</p>}
         {error && <Alert type="error" showIcon title={error} />}
         {loading ? <div className="py-10 text-center"><Spin /></div> : options && (
           <>
-            <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
-              <span>Replacement vehicle</span>
-              <span>At least {options.required_capacity} {options.required_capacity === 1 ? "seat" : "seats"} needed</span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[13px] font-medium text-[#12211A]">New vehicle</span>
+              <span className="text-[12px] text-[#626E67]">Needs at least {options.required_capacity} {options.required_capacity === 1 ? "seat" : "seats"}</span>
             </div>
-            <Input prefix={<Search size={14} />} placeholder="Search vehicles by name or plate" aria-label="Search replacement vehicles"
+            <Input prefix={<Search size={14} />} placeholder="Search by name or plate" aria-label="Search replacement vehicles"
               allowClear value={search} onChange={event => setSearch(event.target.value)} disabled={saving} />
-            <div role="radiogroup" aria-label="Replacement vehicle" className="max-h-[320px] overflow-y-auto flex flex-col gap-2">
-              {filtered.map(vehicle => (
-                <button key={vehicle.id} type="button" role="radio" aria-checked={selectedId === vehicle.id}
-                  disabled={saving || vehicle.id === options.current_vehicle_id} onClick={() => { setError(null); setSelectedId(vehicle.id); }}
-                  className={`flex items-center gap-3 rounded border p-3 text-left transition-colors ${
-                    selectedId === vehicle.id ? "border-[#003220] bg-emerald-50 cursor-pointer" : "border-gray-200 hover:border-emerald-700 cursor-pointer"}`}>
-                  <Car size={20} className="shrink-0" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{vehicle.name}</span>
-                    <span className="block text-xs text-gray-500 mt-0.5">{vehicle.capacity} {vehicle.capacity === 1 ? "seat" : "seats"}{vehicle.license_plate ? ` · ${vehicle.license_plate}` : ""}</span>
-                    {vehicle.reason && <span className="block text-xs text-gray-600 mt-1">{vehicleAvailabilityMessage(vehicle.reason)}</span>}
-                  </span>
-                  {selectedId === vehicle.id && <Check size={18} className="text-[#003220] shrink-0" />}
-                </button>
-              ))}
-              {!filtered.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No matching vehicles" />}
+            <div role="radiogroup" aria-label="Replacement vehicle" className="max-h-[340px] overflow-y-auto border border-[#E3E8E5]">
+              {([
+                ["free", "Free during this trip", filtered.filter(vehicle => vehicle.available && vehicle.id !== options.current_vehicle_id)],
+                ["busy", "In use at this time · swap possible", filtered.filter(vehicle => !vehicle.available && vehicle.id !== options.current_vehicle_id && /at this time/i.test(vehicle.reason || ""))],
+                ["blocked", "Not suitable", filtered.filter(vehicle => !vehicle.available && vehicle.id !== options.current_vehicle_id && !/at this time/i.test(vehicle.reason || ""))],
+                ["current", "Current vehicle", filtered.filter(vehicle => vehicle.id === options.current_vehicle_id)],
+              ] as const).map(([key, heading, list]) => list.length > 0 && <div key={key} role="group" aria-label={heading}>
+                <div className="sticky top-0 z-10 border-b border-[#E3E8E5] bg-[#F3F6F4] px-3 py-1.5 text-[11px] uppercase tracking-wide text-[#626E67]">
+                  {heading} <span className="tabular-nums">({list.length})</span>
+                </div>
+                {list.map(vehicle => {
+                  const on = selectedId === vehicle.id;
+                  const isCurrent = vehicle.id === options.current_vehicle_id;
+                  const spare = vehicle.capacity - options.required_capacity;
+                  return <button key={vehicle.id} type="button" role="radio" aria-checked={on}
+                    disabled={saving || isCurrent} onClick={() => { setError(null); setSelectedId(vehicle.id); }}
+                    className={`flex w-full items-center gap-3 border-0 border-b border-[#E3E8E5] px-3 py-2.5 text-left last:border-b-0 ${
+                      on ? "bg-[#F1F8F4] shadow-[inset_3px_0_0_#003220] cursor-pointer" : isCurrent ? "bg-white cursor-default" : "bg-white hover:bg-[#F8FAF9] cursor-pointer"}`}>
+                    <span aria-hidden="true" className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${on ? "border-[#003220]" : "border-[#9AA59F]"} ${isCurrent ? "opacity-0" : ""}`}>
+                      {on && <span className="h-1.5 w-1.5 rounded-full bg-[#003220]" />}
+                    </span>
+                    <Car size={18} className="shrink-0 text-[#4A5750]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-medium text-[#12211A]">{vehicle.name}</span>
+                      {vehicle.license_plate && <span className="block text-[12px] text-[#626E67]">{vehicle.license_plate}</span>}
+                      {vehicle.reason && !isCurrent && <span className={`mt-0.5 block text-[12px] ${key === "blocked" ? "text-[#C9372C]" : "text-[#8A6700]"}`}>{vehicleAvailabilityMessage(vehicle.reason)}</span>}
+                    </span>
+                    <span className="shrink-0 text-right text-[12px] tabular-nums">
+                      <span className="block text-[#12211A]">{vehicle.capacity} {vehicle.capacity === 1 ? "seat" : "seats"}</span>
+                      {spare >= 0 && <span className="block text-[#626E67]">{spare === 0 ? "exact fit" : `${spare} spare`}</span>}
+                    </span>
+                    {on && <Check size={16} className="shrink-0 text-[#003220]" />}
+                  </button>;
+                })}
+              </div>)}
+              {!filtered.length && <div className="py-6"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No matching vehicles" /></div>}
             </div>
-            {selectedVehicle && !selectedVehicle.available && <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm">
-              <p className="mt-0">Choose a compatible trip to exchange vehicles. Both drivers keep their scheduled stops and times.</p>
+            {selectedVehicle && !selectedVehicle.available && <div className="border border-[#E3E8E5] bg-[#F8FAF9] p-3 text-[13px] text-[#12211A]">
+              <p className="mt-0 text-[#4A5750]">{selectedVehicle.name} is busy during this trip, so the two trips swap vehicles instead. Both drivers keep their stops and times.</p>
               {checkingSwaps ? <p className="mb-0">Checking possible swaps…</p> : swapPreviews.length ? <>
                 <label htmlFor="replacement-swap-target" className="block mb-2 font-medium">Swap with a trip</label>
                 <Select id="replacement-swap-target" className="w-full" placeholder="Choose a compatible trip" value={swapTarget ?? undefined}
@@ -205,7 +226,7 @@ export default function ChangeVehicleModal({ optimizationId, routeIndex, routes,
                 </li>)}</ul>
               </details>}
             </div>}
-            {!options.vehicles.some(vehicle => vehicle.available) && <p className="m-0 text-xs text-gray-500">No suitable replacement is available for these trip times.</p>}
+            {!options.vehicles.some(vehicle => vehicle.available) && <p className="m-0 text-[12px] text-[#626E67]">No suitable replacement is available for these trip times.</p>}
           </>
         )}
       </div>

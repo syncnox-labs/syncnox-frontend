@@ -149,7 +149,7 @@ const Depot = () => {
       {/* ── Page header ─────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-y-2 pb-3 shrink-0 border-b border-gray-200 mb-0">
         <div>
-          <h1 className="text-lg font-bold text-gray-900 m-0">Depots</h1>
+          <h1 className="text-lg font-medium text-gray-900 m-0">Depots</h1>
           <p className="text-xs text-gray-500 mt-0.5">
             Pick a depot in the list to edit it. Drag the pin on the map to adjust its location.
           </p>
@@ -198,7 +198,7 @@ const Depot = () => {
             <div className="relative flex items-center">
               <Search className="absolute left-2.5 text-gray-400 pointer-events-none z-10" size={14} />
               <input
-                className="w-full py-1.5 pl-8 pr-2.5 border border-gray-200 text-xs bg-white text-gray-900 outline-none transition focus:border-[#003220] focus:ring-2 focus:ring-[#003220]/10 placeholder:text-gray-400 rounded-none"
+                className="w-full h-8 pl-8 pr-2.5 border border-transparent text-[13px] bg-white text-[#12211A] outline-none transition focus:border-[#0B5D3B] placeholder:text-[#626E67] rounded-none"
                 placeholder="Search depots…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -210,14 +210,14 @@ const Depot = () => {
 
           <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
             <div className="flex items-center justify-between px-1 mb-1.5">
-              <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase m-0">
+              <p className="text-[11px] font-medium text-gray-400 tracking-wider uppercase m-0">
                 {filtered.length} depot{filtered.length !== 1 ? "s" : ""}
               </p>
               {filtered.length > 0 && (
                 <button
                   type="button"
                   onClick={handleSelectAll}
-                  className="text-[11px] font-medium text-[#003220] hover:underline cursor-pointer bg-transparent border-none p-0"
+                  className="text-xs font-medium text-[#12211A] underline decoration-[#9AA8A0] underline-offset-4 hover:decoration-[#12211A] cursor-pointer bg-transparent border-none p-0"
                 >
                   {checkedIds.length === filtered.length ? "Deselect all" : "Select all"}
                 </button>
@@ -260,7 +260,7 @@ const Depot = () => {
                   <MapPin size={22} />
                 </div>
                 <div>
-                  <div className="text-[17px] font-bold text-gray-900 leading-tight">{selectedDepot.name}</div>
+                  <div className="text-[17px] font-medium text-gray-900 leading-tight">{selectedDepot.name}</div>
                   <div className="text-[12.5px] text-gray-500 mt-0.5">
                     {selectedDepot.address?.formatted_address || "No address set"}
                   </div>
@@ -301,7 +301,7 @@ const Depot = () => {
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3 p-10">
-              <div className="w-14 h-14 bg-slate-100 flex items-center justify-center text-slate-300 rounded-none">
+              <div className="flex items-center justify-center text-[#9AA8A0]">
                 <MapPin size={28} />
               </div>
               <p className="text-sm text-gray-400 text-center max-w-[240px]">
@@ -342,7 +342,7 @@ const Depot = () => {
               }}
               InfoWindowModal={({ marker }) => (
                 <div className="p-2 min-w-[200px]">
-                  <div className="font-semibold text-gray-800 mb-1">
+                  <div className="font-medium text-gray-800 mb-1">
                     {(marker.jobData as any).name}
                   </div>
                   <div className="text-sm text-gray-600">{marker.description}</div>

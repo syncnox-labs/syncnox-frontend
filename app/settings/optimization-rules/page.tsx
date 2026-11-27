@@ -6,19 +6,24 @@ import {
   getTenantOptimizationRules,
   updateTenantOptimizationRules,
 } from "@/apis/tenant-rules.api";
-import { Save, Sliders, CheckCircle2 } from "lucide-react";
-import { message, Spin, Checkbox, Select } from "antd";
+import { message, Button, Spin, Select, InputNumber } from "antd";
+import { Clock, Milestone, Warehouse } from "lucide-react";
 import SettingsPageTitle from "@/components/Settings/SettingsPageTitle";
+import { SettingCheck, SettingField, SettingFooter, SettingSection } from "@/components/Settings/SettingRow";
+
+const DEFAULT_RULES: OptimizationRules = {
+  include_first_stop: true,
+  include_last_stop: true,
+  reach_before_mins: 0,
+  curbside_delivery: "any",
+  avoid_tolls: false,
+  avoid_highways: false,
+};
 
 export default function OptimizationRulesPage() {
-  const [rules, setRules] = useState<OptimizationRules>({
-    include_first_stop: true,
-    include_last_stop: true,
-    reach_before_mins: 0,
-    curbside_delivery: "any",
-    avoid_tolls: false,
-    avoid_highways: false,
-  });
+  const [rules, setRules] = useState<OptimizationRules>(DEFAULT_RULES);
+  // What is stored on the server, so the page can tell whether anything changed
+  const [savedRules, setSavedRules] = useState<OptimizationRules>(DEFAULT_RULES);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
 
@@ -29,6 +34,7 @@ export default function OptimizationRulesPage() {
         const data = await getTenantOptimizationRules();
         if (data && data.rules) {
           setRules(data.rules);
+          setSavedRules(data.rules);
         }
       } catch (err: any) {
         console.error("Failed to load optimization rules", err);
@@ -40,10 +46,13 @@ export default function OptimizationRulesPage() {
     fetchRules();
   }, []);
 
+  const hasChanges = JSON.stringify(rules) !== JSON.stringify(savedRules);
+
   const handleSave = async () => {
     try {
       setSaving(true);
       await updateTenantOptimizationRules(rules);
+      setSavedRules(rules);
       message.success("Optimization rules saved successfully!");
     } catch (err: any) {
       message.error("Failed to save optimization rules");
@@ -53,147 +62,76 @@ export default function OptimizationRulesPage() {
   };
 
   return (
-    <div className="responsive-settings flex flex-col h-full min-w-0 min-h-0 overflow-hidden">
+    <div className="kit-fluid responsive-settings flex flex-col h-full min-w-0 min-h-0 overflow-hidden">
       {/* ── Page Header ─────────────────────────────────────────── */}
       <div className="responsive-toolbar flex items-center justify-between pb-4 border-b border-gray-200 shrink-0">
         <SettingsPageTitle
           title="Optimization Rules"
           description="Configure custom routing constraints and parameters applied during route optimization."
         />
-        <button
-          onClick={handleSave}
-          disabled={saving || loading}
-          className="inline-flex items-center gap-1.5 bg-[#003220] hover:bg-[#002417] text-white text-xs font-semibold px-4 py-2 rounded-none transition-colors cursor-pointer border-none disabled:opacity-50"
-        >
-          <Save size={15} />
-          <span>{saving ? "Saving..." : "Save Rules"}</span>
-        </button>
       </div>
 
       {/* ── Content ─────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto mt-6 custom-scrollbar max-w-3xl">
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="max-w-[760px] pb-10">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <Spin size="default" />
           </div>
         ) : (
-          <div className="space-y-6">
-            {/* Route Stops & Depot Rules */}
-            <div className="border border-gray-200 p-5 bg-white rounded-none">
-              <h2 className="text-xs font-bold text-[#003220] uppercase tracking-wider m-0 mb-4 border-b border-gray-100 pb-2">
-                Depot & Stop Rules
-              </h2>
-              <div className="space-y-4">
-                <div className="flex items-start gap-2.5">
-                  <Checkbox
-                    checked={rules.include_first_stop}
-                    onChange={(e) => setRules({ ...rules, include_first_stop: e.target.checked })}
-                    className="mt-0.5"
-                  />
-                  <div
-                    className="cursor-pointer select-none"
-                    onClick={() => setRules({ ...rules, include_first_stop: !rules.include_first_stop })}
-                  >
-                    <span className="text-xs font-semibold text-gray-900 block">Include Depot as First Stop</span>
-                    <span className="text-[11px] text-gray-500 block mt-0.5">Route begins from the assigned depot location.</span>
-                  </div>
-                </div>
+          <div>
+            <p className="m-0 pt-4 text-xs leading-5 text-[#626F86]">
+              These rules apply to every new plan. Plans already optimized keep the rules they were built with until you optimize them again.
+            </p>
 
-                <div className="flex items-start gap-2.5">
-                  <Checkbox
-                    checked={rules.include_last_stop}
-                    onChange={(e) => setRules({ ...rules, include_last_stop: e.target.checked })}
-                    className="mt-0.5"
-                  />
-                  <div
-                    className="cursor-pointer select-none"
-                    onClick={() => setRules({ ...rules, include_last_stop: !rules.include_last_stop })}
-                  >
-                    <span className="text-xs font-semibold text-gray-900 block">Include Depot as Last Stop</span>
-                    <span className="text-[11px] text-gray-500 block mt-0.5">Route returns to the depot after all jobs are completed.</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <SettingSection icon={Warehouse} title="Depot and stops" description="Where each route begins and ends.">
+              <SettingCheck id="rule-first-stop" label="Start at the depot" description="Each route begins at its assigned depot."
+                checked={rules.include_first_stop} onChange={(checked) => setRules({ ...rules, include_first_stop: checked })} />
+              <SettingCheck id="rule-last-stop" label="Return to the depot" description="Each route goes back to the depot after its last job."
+                checked={rules.include_last_stop} onChange={(checked) => setRules({ ...rules, include_last_stop: checked })} />
+            </SettingSection>
 
-            {/* Arrival & Approach Constraints */}
-            <div className="border border-gray-200 p-5 bg-white rounded-none">
-              <h2 className="text-xs font-bold text-[#003220] uppercase tracking-wider m-0 mb-4 border-b border-gray-100 pb-2">
-                Time & Approach Constraints
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Reach Before Window (Minutes)
-                  </label>
-                  <input
-                    type="number"
-                    value={rules.reach_before_mins}
-                    onChange={(e) => setRules({ ...rules, reach_before_mins: Number(e.target.value) })}
-                    placeholder="0"
-                    className="w-full text-xs border border-gray-200 rounded-none px-3 py-2 outline-none focus:border-[#003220]"
-                  />
-                  <span className="text-[11px] text-gray-400 mt-1 block">Buffer mins added prior to scheduled window.</span>
-                </div>
+            <SettingSection icon={Clock} title="Timing and approach" description="How early to arrive and which side of the street to stop on.">
+              <SettingField label="Arrival buffer" htmlFor="rule-reach-before" helper="Minutes added before the scheduled time window.">
+                <InputNumber
+                  id="rule-reach-before"
+                  min={0}
+                  value={rules.reach_before_mins}
+                  onChange={(value) => setRules({ ...rules, reach_before_mins: Number(value ?? 0) })}
+                  addonAfter="min"
+                  style={{ width: 150 }}
+                />
+              </SettingField>
+              <SettingField label="Curbside" htmlFor="rule-curbside" helper="Limits which side of the street a vehicle may stop on.">
+                <Select
+                  id="rule-curbside"
+                  value={rules.curbside_delivery}
+                  onChange={(value) => setRules({ ...rules, curbside_delivery: value as any })}
+                  style={{ width: 250 }}
+                  options={[
+                    { value: "any", label: "Any side of street" },
+                    { value: "left_only", label: "Left side delivery only" },
+                    { value: "right_only", label: "Right side delivery only" },
+                  ]}
+                />
+              </SettingField>
+            </SettingSection>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Curbside Delivery Preference
-                  </label>
-                  <Select
-                    value={rules.curbside_delivery}
-                    onChange={(value) => setRules({ ...rules, curbside_delivery: value as any })}
-                    className="w-full text-xs"
-                    options={[
-                      { value: "any", label: "Any side of street" },
-                      { value: "left_only", label: "Left side delivery only" },
-                      { value: "right_only", label: "Right side delivery only" },
-                    ]}
-                  />
-                  <span className="text-[11px] text-gray-400 mt-1 block">Approach side restriction for vehicle stops.</span>
-                </div>
-              </div>
-            </div>
+            <SettingSection icon={Milestone} title="Roads" description="Road types the optimizer should stay away from.">
+              <SettingCheck id="rule-tolls" label="Avoid toll roads" description="Routes stay off paid toll expressways. Trips may take longer."
+                checked={rules.avoid_tolls} onChange={(checked) => setRules({ ...rules, avoid_tolls: checked })} />
+              <SettingCheck id="rule-highways" label="Avoid highways" description="Routes prefer local roads over major highways. Trips may take longer."
+                checked={rules.avoid_highways} onChange={(checked) => setRules({ ...rules, avoid_highways: checked })} />
+            </SettingSection>
 
-            {/* Road & Toll Restrictions */}
-            <div className="border border-gray-200 p-5 bg-white rounded-none">
-              <h2 className="text-xs font-bold text-[#003220] uppercase tracking-wider m-0 mb-4 border-b border-gray-100 pb-2">
-                Road Restrictions
-              </h2>
-              <div className="space-y-4">
-                <div className="flex items-start gap-2.5">
-                  <Checkbox
-                    checked={rules.avoid_tolls}
-                    onChange={(e) => setRules({ ...rules, avoid_tolls: e.target.checked })}
-                    className="mt-0.5"
-                  />
-                  <div
-                    className="cursor-pointer select-none"
-                    onClick={() => setRules({ ...rules, avoid_tolls: !rules.avoid_tolls })}
-                  >
-                    <span className="text-xs font-semibold text-gray-900 block">Avoid Toll Roads</span>
-                    <span className="text-[11px] text-gray-500 block mt-0.5">Optimizer avoids paid toll expressways.</span>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-2.5">
-                  <Checkbox
-                    checked={rules.avoid_highways}
-                    onChange={(e) => setRules({ ...rules, avoid_highways: e.target.checked })}
-                    className="mt-0.5"
-                  />
-                  <div
-                    className="cursor-pointer select-none"
-                    onClick={() => setRules({ ...rules, avoid_highways: !rules.avoid_highways })}
-                  >
-                    <span className="text-xs font-semibold text-gray-900 block">Avoid Highways</span>
-                    <span className="text-[11px] text-gray-500 block mt-0.5">Optimizer prefers local arteries over major highways.</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <SettingFooter>
+              <Button type="primary" onClick={handleSave} loading={saving}>Save changes</Button>
+              {hasChanges && <Button type="link" onClick={() => setRules(savedRules)} disabled={saving}>Discard changes</Button>}
+              {hasChanges && <span className="text-xs text-[#626F86]" role="status">You have unsaved changes.</span>}
+            </SettingFooter>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

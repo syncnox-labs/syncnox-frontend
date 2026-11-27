@@ -27,6 +27,7 @@ const jobsUtils = load("utils/jobs.utils.tsx", {
 });
 const Card = load("app/route/_components/JobDetailsCard.tsx", {
   "./jobEditPatch.utils": load("app/route/_components/jobEditPatch.utils.ts"),
+  "./stopStatusConfirm": load("app/route/_components/stopStatusConfirm.tsx"),
   "./jobStopEstimates.utils": estimatesUtils,
   "@/utils/jobPickupType.utils": pickupUtils,
   "@/utils/app.utils": appUtils,
@@ -51,11 +52,11 @@ for (const [status, label, actualLabel] of [["completed", "Boarded", "Actual pic
     const text = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
     assert.ok(text.includes(label));
     assert.ok(text.includes(actualLabel));
-    assert.match(text, /06:36 AM EDT/);
+    assert.match(text, /6:36 AM EDT/);
     assert.match(text, /Sat, Oct 24/);
-    assert.match(text, /Estimated pickup time.*06:30 AM/);
+    assert.match(text, /Estimated pickup time.*6:30 AM/);
     assert.doesNotMatch(text, /Actual dropoff time/);
-    assert.doesNotMatch(text, /06:32 AM/); // Geofence arrival must not be shown as boarding time.
+    assert.doesNotMatch(text, /6:32 AM/); // Geofence arrival must not be shown as boarding time.
   });
 }
 
@@ -132,7 +133,8 @@ test("optimization details show Round Trip and both actual estimates on either d
     const expectedLeg = job_type === "return_only" ? "RETURN" : "GO";
     assert.match(html, new RegExp(`<h3[^>]*>Journey<span[^>]*aria-label="Leg ${expectedLeg}"[^>]*>${expectedLeg}</span></h3>`));
     assert.doesNotMatch(text, /Leg (GO|RETURN)/);
-    assert.match(html, /class="[^"]*border-emerald-400[^"]*uppercase[^"]*">\s*Round Trip/);
+    // The value is checked inside its section, not by its styling.
+    assert.match(html, /aria-label="Shift &amp; schedule"[\s\S]*Pickup Type[\s\S]*Round Trip/);
     assert.ok(text.includes(`Estimated pickup time ${appUtils.formatTime12h(pickup)}`));
     assert.ok(text.includes(`Estimated dropoff time ${appUtils.formatTime12h(dropoff)}`));
     assert.ok(text.includes(date));
@@ -171,7 +173,7 @@ test("the dropoff card highlights Dropoff and groups passenger and assignment to
   assert.match(text, /Estimated dropoff time 12:20 AM Wed, Sep 30/);
   assert.match(html, /aria-current="step"[\s\S]*?<h4[^>]*>[\s\S]*?Dropoff/);
   assert.doesNotMatch(text, /ETA|Client Phone|HIDDEN-CLIENT-PHONE|Trip Type|Trip Leg|Status/);
-  for (const section of ["Passenger &amp; assignment", "Journey", "Shift &amp; schedule", "Notes"]) {
+  for (const section of ["Passenger", "Journey", "Shift &amp; schedule", "Notes"]) {
     assert.ok(html.includes(`aria-label="${section}"`));
   }
   assert.ok(text.includes("553 Bd du Curé-Boivin, Boisbriand, Québec"));
@@ -187,7 +189,7 @@ test("a missing counterpart is Not scheduled, rather than a shift time or stale 
   const text = renderToStaticMarkup(React.createElement(Card, {
     job, routeStops: [stop], stopData: stop, onClose() {},
   })).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  assert.match(text, /Estimated pickup time 07:35 AM/);
+  assert.match(text, /Estimated pickup time 7:35 AM/);
   assert.match(text, /Estimated dropoff time Not scheduled/);
 });
 

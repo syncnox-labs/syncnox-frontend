@@ -173,7 +173,7 @@ const SwapDriverDrawer: React.FC<SwapDriverDrawerProps> = ({
       footer={null}
       width={420}
       centered
-      destroyOnClose
+      destroyOnHidden
       styles={{ body: { padding: 0 } }}
     >
       {/* Header */}

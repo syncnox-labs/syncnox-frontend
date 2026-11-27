@@ -161,7 +161,7 @@ function render(showDriverWorkingTime, driver = team) {
 
 test("hidden working time removes the availability background and shift editing controls", () => {
   const html = render(false);
-  assert.doesNotMatch(html, /border-emerald-200\/80 bg-emerald-50\/50/);
+  assert.doesNotMatch(html, /working-time-band/);
   assert.doesNotMatch(html, /aria-label="Change Driver Example.*shift (start|end)/);
   assert.match(html, /Driver Example/);
   assert.equal((html.match(/data-test="route-stop"/g) || []).length, 2);
@@ -173,7 +173,7 @@ test("hidden working time removes the availability background and shift editing 
 
 test("enabled working time renders bands, shift handles, and the full shift range", () => {
   const html = render(true);
-  assert.match(html, /border-emerald-200\/80 bg-emerald-50\/50/);
+  assert.match(html, /working-time-band/);
   assert.match(html, /aria-label="Change Driver Example shift start/);
   assert.match(html, /aria-label="Change Driver Example shift end/);
   assert.match(html, /width:3240px/);
@@ -201,7 +201,7 @@ test("an ETA update changes marker positions, the time axis and driver duration"
 
 test("working time is shown by default, including inferred shifts", () => {
   const html = render(undefined, { id: 8, name: "Driver Example" });
-  assert.match(html, /border-emerald-200\/80 bg-emerald-50\/50/);
+  assert.match(html, /working-time-band/);
   assert.match(html, /aria-label="Change Driver Example shift start/);
   assert.match(html, /aria-label="Change Driver Example shift end/);
 });

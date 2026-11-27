@@ -21,9 +21,9 @@ export default function TimelineHeader({
   }
 
   return (
-    <div className="flex border-b border-gray-200 bg-gray-50 sticky top-0 z-10">
+    <div className="flex h-9 items-stretch bg-white shadow-[inset_0_-2px_0_#DCDFE4] sticky top-0 z-10">
       {/* Driver column - sticky */}
-      <div className="w-[130px] min-w-[130px] sm:w-[180px] sm:min-w-[180px] py-2 px-3 font-semibold border-r border-gray-200 bg-gray-50 sticky left-0 z-5">
+      <div data-resource-name className="w-[130px] min-w-[130px] sm:w-[180px] sm:min-w-[180px] flex items-center px-4 text-xs font-semibold text-[#626F86] border-r border-[#DCDFE4] bg-white shadow-[inset_0_-2px_0_#DCDFE4] sticky left-0 z-5">
         Driver
       </div>
 
@@ -32,7 +32,7 @@ export default function TimelineHeader({
         {intervals.map((interval, i) => (
           <div
             key={i}
-            className="flex-1 min-w-[60px] py-2 px-1 text-left text-xs font-medium text-gray-500 border-r border-gray-100"
+            className="flex flex-1 min-w-[60px] items-center px-1.5 text-left text-xs tabular-nums text-[#626F86]"
           >
             {interval.hour.toString().padStart(2, "0")}:{interval.minute.toString().padStart(2, "0")}
           </div>

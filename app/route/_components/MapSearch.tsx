@@ -18,6 +18,8 @@ interface MapSearchProps {
   candidates: MapSearchResult[];
   /** Called when the user selects a result */
   onSelect: (item: MapSearchResult) => void;
+  /** Map tools shown in the same row (select by area, compare stops). */
+  extraTools?: React.ReactNode;
   onOpenAddJob?: () => void;
   /** Reveal a collapsed map before focusing its search field. */
   onReveal?: () => void;
@@ -49,6 +51,7 @@ const MapSearch: React.FC<MapSearchProps> = ({
   candidates,
   onSelect,
   onOpenAddJob,
+  extraTools,
   onReveal,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -217,12 +220,13 @@ const MapSearch: React.FC<MapSearchProps> = ({
       className="route-map-search flex flex-col"
     >
       {/* ── Toggle button / expanded input row ── */}
-      <div className="flex items-center gap-1.5">
+      {/* One strip, same look as the map's view controls on the right: white, one border, thin dividers */}
+      <div className="flex items-center self-start bg-white border border-[#C4CCC7]">
         <div
           className={`
-            route-map-search-toggle flex items-center bg-white/95 backdrop-blur-sm border border-gray-200
-            shadow-lg transition-all duration-300 ease-out overflow-hidden
-            ${isOpen ? "is-expanded rounded-none w-72" : "rounded-none w-11 h-11"}
+            route-map-search-toggle flex items-center bg-transparent
+            transition-all duration-300 ease-out overflow-hidden
+            ${isOpen ? "is-expanded rounded-none w-72" : "rounded-none w-8 h-8"}
           `}
         >
           {/* Search icon button */}
@@ -236,12 +240,12 @@ const MapSearch: React.FC<MapSearchProps> = ({
             className={`
               flex items-center justify-center shrink-0 transition-colors cursor-pointer
               ${isOpen
-                ? "w-11 h-11 text-emerald-700 hover:bg-emerald-50"
-                : "w-11 h-11 text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-none"
+                ? "w-8 h-8 text-[#003220] hover:bg-emerald-50"
+                : "w-8 h-8 text-gray-700 hover:text-[#003220] hover:bg-emerald-50 rounded-none"
               }
             `}
           >
-            <Search size={15} strokeWidth={2.2} />
+            <Search size={16} />
           </button>
 
         {/* Input — only rendered when open to avoid tab-focus on hidden input */}
@@ -273,17 +277,21 @@ const MapSearch: React.FC<MapSearchProps> = ({
 
         {/* Plus / Add Candidate button beside search */}
         {onOpenAddJob && !isOpen && (
+          <>
+          <span aria-hidden="true" className="h-5 w-px bg-gray-200" />
           <Tooltip title="Add New Candidate / Job">
             <button
               type="button"
               onClick={onOpenAddJob}
               aria-label="Add Candidate"
-              className="flex items-center justify-center w-11 h-11 bg-white/95 backdrop-blur-sm border border-gray-200 text-gray-700 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer shadow-lg rounded-none"
+              className="flex items-center justify-center w-8 h-8 border-0 bg-transparent text-gray-700 hover:text-[#003220] hover:bg-emerald-50 transition-colors cursor-pointer rounded-none"
             >
-              <Plus size={16} strokeWidth={2.2} />
+              <Plus size={16} />
             </button>
           </Tooltip>
+          </>
         )}
+        {!isOpen && extraTools}
       </div>
 
       {/* ── Dropdown ── */}

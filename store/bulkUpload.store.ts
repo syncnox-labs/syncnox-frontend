@@ -38,21 +38,28 @@ interface BulkUploadStore {
   reset: () => void;
 }
 
-const initialState = {
+/** Today in the browser's own calendar. toISOString() gives the UTC date, which is tomorrow after 7 PM in Montreal. */
+const localToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+// A function, so "today" is worked out when an upload starts, not once when the app loads.
+const initialState = () => ({
   currentStep: 1,
   uploadedFile: null,
   uploadResponse: null,
   templateType: "worker_shuttle",
-  defaultScheduledDate: new Date().toISOString().split("T")[0], // Today's date in YYYY-MM-DD
+  defaultScheduledDate: localToday(), // Today in YYYY-MM-DD, local calendar
   columnMapping: {},
   saveAsDefault: true, // Default to checked
   geocodedData: [],
   isGeocoding: false,
-};
+});
 
 export const useBulkUploadStore = create<BulkUploadStore>()(
   immer((set) => ({
-    ...initialState,
+    ...initialState(),
 
     setCurrentStep: (step: number) => {
       set((state) => {
@@ -120,7 +127,7 @@ export const useBulkUploadStore = create<BulkUploadStore>()(
     },
 
     reset: () => {
-      set(() => initialState);
+      set(() => initialState());
     },
   }))
 );

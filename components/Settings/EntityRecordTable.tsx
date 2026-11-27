@@ -1,5 +1,6 @@
 "use client";
 
+import { tableTheme } from "@/components/ui/tableTheme";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button } from "antd";
 import type { ColDef, GridApi, ICellRendererParams, SelectionChangedEvent } from "ag-grid-community";
@@ -35,7 +36,7 @@ export default function EntityRecordTable<T extends { id: number; name: string; 
     ...resolveSettingsColumns(columns, fieldConfig.fields, fieldConfig.preferences).map(column => column.colId === "name" ? {
       ...column,
       cellRenderer: ({ data, value }: ICellRendererParams<T>) => data ? (
-        <button type="button" onClick={() => onOpenRecord(data)} className="text-blue-600 hover:underline font-semibold cursor-pointer border-none bg-transparent p-0 text-left" aria-label={"Edit " + data.name}>{value || "-"}</button>
+        <button type="button" onClick={() => onOpenRecord(data)} className="text-blue-600 hover:underline font-medium cursor-pointer border-none bg-transparent p-0 text-left" aria-label={"Edit " + data.name}>{value || "-"}</button>
       ) : null,
     } : column),
     createActionsColumn<T>({ actions: [{ key: "edit", label: "Edit", onClick: onOpenRecord }] }),
@@ -83,6 +84,7 @@ export default function EntityRecordTable<T extends { id: number; name: string; 
       {fieldConfig.error && <Alert type="warning" showIcon className="mb-2" title="Field settings could not be loaded." action={<Button size="small" onClick={() => void fieldConfig.reload()}>Retry</Button>} />}
       {(!fieldConfig.error || fieldConfig.ready) && (
         <BaseTable<T>
+          themeParams={tableTheme}
           columnDefs={tableColumns}
           rowData={records}
           loading={fieldConfig.loading && !fieldConfig.ready}

@@ -27,17 +27,17 @@ export const StopArrowSvg: React.FC<StopArrowSvgProps> = ({
   fill,
   stroke,
   textColor,
-  strokeWidth = 2,
+  strokeWidth = 1.5,
   strokeDasharray,
 }) => {
   const textStr = String(displayIndex ?? "");
   const fontSize = textStr.length >= 3 ? "9" : textStr.length === 2 ? "11" : "12";
 
   const path = isMixed
-    ? "M 16 2 L 31 11 L 24 11 L 24 27 L 31 27 L 16 36 L 1 27 L 8 27 L 8 11 L 1 11 Z"
+    ? "M 16 2 L 21 9 L 27 9 L 27 29 L 21 29 L 16 36 L 11 29 L 5 29 L 5 9 L 11 9 Z"
     : isPickup
-      ? "M 16 2 L 31 13 L 26 13 L 26 36 L 6 36 L 6 13 L 1 13 Z"
-      : "M 6 2 L 26 2 L 26 25 L 31 25 L 16 36 L 1 25 L 6 25 Z";
+      ? "M 16 2 L 21 10 L 27 10 L 27 34 L 5 34 L 5 10 L 11 10 Z"
+      : "M 6 2 L 27 2 L 27 27 L 21 27 L 16 36 L 11 27 L 5 27 L 5 2 Z";
 
   return (
     <svg
@@ -57,11 +57,11 @@ export const StopArrowSvg: React.FC<StopArrowSvgProps> = ({
       />
       <text
         x="16"
-        y="19"
+        y={isMixed ? "19" : isPickup ? "22" : "15"}
         textAnchor="middle"
         dominantBaseline="central"
-        fontFamily="system-ui, -apple-system, sans-serif"
-        fontWeight="800"
+        fontFamily="Inter, system-ui, -apple-system, sans-serif"
+        fontWeight="600"
         fontSize={fontSize}
         fill={textColor}
       >
@@ -70,6 +70,22 @@ export const StopArrowSvg: React.FC<StopArrowSvgProps> = ({
     </svg>
   );
 };
+
+/** The single "edited by hand" mark: a dark disc with a white pencil, readable at timeline size. */
+export const EditedMark: React.FC<{ size?: number; className?: string; title?: string }> = ({ size = 18, className = "", title }) => (
+  <span
+    className={`inline-flex shrink-0 items-center justify-center rounded-full bg-[#12211A] text-white border-[1.5px] border-white box-content ${className}`}
+    style={{ width: size, height: size }}
+    title={title}
+    role={title ? "img" : undefined}
+    aria-label={title}
+    aria-hidden={title ? undefined : true}
+  >
+    <svg width={Math.round(size * 0.6)} height={Math.round(size * 0.6)} viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M11.2 1.6a1.6 1.6 0 0 1 2.3 0l.9.9a1.6 1.6 0 0 1 0 2.3l-8.6 8.6L2 14.3l.9-3.8z" fill="currentColor" />
+    </svg>
+  </span>
+);
 
 export interface TimelineStopArrowProps {
   /** True for pickup (UP arrow), false for drop-off (DOWN arrow) */
@@ -85,6 +101,10 @@ export interface TimelineStopArrowProps {
   routeColor: string;
   /** Whether the stop is completed or in-transit */
   isStopDone?: boolean;
+  /** Some passengers at this stop are done and some are still to do */
+  isStopPartlyDone?: boolean;
+  /** Read out with the stop, e.g. "1 of 2 passengers done" */
+  doneLabel?: string;
   /** Raw job status string (e.g. "completed", "failed", "skipped", "assigned") */
   jobStatus?: string;
   /** Selection and editing flags */
@@ -124,6 +144,8 @@ export const TimelineStopArrow = React.forwardRef<
     displayIndex,
     routeColor,
     isStopDone = false,
+    isStopPartlyDone = false,
+    doneLabel,
     jobStatus = "assigned",
     isStopSelected = false,
     isStopNew = false,
@@ -148,7 +170,7 @@ export const TimelineStopArrow = React.forwardRef<
   let arrowFill = "#ffffff";
   let arrowStroke = routeColor;
   let arrowTextColor = routeColor;
-  let arrowStrokeWidth = 2;
+  let arrowStrokeWidth = 1.5;
   let arrowStrokeDasharray: string | undefined = undefined;
 
   if (isGroupPendingDelete) {
@@ -161,6 +183,11 @@ export const TimelineStopArrow = React.forwardRef<
     arrowFill = routeColor;
     arrowStroke = routeColor;
     arrowTextColor = "#ffffff";
+  } else if (isStopPartlyDone) {
+    // Some passengers done: a light fill in the leg colour, so progress shows before the whole stop is done
+    arrowFill = `${routeColor}40`;
+    arrowStroke = routeColor;
+    arrowTextColor = routeColor;
   } else if (jobStatus === "failed") {
     arrowFill = "#fef2f2";
     arrowStroke = "#dc2626";
@@ -173,9 +200,6 @@ export const TimelineStopArrow = React.forwardRef<
     arrowStroke = routeColor;
     arrowStrokeWidth = 2.5;
     arrowTextColor = routeColor;
-  } else if (isStopEdited) {
-    arrowStroke = "#9333ea";
-    arrowTextColor = "#9333ea";
   }
 
   // ── Filter / Glow Resolution ────────────────────────────────────────────────
@@ -189,7 +213,7 @@ export const TimelineStopArrow = React.forwardRef<
     ? undefined
     : isDropTarget
     ? "drop-shadow(0 0 8px rgba(16, 185, 129, 0.85))"
-    : "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12))";
+    : undefined;
 
   return (
     <div
@@ -215,6 +239,7 @@ export const TimelineStopArrow = React.forwardRef<
       }}
       title={title}
       {...restProps}
+      aria-label={[restProps["aria-label"], doneLabel].filter(Boolean).join(", ") || undefined}
     >
       {/* Selected Checkmark Badge */}
       {isStopSelected && (
@@ -233,13 +258,6 @@ export const TimelineStopArrow = React.forwardRef<
         </div>
       )}
 
-      {/* Edited Job Badge */}
-      {!isStopNew && isStopEdited && !isStopSelected && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
-          <ClockCircleOutlined className="text-[8px]" /> EDITED
-        </div>
-      )}
-
       {/* One directional arrow per physical visit, with its number centered. */}
       <StopArrowSvg
         isPickup={isPickup}
@@ -252,14 +270,9 @@ export const TimelineStopArrow = React.forwardRef<
         strokeDasharray={arrowStrokeDasharray}
       />
 
-      {/* Corner edited indicator */}
+      {/* Edited: one small mark in the corner; the stop keeps its route colour. */}
       {isStopEdited && !isStopNew && (
-        <div
-          className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-full border border-white z-20 pointer-events-none"
-          title="Job edited"
-        >
-          <ClockCircleOutlined className="text-[7.5px]" />
-        </div>
+        <EditedMark title="Edited by hand" className="absolute -bottom-2 -right-2.5 z-20 pointer-events-none" />
       )}
     </div>
   );

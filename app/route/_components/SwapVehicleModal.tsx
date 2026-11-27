@@ -5,7 +5,7 @@ import { Alert, Button, Empty, Modal, Select, Spin, message } from "antd";
 import { isAxiosError } from "axios";
 import { getVehicleSwapOptions, swapRouteVehicles, type VehicleSwapPreview } from "@/apis/routes.api";
 import type { Routes } from "@/types/routes.type";
-import { tripLabel } from "./tripLabel.utils";
+import { tripLabel, vehicleAvailabilityMessage } from "./tripLabel.utils";
 
 interface Props {
   optimizationId: number;
@@ -19,6 +19,26 @@ const errorText = (error: unknown) => {
   const detail = isAxiosError(error) ? error.response?.data?.detail : (error as { detail?: unknown } | null)?.detail;
   return typeof detail === "string" ? detail : "Unable to swap vehicles. Please try again.";
 };
+
+/** "Cannot give X this vehicle: <reason> · Driver: Y." → which vehicle, who is blocked and who holds it, in plain words. */
+const friendlyError = (text: string, vehicleFor: (driver: string) => string | undefined) => {
+  const match = /^Cannot give (.+?) this vehicle: (.+?)\.?$/.exec(text);
+  if (!match) return text;
+  const [, driver, cause] = match;
+  const vehicle = vehicleFor(driver) || "this vehicle";
+  const held = /^(Assigned to another (trip|plan)|Booked by another route|Reserved) at this time · Driver: (.+)$/.exec(cause);
+  if (held) return `${driver} can't take ${vehicle}: ${held[3]} has it at that time${held[2] === "plan" ? " in another plan" : ""}.`;
+  const plain = vehicleAvailabilityMessage(cause) ?? cause;
+  return `${driver} can't take ${vehicle}. ${/[.!?]$/.test(plain) ? plain : `${plain}.`}`;
+};
+
+function TripCard({ kicker, driver, detail }: { kicker: string; driver: string; detail: string }) {
+  return <div className="min-w-0 border border-[#E3E8E5] bg-[#F8FAF9] px-3 py-2.5">
+    <div className="text-[11px] uppercase tracking-wide text-[#626E67]">{kicker}</div>
+    <div className="mt-0.5 truncate text-[14px] font-medium text-[#12211A]">{driver}</div>
+    <div className="mt-0.5 text-[12px] text-[#4A5750]">{detail}</div>
+  </div>;
+}
 
 export default function SwapVehicleModal({ optimizationId, routeIndex, routes, onClose, onSuccess }: Props) {
   const [targetIndex, setTargetIndex] = useState<number | null>(null);
@@ -60,7 +80,8 @@ export default function SwapVehicleModal({ optimizationId, routeIndex, routes, o
     } finally { setSaving(false); }
   };
 
-  return <Modal open title="Swap vehicles" width={560} centered onCancel={onClose}
+  const target = targetIndex === null ? undefined : routes[targetIndex];
+  return <Modal open title="Swap vehicles" width={600} centered onCancel={onClose} rootClassName="lang"
     closable={!saving} maskClosable={!saving} keyboard={!saving}
     footer={[
       <Button key="cancel" disabled={saving} onClick={onClose}>Cancel</Button>,
@@ -68,28 +89,42 @@ export default function SwapVehicleModal({ optimizationId, routeIndex, routes, o
         disabled={loading || !preview || preview.target.route_index !== targetIndex}>Swap vehicles</Button>,
     ]}>
     <div className="flex flex-col gap-4 pt-1">
-      <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-        <p className="m-0 font-semibold">{source?.team_member_name || "Selected driver"}</p>
-        <p className="mb-0 mt-1 text-gray-600">{tripLabel(source, { driver: false, vehicle: true })}</p>
+      <p className="m-0 text-[13px] text-[#4A5750]">Two trips exchange vehicles. Every stop and passenger time stays the same; both drivers and vehicles are checked first.</p>
+      <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-[1fr_auto_1fr]">
+        <TripCard kicker="This trip" driver={source?.team_member_name || "Selected driver"}
+          detail={tripLabel(source, { driver: false, vehicle: true })} />
+        <span aria-hidden="true" className="self-center justify-self-center text-[18px] leading-none text-[#626E67]">⇄</span>
+        {target ? <TripCard kicker="Other trip" driver={target.team_member_name || "Driver not assigned"}
+          detail={tripLabel(target, { driver: false, vehicle: true })} />
+          : <div className="flex items-center border border-dashed border-[#C4CCC7] px-3 py-2.5 text-[12px] text-[#626E67]">Choose the other trip below</div>}
       </div>
-      <p className="m-0 text-sm text-gray-600">Exchange vehicles with another route. Stops and passenger times stay the same. Both drivers and vehicles are checked before the swap.</p>
       {candidates.length ? <div className="flex flex-col gap-1.5">
-        <label htmlFor="vehicle-swap-target" className="text-sm font-medium">Swap with route</label>
-        <Select id="vehicle-swap-target" placeholder="Choose another route" showSearch optionFilterProp="label"
+        <label htmlFor="vehicle-swap-target" className="text-[13px] font-medium text-[#12211A]">Swap with</label>
+        <Select id="vehicle-swap-target" placeholder="Search a driver or vehicle" showSearch optionFilterProp="label"
           value={targetIndex ?? undefined} disabled={saving}
           onChange={value => { setPreview(null); setError(null); setTargetIndex(value); }}
           options={candidates.map(({ route, index }) => ({ value: index,
             label: tripLabel(route, { vehicle: true }) }))} />
-      </div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No other route has a different vehicle to exchange." />}
-      {loading && <div className="py-4 text-center"><Spin /></div>}
-      {error && <Alert type="error" showIcon title={error}
+      </div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No other trip has a different vehicle to exchange." />}
+      {loading && <div className="flex items-center gap-2 text-[12px] text-[#626E67]" role="status"><Spin size="small" />Checking both drivers and vehicles…</div>}
+      {error && <Alert type="error" showIcon title={friendlyError(error, driver =>
+        driver === target?.team_member_name ? source?.vehicle_name ?? undefined
+          : driver === source?.team_member_name ? target?.vehicle_name ?? undefined : undefined)}
         action={<Button disabled={saving || loading} onClick={() => setAttempt(value => value + 1)}>Check again</Button>} />}
-      {preview && <div className="flex flex-col gap-2 rounded border border-emerald-200 bg-emerald-50 p-3 text-sm">
-        <p className="m-0"><strong>{preview.source.driver_name}</strong> receives <strong>{preview.target.vehicle_name}</strong>.</p>
-        <p className="m-0"><strong>{preview.target.driver_name}</strong> receives <strong>{preview.source.vehicle_name}</strong>.</p>
+      {preview && <section aria-label="After the swap" className="border border-[#E3E8E5]">
+        <h3 className="m-0 border-b border-[#E3E8E5] bg-[#F1F8F4] px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-[#0B5D3B]">Checked · after the swap</h3>
+        {[preview.source, preview.target].map((side, i) => {
+          const other = i === 0 ? preview.target : preview.source;
+          return <p key={side.route_index} className="m-0 flex flex-wrap items-baseline gap-x-1.5 border-b border-[#E3E8E5] px-3 py-2.5 text-[13px] last:border-b-0">
+            <strong className="font-medium text-[#12211A]">{side.driver_name}</strong>
+            <span className="text-[#4A5750]">receives</span>
+            <strong className="font-medium text-[#12211A]">{other.vehicle_name}</strong>
+            <span className="text-[12px] text-[#626E67]">(gives up {side.vehicle_name})</span>
+          </p>;
+        })}
         {(preview.source.is_team_leader || preview.target.is_team_leader) &&
-          <p className="m-0 text-gray-600">For each team leader, both GO and RETURN legs and the continuous vehicle reservation will be exchanged together.</p>}
-      </div>}
+          <p className="m-0 border-t border-[#E3E8E5] px-3 py-2 text-[12px] text-[#4A5750]">A team leader keeps one vehicle for both directions, so the outbound and return trips and the vehicle booking between them are exchanged together.</p>}
+      </section>}
     </div>
   </Modal>;
 }

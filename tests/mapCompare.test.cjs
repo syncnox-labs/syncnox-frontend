@@ -89,6 +89,7 @@ test("map details show a generic job's real route, time and address", () => {
   };
   const InfoWindow = load("RouteInfoWindow.tsx", {
     antd: mockAntd,
+    "./stopStatusConfirm": load("stopStatusConfirm.tsx"),
     "@/utils/jobs.utils": { STATUS_COLORS: { draft: "gray" } },
     "@/utils/app.utils": { formatTime12h: value => value },
     "@/apis/jobs.api": { updateJobStatus() {} },

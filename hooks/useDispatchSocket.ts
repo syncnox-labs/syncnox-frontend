@@ -6,6 +6,10 @@ import { useOptimizationStore } from "@/store/optimization.store";
 import { JobStatus } from "@/types/job.type";
 import { useDriverPresenceStore } from "@/store/driverPresence.store";
 
+// Passenger names, phones and addresses arrive in these events, so their contents are never written to the
+// browser console, and the connection notes appear only while developing.
+const debugLog = (text: string) => { if (process.env.NODE_ENV === "development") console.debug(text); };
+
 function getWsUrl(tenantId: string | number, token: string): string {
   const rawUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:8000";
   const wsBase = rawUrl
@@ -35,14 +39,14 @@ export function useDispatchSocket() {
       if (!isMounted) return;
       const url = getWsUrl(tenantId!, token!);
 
-      console.log("[WS Dispatch] Connecting to dispatch channel");
+      debugLog("[WS Dispatch] Connecting to dispatch channel");
 
       try {
         const ws = new WebSocket(url);
         wsRef.current = ws;
 
         ws.onopen = () => {
-          console.log("[WS Dispatch] Connected to dispatch channel ✓");
+          debugLog("[WS Dispatch] Connected to dispatch channel");
           delay = 1000;
           void useDriverPresenceStore.getState().refresh();
           // One reconciliation on connection/reconnection covers missed worker events.
@@ -56,7 +60,7 @@ export function useDispatchSocket() {
             if (data.event === "driver_presence") {
               useDriverPresenceStore.getState().update(data.tenant_id, data);
             } else if (data.event === "stop_updated") {
-              console.log("[WS Dispatch] Real-time stop_updated received:", data);
+              debugLog("[WS Dispatch] stop_updated received");
 
               // Batch actions can board/no-show several passengers at once.
               const stops = data.stops?.length ? data.stops : [{ stop_id: data.stop_id,
@@ -85,7 +89,7 @@ export function useDispatchSocket() {
               const { currentOptimization, fetchOptimization } = useOptimizationStore.getState();
               if (currentOptimization) void fetchOptimization(currentOptimization.id).catch(() => {});
             } else if (data.event === "optimization_updated") {
-              console.log("[WS Dispatch] Real-time optimization_updated received:", data);
+              debugLog("[WS Dispatch] optimization_updated received");
               const { currentOptimization, setOptimizationResult, fetchOptimization } = useOptimizationStore.getState();
               const ownPlan = currentOptimization?.id === data.optimization_request_id;
               const visibleRoutes = currentOptimization?.result?.routes || [];
@@ -107,7 +111,7 @@ export function useDispatchSocket() {
         };
 
         ws.onclose = () => {
-          console.log(`[WS Dispatch] Channel closed. Reconnecting in ${delay}ms...`);
+          debugLog(`[WS Dispatch] Channel closed. Reconnecting in ${delay}ms`);
           if (!isMounted) return;
           useDriverPresenceStore.getState().markUnavailable();
           reconnectTimer.current = setTimeout(() => {

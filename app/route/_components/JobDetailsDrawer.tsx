@@ -30,6 +30,7 @@ import { STATUS_COLORS } from "@/utils/jobs.utils";
 import { updateJobStatus } from "@/apis/jobs.api";
 import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
+import { stopKindOf, stopStatusConfirm } from "./stopStatusConfirm";
 
 const { Text } = Typography;
 
@@ -77,58 +78,27 @@ const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
   const podNotes = job?.pod_notes || "";
 
   const stopType = String(stopData?.stop_type || "").toLowerCase();
-  const isPickupStop = stopType === "pickup";
+  const stopKind = stopKindOf(stopType);
 
-  const handleUpdateStatus = async (newStatus: string) => {
+  const handleUpdateStatus = async (newStatus: "completed" | "failed") => {
     if (!jobId) return;
-
-    let targetStatus = newStatus;
-    if (newStatus === "completed" && isPickupStop) {
-      targetStatus = "in_transit";
-    }
-
-    const isComplete = newStatus === "completed";
-    const title = isPickupStop
-      ? "Mark Pickup as Done?"
-      : isComplete
-        ? "Mark Job as Completed?"
-        : "Skip this Job?";
-
-    const content = isPickupStop
-      ? `Are you sure you want to mark Pickup for Job #${jobId} as done?`
-      : isComplete
-        ? `Are you sure you want to mark Job #${jobId} as completed?`
-        : `Are you sure you want to skip Job #${jobId}?`;
-
-    const okText = isPickupStop
-      ? "Mark Pickup Done"
-      : isComplete
-        ? "Mark Completed"
-        : "Skip Job";
-
+    const confirm = stopStatusConfirm({
+      action: newStatus, kind: stopKind, jobId, who: customerName || null,
+      whenText: arrivalTime ? `${arrivalTime.format("h:mm A")} · ${arrivalTime.format("ddd, MMM D")}` : null,
+      address: address !== "Location Address Not Specified" ? address : null,
+    });
     modal.confirm({
-      title,
-      content,
-      okText,
-      okType: isComplete ? "primary" : "danger",
-      okButtonProps: isComplete ? { style: { backgroundColor: "#003220", borderColor: "#003220" } } : undefined,
-      cancelText: "Cancel",
+      ...confirm.modal,
       onOk: async () => {
         try {
           setIsUpdating(true);
-          const updated = await updateJobStatus(jobId, targetStatus);
+          const updated = await updateJobStatus(jobId, confirm.targetStatus);
           patchJobLocally(updated);
           await fetchRoutes(selectedStatus);
-          message.success(
-            isPickupStop
-              ? "Pickup marked as done (In Transit)"
-              : isComplete
-                ? "Job marked as completed"
-                : "Job skipped",
-          );
+          message.success(confirm.successText);
           onClose();
-        } catch (err) {
-          message.error("Failed to update job status");
+        } catch {
+          message.error(confirm.errorText);
         } finally {
           setIsUpdating(false);
         }
@@ -173,9 +143,9 @@ const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
           )}
         </div>
       }
-      width={420}
+      size={420}
       placement="right"
-      destroyOnClose
+      destroyOnHidden
       styles={{
         body: { padding: "12px 16px" },
       }}
@@ -214,7 +184,7 @@ const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
                 <span>ETA</span>
               </div>
               <div className="text-sm font-bold text-gray-900">
-                {arrivalTime && arrivalTime.isValid() ? arrivalTime.format("hh:mm A") : "--:--"}
+                {arrivalTime && arrivalTime.isValid() ? arrivalTime.format("h:mm A") : "--:--"}
               </div>
             </div>
 
@@ -234,7 +204,7 @@ const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
                 <span>Departure</span>
               </div>
               <div className="text-xs font-semibold text-gray-800">
-                {departureTime && departureTime.isValid() ? departureTime.format("hh:mm A") : "--:--"}
+                {departureTime && departureTime.isValid() ? departureTime.format("h:mm A") : "--:--"}
               </div>
             </div>
 

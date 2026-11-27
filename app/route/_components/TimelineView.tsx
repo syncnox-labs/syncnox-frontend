@@ -1,6 +1,6 @@
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
-import { Truck, Calendar, Home, Flag, ArrowUp, ArrowDown, House } from "lucide-react";
+import { Truck, Calendar, Home, Flag, ArrowUp, ArrowDown, House, Minus, Plus, PanelTop, PanelRight, User, Users, Clock } from "lucide-react";
 import dayjs from "dayjs";
 import type { Job } from "@/types/job.type";
 import type { Vehicle } from "@/types/vehicle.type";
@@ -45,7 +45,7 @@ import TransferStopsModal from "./TransferStopsModal";
 import type { StopMoveSelection } from "@/types/routes.type";
 import { selectTripToMove, snapshotMoveStops, type TripMoveSelection } from "./tripMove.utils";
 import type { TransferSelection } from "./transferStops.utils";
-import TimelineStopArrow from "./TimelineStopArrow";
+import TimelineStopArrow, { StopArrowSvg, EditedMark } from "./TimelineStopArrow";
 import TimelineTravelSegment from "./TimelineTravelSegment";
 import TimelineTooltip, { TimelineTooltipProvider } from "./TimelineTooltip";
 import { getTimelineSegment } from "./timelineSegment.utils";
@@ -139,9 +139,27 @@ interface TimelineViewProps {
     reoptimize?: boolean,
     selection?: TransferSelection,
   ) => Promise<void> | void;
+  /** Where the map sits: above the trips, or beside them. Omit to hide the switch. */
+  layout?: "stacked" | "side";
+  onLayoutChange?: (layout: "stacked" | "side") => void;
+  /** Turns the working-time bands on and off (remembered by the page). */
+  onToggleWorkingTime?: (show: boolean) => void;
+  /** Rendered first in the toolbar, for example the Timeline / Jobs / Vehicles tabs. */
+  leadingControls?: React.ReactNode;
 }
 
 const INTERVAL_OPTIONS = TIMELINE_INTERVALS.map(value => ({ value, label: `${value} min` }));
+/** The app shows 12-hour times everywhere today. When the onboarding language/clock
+ * setting exists, read it here so the axis and every card switch together. */
+const USES_12_HOUR_CLOCK = true;
+const formatAxisTime = (time: dayjs.Dayjs) => USES_12_HOUR_CLOCK
+  ? time.format(time.minute() === 0 ? "h:mm A" : "h:mm") : time.format("HH:mm");
+const formatShiftRange = (shift: { startMinutes: number; endMinutes: number }) =>
+  formatMinutesAsTime(shift.startMinutes) + "–" + formatMinutesAsTime(shift.endMinutes) +
+  (shift.endMinutes > 24 * 60 ? " (next day)" : "");
+/** One toolbar row above the time axis, on every screen size. */
+const TIMELINE_TOOLBAR_HEIGHT = 41;
+const hatch = "repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 6px)";
 
 const formatDurationSeconds = (seconds: number): string => {
   if (!seconds || seconds <= 0) return "";
@@ -435,6 +453,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   onTransferStops,
   onMoveTrip,
   onMoveStops,
+  layout = "stacked",
+  onLayoutChange,
+  leadingControls,
+  onToggleWorkingTime,
 }) => {
   const compactTimeline = useMediaQuery("(max-width: 639px)");
   const DRIVER_COLUMN_WIDTH = compactTimeline ? 168 : DESKTOP_DRIVER_COLUMN_WIDTH;
@@ -583,13 +605,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     }
   };
 
-  const [isSearchOpen, setIsSearchOpen] = useState(Boolean(driverSearch));
-
-  useEffect(() => {
-    if (driverSearch) {
-      setIsSearchOpen(true);
-    }
-  }, [driverSearch]);
 
   const allDriverGroups = useMemo(() => {
     const groupsMap = new Map<string, DriverGroup>();
@@ -784,6 +799,41 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     return map;
   }, [jobs]);
 
+  /**
+   * Does this passenger make their shift? Outbound: drop-off against the shift start, keeping the
+   * "arrive N min before" rule. Return: pickup against the shift end. Only for jobs that carry a shift.
+   */
+  const getShiftCheck = (jobId: number, routeStops: any[], leg: string | undefined) => {
+    const job: any = jobsByIdMap.get(jobId);
+    if (!job) return null;
+    const value = (key: string) => job?.[key] ?? job?.worker_shuttle_detail?.[key] ?? job?.custom_fields?.[key];
+    const clock = (v: unknown) => { const m = String(v ?? "").match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+    const isReturn = String(leg ?? "").toUpperCase() === "RETURN";
+    const target = clock(value(isReturn ? "end_hour" : "start_hour"));
+    // A combined trip holds both directions of a round trip under one job id: match the direction too.
+    const wanted = isReturn ? ["pickup", "pick_up"] : ["dropoff", "drop_off"];
+    const candidates = routeStops.filter((x: any) => Number(x.job_id) === jobId && wanted.includes(x.stop_type));
+    const legOf = (x: any) => String(x.leg ?? x.extra?.leg ?? "").toUpperCase();
+    const stopOf = candidates.find((x: any) => legOf(x) === (isReturn ? "RETURN" : "GO")) ?? (candidates.length === 1 ? candidates[0] : undefined);
+    if (target === null || !stopOf?.arrival_time) return null;
+    const at = dayjs(stopOf.arrival_time).startOf("minute");
+    let goal = at.startOf("day").add(target, "minute");
+    if (goal.diff(at, "minute") > 720) goal = goal.subtract(1, "day");
+    if (at.diff(goal, "minute") > 720) goal = goal.add(1, "day");
+    const shift = goal.format("h:mm A");
+    if (isReturn) {
+      const after = at.diff(goal, "minute");
+      return after >= 0
+        ? { tone: "ok" as const, short: after === 0 ? "at shift end" : `${after} min after shift`, shift, label: `shift ends ${shift}` }
+        : { tone: "bad" as const, short: `${-after} min before shift ends`, shift, label: `shift ends ${shift}` };
+    }
+    const early = goal.diff(at, "minute");
+    const need = Number(value("reach_before_minutes")) || 0;
+    if (early < 0) return { tone: "bad" as const, short: `${-early} min late`, shift, label: `shift ${shift}` };
+    if (early < need) return { tone: "warn" as const, short: `${early} min early, needs ${need}`, shift, label: `shift ${shift}` };
+    return { tone: "ok" as const, short: `${early} min early`, shift, label: `shift ${shift}` };
+  };
+
   const getCandidateName = (rawStop: any): string | null => {
     const jobId = rawStop?.job_id;
     const fullJob: any = jobId ? jobsByIdMap.get(Number(jobId)) : null;
@@ -820,6 +870,63 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       generateTimeMarkers(startTime, endTime, intervalMinutes, pixelsPerMinute),
     [startTime, endTime, intervalMinutes, pixelsPerMinute],
   );
+
+  // Calendar days the visible range touches (overnight and multi-day plans).
+  const timelineDays = useMemo(() => {
+    const days: dayjs.Dayjs[] = [];
+    let day = startTime.startOf("day");
+    while (day.isBefore(endTime)) { days.push(day); day = day.add(1, "day"); }
+    return days;
+  }, [startTime, endTime]);
+  const [viewDayKey, setViewDayKey] = useState(() => startTime.format("YYYY-MM-DD"));
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const update = () => {
+      // The day under the first quarter of the visible track is "the day you are looking at".
+      const visible = container.clientWidth - DRIVER_COLUMN_WIDTH;
+      const minutes = (container.scrollLeft + Math.max(0, visible) * 0.25) / pixelsPerMinute;
+      const key = startTime.add(minutes, "minute").format("YYYY-MM-DD");
+      setViewDayKey(prev => prev === key ? prev : key);
+    };
+    update();
+    container.addEventListener("scroll", update, { passive: true });
+    return () => container.removeEventListener("scroll", update);
+  }, [startTime, pixelsPerMinute, DRIVER_COLUMN_WIDTH]);
+  const scrollToTime = useCallback((time: dayjs.Dayjs) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const minutes = Math.max(0, time.diff(startTime, "minute", true));
+    container.scrollTo({ left: Math.max(0, minutes * pixelsPerMinute - 24), behavior: "smooth" });
+  }, [startTime, pixelsPerMinute]);
+  const [nowTick, setNowTick] = useState(() => dayjs());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(dayjs()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const nowPosition = nowTick.isAfter(startTime) && nowTick.isBefore(endTime)
+    ? nowTick.diff(startTime, "minute", true) * pixelsPerMinute : null;
+  const firstStopTime = useMemo(() => {
+    let first: dayjs.Dayjs | null = null;
+    routes.forEach(route => (route.stops || []).forEach((stop: any) => {
+      if (!stop.job_id || !stop.arrival_time) return;
+      const time = dayjs(stop.arrival_time);
+      if (time.isValid() && (!first || time.isBefore(first))) first = time;
+    }));
+    return first as dayjs.Dayjs | null;
+  }, [routes]);
+  const openedAtFirstStopRef = useRef<string | number | null | undefined>(undefined);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !firstStopTime || selectedMarkerId) return;
+    if (openedAtFirstStopRef.current === (planId ?? null)) return;
+    openedAtFirstStopRef.current = planId ?? null;
+    const minutes = Math.max(0, firstStopTime.diff(startTime, "minute", true) - 30);
+    container.scrollLeft = minutes * pixelsPerMinute;
+  }, [firstStopTime, planId, selectedMarkerId, startTime, pixelsPerMinute]);
+  // Search sits as an icon until it is used; an active search stays open so the filter is never hidden.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const intervalIndex = TIMELINE_INTERVALS.indexOf(intervalMinutes as (typeof TIMELINE_INTERVALS)[number]);
 
   useEffect(() => {
     setShiftOverrides({});
@@ -887,16 +994,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       const overrideKey = getShiftOverrideKey(teamId, dayKey);
       setConfirmingShiftTeamId(teamId);
       Modal.confirm({
-        title: "Confirm Working Hours Change",
+        title: "Change " + dayKey.charAt(0).toUpperCase() + dayKey.slice(1) + " working hours?",
         content:
-          driverName + " working hours on " + dayKey +
-          " will change from " +
-          formatMinutesAsTime(previousShift.startMinutes) + "–" +
-          formatMinutesAsTime(previousShift.endMinutes) + " to " +
-          formatMinutesAsTime(nextShift.startMinutes) + "–" +
-          formatMinutesAsTime(nextShift.endMinutes) + ".",
-        okText: "Update Working Hours",
-        cancelText: "Keep Existing Hours",
+          driverName + "'s working hours in Team settings change from " +
+          formatShiftRange(previousShift) + " to " + formatShiftRange(nextShift) +
+          ". This applies to every " + dayKey.charAt(0).toUpperCase() + dayKey.slice(1) +
+          ", not only this plan.",
+        okText: "Change working hours",
+        cancelText: "Keep current hours",
         maskClosable: true,
         okButtonProps: { style: { backgroundColor: "#003220" } },
         onOk: async () => {
@@ -1623,6 +1728,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       onClick: () => onShareDriver(routeIndex) }] : []),
     ...(onMessageDriver ? [{ key: "message-driver", icon: <MessageOutlined />, label: "Send WhatsApp…",
       disabled: !routes[routeIndex]?.team_member_id, onClick: () => onMessageDriver(routeIndex) }] : []),
+    ...((onShareDriver || onMessageDriver) ? [{ type: "divider" as const, key: "group-share" }] : []),
     ...(onMergeRoutes ? [{ key: "merge-waiting", icon: <ClockCircleOutlined />, label: "Merge routes with waiting…", onClick: () => onMergeRoutes(routeIndex) }] : []),
     ...(onEditWaiting ? routes.flatMap((route, index) => route.team_member_id !== routes[routeIndex]?.team_member_id ? []
       : (route.stops || []).flatMap((stop: any, stopIndex: number) => stop.stop_type === "depot_end" && route.stops[stopIndex + 1]?.stop_type === "depot_start" ? [{
@@ -1630,28 +1736,30 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         label: `Merge trips at ${dayjs(route.stops[stopIndex + 1].arrival_time).format("h:mm A")}…`,
         onClick: () => onEditWaiting(index, stopIndex),
       }] : [])) : []),
+    ...((onMergeRoutes || onEditWaiting) && isWorkerShuttle && (onSwapVehicles || onChangeVehicle) ? [{ type: "divider" as const, key: "group-vehicle" }] : []),
     ...(isWorkerShuttle && onSwapVehicles ? [{
       key: "swap-vehicles",
       icon: <SwapOutlined />,
-      label: "Swap vehicles...",
+      label: "Swap vehicles…",
       onClick: () => onSwapVehicles(routeIndex),
     }] : []),
     ...(isWorkerShuttle && onChangeVehicle ? [{
       key: "change-vehicle",
       icon: <CarOutlined />,
-      label: "Change vehicle...",
+      label: "Change vehicle…",
       onClick: () => onChangeVehicle(routeIndex),
     }] : []),
+    ...((onMergeRoutes || onEditWaiting || (isWorkerShuttle && (onSwapVehicles || onChangeVehicle))) ? [{ type: "divider" as const, key: "group-stops" }] : []),
     {
       key: "add-stop",
       icon: <PlusOutlined />,
-      label: "Add Job",
+      label: "Add job…",
       onClick: () => onAddStop?.(routeIndex),
     },
     {
       key: "transfer-stops",
       icon: <SwapOutlined />,
-      label: "Transfer Stops to Driver...",
+      label: "Move stops to another driver…",
       onClick: () => {
         setSelectionSourceRouteIndex(routeIndex);
         setTransferModalRouteIndex(routeIndex);
@@ -1660,7 +1768,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     {
       key: "reorder-stops",
       icon: <MenuOutlined />,
-      label: "Reorder Stops (Drag & Drop)",
+      label: "Reorder stops…",
       onClick: () => setReorderModalRouteIndex(routeIndex),
     },
     // {
@@ -1679,13 +1787,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     {
       key: "re-optimize",
       icon: <ThunderboltOutlined />,
-      label: "Reoptimize Route",
+      label: "Reoptimize route",
       onClick: () => onReOptimize?.(routeIndex),
     },
   ];
 
   return (
-    <TimelineTooltipProvider leftInset={DRIVER_COLUMN_WIDTH} topInset={HEADER_HEIGHT + (compactTimeline ? 41 : 0)}>
+    <TimelineTooltipProvider leftInset={DRIVER_COLUMN_WIDTH} topInset={HEADER_HEIGHT + TIMELINE_TOOLBAR_HEIGHT}>
     <div 
       className="relative flex flex-col h-full bg-white select-none"
       onDragOver={(e) => {
@@ -1703,12 +1811,149 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       }}
     >
       <span className="sr-only" aria-live="polite">{orderAnnouncement}</span>
-      {compactTimeline && <div className="timeline-mobile-toolbar timeline-compact-controls flex items-center gap-2 p-2 border-b border-gray-200 shrink-0">
-        <Input size="small" aria-label="Search driver" placeholder="Search driver…" value={driverSearch}
-          onChange={event => setDriverSearch(event.target.value)} allowClear className="!flex-1 !min-w-0" />
-        <Select size="small" aria-label="Timeline zoom interval" value={intervalMinutes} onChange={value => changeInterval(value)}
-          options={INTERVAL_OPTIONS} style={{ width: 80 }} className="shrink-0" />
-      </div>}
+      <div className="timeline-toolbar timeline-compact-controls lang @container flex items-center gap-2 px-4 border-b border-[#E3E8E5] bg-white shrink-0 min-w-0"
+        style={{ height: TIMELINE_TOOLBAR_HEIGHT }}>
+        {leadingControls}
+        <div role="group" aria-label="Days on the timeline"
+          className="hidden sm:flex items-stretch self-stretch min-w-0 overflow-x-auto ml-2 [scrollbar-width:none]">
+          {timelineDays.length > 1 ? timelineDays.map(day => {
+            const key = day.format("YYYY-MM-DD");
+            const active = key === viewDayKey;
+            const isPlanDay = day.isSame(scheduleDay, "day");
+            return (
+              <button key={key} type="button" aria-current={active ? "date" : undefined}
+                onClick={() => scrollToTime(day.isBefore(startTime) ? startTime : day)}
+                title={`Go to ${day.format("dddd, MMMM D")}${isPlanDay ? " (plan day)" : ""}`}
+                className={`px-2 text-[12px] whitespace-nowrap bg-transparent cursor-pointer border-0 border-b-2 ${active
+                  ? "border-[#003220] text-[#12211A] font-medium" : "border-transparent text-[#4A5750] hover:text-[#12211A]"}`}>
+                <span className="@max-[720px]:hidden">{day.format("ddd")} </span>{day.format("D")}
+                {isPlanDay && <span className="ml-1 text-[10px] uppercase tracking-wide text-[#626E67] @max-[640px]:hidden">plan</span>}
+              </button>
+            );
+          }) : (
+            <span className="self-center text-[12px] text-[#4A5750] whitespace-nowrap">{startTime.format("ddd, MMM D")}</span>
+          )}
+        </div>
+        {nowPosition !== null && (
+          <button type="button" onClick={() => scrollToTime(nowTick)} title="Go to the current time"
+            className="hidden sm:inline-flex items-center gap-1.5 px-2 h-8 text-[12px] text-[#12211A] bg-transparent border-0 cursor-pointer hover:bg-[#F3F6F4]">
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[#C9372C]" />Now
+          </button>
+        )}
+        <div className="flex items-center shrink-0 pl-2 border-l border-[#E3E8E5]" role="group" aria-label="Timeline zoom">
+          <button type="button" aria-label="Zoom out" data-tip="Zoom out (Ctrl + wheel)" className="tip hidden sm:inline-flex h-8 w-8 items-center justify-center bg-transparent border-0 cursor-pointer text-[#4A5750] hover:bg-[#F3F6F4] disabled:opacity-40 disabled:cursor-default"
+            disabled={intervalIndex < 0 || intervalIndex >= TIMELINE_INTERVALS.length - 1}
+            onClick={() => changeInterval(TIMELINE_INTERVALS[Math.min(TIMELINE_INTERVALS.length - 1, intervalIndex + 1)])}>
+            <Minus size={14} />
+          </button>
+          <Select aria-label="Timeline zoom interval" title="Grid step. Zoom with Ctrl + mouse wheel" value={intervalMinutes}
+            onChange={value => changeInterval(value)} options={INTERVAL_OPTIONS} style={{ width: 82 }} className="shrink-0" />
+          <button type="button" aria-label="Zoom in" data-tip="Zoom in (Ctrl + wheel)" className="tip hidden sm:inline-flex h-8 w-8 items-center justify-center bg-transparent border-0 cursor-pointer text-[#4A5750] hover:bg-[#F3F6F4] disabled:opacity-40 disabled:cursor-default"
+            disabled={intervalIndex <= 0}
+            onClick={() => changeInterval(TIMELINE_INTERVALS[Math.max(0, intervalIndex - 1)])}>
+            <Plus size={14} />
+          </button>
+        </div>
+        {!compactTimeline && (
+          <Dropdown trigger={["click"]} placement="bottomRight" popupRender={() => (
+            <div className="lang bg-white border border-[#D5DCD8] p-3 w-[264px] text-[12px] text-[#12211A] space-y-2.5 shadow-[0_8px_24px_rgba(18,33,26,0.12)]">
+              {onLayoutChange && (
+                <>
+                  <div className="text-[11px] uppercase tracking-wide text-[#626E67]">Map position</div>
+                  <div role="group" aria-label="Map position" className="flex gap-1">
+                    {([
+                      { value: "stacked", label: "Above", Icon: PanelTop },
+                      { value: "side", label: "Beside", Icon: PanelRight },
+                    ] as const).map(({ value, label, Icon }) => (
+                      <button key={value} type="button" aria-pressed={layout === value}
+                        onClick={() => layout !== value && onLayoutChange(value)}
+                        className={`flex h-8 flex-1 items-center justify-center gap-1.5 border-0 text-[12px] cursor-pointer ${layout === value
+                          ? "bg-[#E7F3ED] text-[#003220] font-medium" : "bg-[#F3F6F4] text-[#4A5750] hover:text-[#12211A]"}`}>
+                        <Icon size={15} />{label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="border-t border-[#E3E8E5]" />
+                </>
+              )}
+              {onToggleWorkingTime && (
+                <>
+                  <button type="button" role="switch" aria-checked={Boolean(showDriverWorkingTime)}
+                    onClick={() => onToggleWorkingTime(!showDriverWorkingTime)}
+                    className="flex w-full items-center justify-between gap-3 border-0 bg-transparent p-0 text-left text-[12px] text-[#12211A] cursor-pointer">
+                    <span>
+                      <span className="block">Working time</span>
+                      <span className="block text-[11px] text-[#626E67]">Grey band behind each row; drag its edges to change hours</span>
+                    </span>
+                    <span aria-hidden="true" className={`relative h-4 w-7 shrink-0 transition-colors ${showDriverWorkingTime ? "bg-[#003220]" : "bg-[#C4CCC7]"}`}>
+                      <span className={`absolute top-0.5 h-3 w-3 bg-white transition-[left] ${showDriverWorkingTime ? "left-3.5" : "left-0.5"}`} />
+                    </span>
+                  </button>
+                  <div className="border-t border-[#E3E8E5]" />
+                </>
+              )}
+              <div className="text-[11px] uppercase tracking-wide text-[#626E67]">Stops</div>
+              {[
+                { label: "Pickup", node: <StopArrowSvg isPickup displayIndex="" fill="#fff" stroke="#0B5D3B" textColor="#0B5D3B" /> },
+                { label: "Drop-off", node: <StopArrowSvg isPickup={false} displayIndex="" fill="#fff" stroke="#0B5D3B" textColor="#0B5D3B" /> },
+                { label: "Pickup and drop-off at one visit", node: <StopArrowSvg isPickup isMixed displayIndex="" fill="#fff" stroke="#0B5D3B" textColor="#0B5D3B" /> },
+              ].map(item => (
+                <div key={item.label} className="flex items-center gap-3">
+                  <span className="inline-flex w-8 justify-center scale-[0.7] origin-center">{item.node}</span>{item.label}
+                </div>
+              ))}
+              <div className="text-[11px] uppercase tracking-wide text-[#626E67]">Progress</div>
+              {[
+                { label: "To do", node: <StopArrowSvg isPickup displayIndex="" fill="#fff" stroke="#0B5D3B" textColor="#0B5D3B" /> },
+                { label: "Some passengers done", node: <StopArrowSvg isPickup displayIndex="" fill="#0B5D3B40" stroke="#0B5D3B" textColor="#0B5D3B" /> },
+                { label: "Done", node: <StopArrowSvg isPickup displayIndex="" fill="#0B5D3B" stroke="#0B5D3B" textColor="#fff" /> },
+                { label: "No-show or failed", node: <StopArrowSvg isPickup displayIndex="" fill="#fef2f2" stroke="#dc2626" textColor="#dc2626" /> },
+                { label: "Skipped", node: <StopArrowSvg isPickup displayIndex="" fill="#f8fafc" stroke="#94a3b8" textColor="#64748b" /> },
+              ].map(item => (
+                <div key={item.label} className="flex items-center gap-3">
+                  <span className="inline-flex w-8 justify-center scale-[0.7] origin-center">{item.node}</span>{item.label}
+                </div>
+              ))}
+              <div className="flex items-center gap-3">
+                <span className="inline-flex w-8 justify-center"><span className="h-5 w-5 bg-[#0B5D3B] inline-flex items-center justify-center"><Home size={11} color="#fff" /></span></span>
+                Trip starts
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="inline-flex w-8 justify-center"><span className="h-5 w-5 bg-[#0B5D3B] inline-flex items-center justify-center"><Flag size={11} color="#fff" /></span></span>
+                Trip ends
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="inline-flex w-8 justify-center"><EditedMark size={14} /></span>
+                Edited by hand (time or details)
+              </div>
+              <div className="pt-1 text-[11px] uppercase tracking-wide text-[#626E67]">Line between stops</div>
+              {[
+                { label: "Driving with load", style: { backgroundColor: "#0B5D3B", opacity: 0.6 } },
+                { label: "Driving empty", style: { backgroundColor: "#fff", border: "1px solid #0B5D3B", opacity: 0.6, boxSizing: "border-box" as const } },
+                { label: "Waiting", style: { backgroundColor: "#cbd5e1", backgroundImage: hatch } },
+                { label: "Gap between trips", style: { backgroundColor: "#fff", border: "1px dotted #64748b", boxSizing: "border-box" as const } },
+                ...(isWorkerShuttle ? [{ label: "Team leader working", style: { backgroundColor: "#64748b", opacity: 0.6 } }] : []),
+              ].map(item => (
+                <div key={item.label} className="flex items-center gap-3">
+                  <span className="inline-flex w-8 justify-center"><span className="block h-[5px] w-7" style={item.style} /></span>{item.label}
+                </div>
+              ))}
+              <div className="flex items-center gap-3">
+                <span className="inline-flex w-8 justify-center text-[10px] text-[#626E67] tabular-nums">2/4</span>On board / capacity
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="inline-flex w-8 justify-center"><span className="block h-5 w-px bg-[#C9372C]" /></span>Current time
+              </div>
+            </div>
+          )}>
+            <button type="button" className="h-8 px-2 text-[12px] text-[#4A5750] bg-transparent border-0 cursor-pointer hover:bg-[#F3F6F4] hover:text-[#12211A]">
+              View
+            </button>
+          </Dropdown>
+        )}
+        {/* Controls stay left-aligned: the floating jobs panel can cover the right edge. */}
+        <div className="flex-1" />
+      </div>
       <div
         className="flex-1 min-h-0 overflow-auto relative custom-scrollbar"
         ref={containerRef}
@@ -1721,114 +1966,49 @@ const TimelineView: React.FC<TimelineViewProps> = ({
           >
             {/* Sticky Driver Column Header */}
             <div
-              className="timeline-compact-controls sticky left-0 top-0 z-50 bg-gray-50 border-r border-gray-200 px-3 flex items-center justify-between font-medium text-gray-500 shadow-sm"
+              className="timeline-compact-controls sticky left-0 top-0 z-50 bg-gray-50 border-r border-gray-200 px-4 flex items-center justify-between font-medium text-gray-500 shadow-sm"
               style={{ width: DRIVER_COLUMN_WIDTH, minWidth: DRIVER_COLUMN_WIDTH }}
             >
-              {compactTimeline ? <span>Driver</span> : isSearchOpen ? (
-                <div className="flex items-center gap-1 flex-1 min-w-0 mr-1.5">
-                  <Input
-                    size="small"
-                    placeholder="Search driver..."
-                    value={driverSearch}
-                    onChange={(e) => setDriverSearch(e.target.value)}
-                    autoFocus
-                    prefix={<SearchOutlined className="text-gray-400 text-xs" />}
-                    suffix={
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Tooltip
-                          title={
-                            exactMatch
-                              ? "Exact match: ON (click to match partial)"
-                              : "Exact match: OFF (click to match exact word)"
-                          }
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setExactMatch(!exactMatch)}
-                            className={`px-1.5 py-0.5 text-[10px] font-semibold rounded transition-all cursor-pointer border-none outline-none select-none ${
-                              exactMatch
-                                ? "bg-[#003220] text-white shadow-xs"
-                                : "bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
-                            }`}
-                          >
-                            Exact
-                          </button>
-                        </Tooltip>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDriverSearch("");
-                            setIsSearchOpen(false);
-                          }}
-                          className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded p-0.5 transition-colors cursor-pointer border-none outline-none flex items-center justify-center"
-                          title="Clear search"
-                        >
-                          <CloseOutlined className="text-[11px]" />
-                        </button>
-                      </div>
-                    }
-                    className="text-xs w-full rounded-md border-gray-300 hover:border-emerald-600 focus:border-emerald-700"
-                  />
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0 mr-1.5">
-                  <span className="text-xs font-semibold text-gray-600 shrink-0">
-                    Driver
-                  </span>
-                  <Tooltip title="Search driver">
-                    <button
-                      type="button"
-                      className="p-1 text-gray-400 hover:text-gray-700 rounded hover:bg-gray-200/60 transition-colors flex items-center justify-center border-none bg-transparent cursor-pointer"
-                      onClick={() => setIsSearchOpen(true)}
-                    >
-                      <SearchOutlined className="text-xs" />
+              {searchOpen || driverSearch ? (
+                <Input size="small" aria-label="Search driver" placeholder="Search team" value={driverSearch} autoFocus={searchOpen && !driverSearch}
+                  onChange={event => setDriverSearch(event.target.value)} allowClear
+                  onBlur={() => { if (!driverSearch) setSearchOpen(false); }}
+                  onKeyDown={event => { if (event.key === "Escape") { setDriverSearch(""); setSearchOpen(false); } }}
+                  prefix={<SearchOutlined className="text-[#626E67]" />}
+                  suffix={compactTimeline ? undefined : (
+                    <button type="button" aria-pressed={exactMatch} onMouseDown={event => event.preventDefault()} onClick={() => setExactMatch(!exactMatch)}
+                      title={exactMatch ? "Exact match is on: whole words only" : "Exact match is off: matches part of a name"}
+                      className={`px-1 text-[10px] font-medium leading-4 cursor-pointer border-none ${exactMatch ? "bg-[#003220] text-white" : "bg-transparent text-[#626E67] hover:text-[#12211A]"}`}>
+                      Exact
                     </button>
-                  </Tooltip>
-                  {driverSearch && (
-                    <div
-                      className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 cursor-pointer flex items-center gap-1 truncate max-w-[120px] transition-colors hover:bg-emerald-100"
-                      onClick={() => setIsSearchOpen(true)}
-                      title={`Filtered by: "${driverSearch}"${
-                        exactMatch ? " (Exact match)" : ""
-                      }`}
-                    >
-                      <span className="truncate">{driverSearch}</span>
-                      {exactMatch && (
-                        <span className="text-[8px] font-bold bg-[#003220] text-white px-1 rounded-full shrink-0">
-                          Exact
-                        </span>
-                      )}
-                      <CloseOutlined
-                        className="text-[9px] text-emerald-600 hover:text-emerald-900 shrink-0 ml-0.5"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDriverSearch("");
-                        }}
-                      />
-                    </div>
                   )}
+                  className="!w-full !min-w-0" />
+              ) : (
+                <div className="flex w-full items-center gap-1.5">
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-[#626E67]">Team</span>
+                  <button type="button" aria-label="Search team" data-tip="Search team" onClick={() => setSearchOpen(true)}
+                    className="tip inline-flex h-6 w-6 items-center justify-center border-0 bg-transparent text-[#626E67] cursor-pointer hover:bg-[#EAEFEC] hover:text-[#12211A]">
+                    <SearchOutlined />
+                  </button>
+                  <span className="ml-auto text-[11px] text-[#626E67] tabular-nums">{allDriverGroups.length}</span>
                 </div>
               )}
-              {!compactTimeline && <Select
-                aria-label="Timeline zoom interval"
-                title="Zoom timeline: Ctrl + mouse wheel"
-                value={intervalMinutes}
-                onChange={value => changeInterval(value)}
-                options={INTERVAL_OPTIONS}
-                size="small"
-                style={{ width: 78 }}
-                className="text-xs shrink-0"
-              />}
             </div>
 
             {/* Time Axis */}
             <div className="relative" style={{ width: timelineWidth }}>
+              {nowPosition !== null && (
+                <span className="absolute bottom-0 z-20 -translate-x-1/2 bg-[#C9372C] px-1 text-[10px] font-medium leading-4 text-white pointer-events-none"
+                  style={{ left: nowPosition }}>
+                  {nowTick.format("h:mm A")}
+                </span>
+              )}
               {timeMarkers.map((marker, i) => (
                 <div
                   key={i}
                   className={`absolute top-0 bottom-0 select-none transition-colors border-l pl-1 text-xs flex items-center ${
                     marker.isNewDay
-                      ? "border-l-2 border-dashed border-[#003220] font-bold text-[#003220] z-10"
+                      ? "border-l border-[#4A5750] text-[#12211A] z-10"
                       : i === 0 && marker.dateLabel
                         ? "border-emerald-300 font-bold text-[#003220] z-10"
                         : "border-gray-200 text-gray-400"
@@ -1858,9 +2038,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                       <button
                         type="button"
                         aria-label={`${marker.time.format("dddd, MMMM D, YYYY")} at ${marker.label}`}
-                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[#003220] cursor-pointer hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-primary transition-colors"
+                        className="inline-flex h-6 px-1 shrink-0 items-center justify-center text-[#003220] cursor-pointer bg-transparent border-0 hover:bg-[#F3F6F4] focus-visible:outline-2 focus-visible:outline-primary transition-colors"
                       >
-                        <Calendar size={14} aria-hidden="true" />
+                        <span className="text-[11px] font-medium text-[#12211A] whitespace-nowrap">{marker.time.format("ddd, MMM D")}</span>
                       </button>
                     </TimelineTooltip>
                   ) : (
@@ -1879,11 +2059,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                     >
                       <span className="cursor-default whitespace-nowrap flex items-center gap-1">
                         {i === 0 && marker.dateLabel ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-1 py-0.2 rounded border border-slate-200 mr-0.5">
-                            <Calendar size={10} className="text-slate-500" />
-                          </span>
+                          <span className="text-[11px] font-medium text-[#12211A] mr-1">{marker.time.format("ddd, MMM D")} ·</span>
                         ) : null}
-                        <span>{marker.label}</span>
+                        <span className={marker.time.minute() === 0 ? "text-[#12211A] font-medium" : "text-[#626E67]"}>{formatAxisTime(marker.time)}</span>
                       </span>
                     </TimelineTooltip>
                   )}
@@ -1921,7 +2099,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                     placement="right"
                   >
                     <div
-                      className="absolute top-0 bottom-0 border-l-2 border-dashed border-[#003220] z-0 pointer-events-auto cursor-pointer hover:border-emerald-600 hover:opacity-100 transition-all opacity-85"
+                      className="absolute top-0 bottom-0 border-l border-[#4A5750] z-0 pointer-events-auto cursor-pointer opacity-60 hover:opacity-100 transition-opacity"
                       style={{ left: marker.position }}
                     />
                   </TimelineTooltip>
@@ -1932,6 +2110,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                     style={{ left: marker.position }}
                   />
                 )
+              )}
+              {nowPosition !== null && (
+                <div aria-hidden="true" className="absolute top-0 bottom-0 w-px bg-[#C9372C] z-[6]" style={{ left: nowPosition }} />
               )}
             </div>
 
@@ -2132,7 +2313,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                       }
                     >
                       <div
-                        className="h-full px-3 flex items-center gap-2.5 transition-opacity"
+                        className="h-full px-2.5 flex items-center gap-2 transition-opacity"
                         style={{ opacity: isDimmed ? 0.4 : 1 }}
                       >
                         <div className="flex items-center gap-0.5 shrink-0" onClick={event => event.stopPropagation()}>
@@ -2159,14 +2340,15 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                             <GripVertical size={14} />
                           </button>
                         </div>
-                        <Avatar
-                          icon={<UserOutlined />}
-                          className="!hidden sm:!inline-flex bg-gray-100 text-gray-500 shrink-0"
-                          size="default"
-                        />
+                        {/* Initials on the driver's route color: the same color as their stops here and their pins on the map */}
+                        <span aria-hidden="true"
+                          className="hidden sm:inline-flex h-8 w-8 shrink-0 items-center justify-center text-[11px] font-semibold leading-none text-[#172B4D]"
+                          style={{ background: `${getRouteColor(primaryIndex)}26`, borderLeft: `3px solid ${getRouteColor(primaryIndex)}` }}>
+                          {String(driverGroup.driverName || "").split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}
+                        </span>
                         <div className="flex flex-col overflow-hidden flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span title={driverGroup.driverName} className="font-semibold truncate text-gray-800 text-xs">
+                            <span title={driverGroup.driverName} className="font-semibold truncate text-[#172B4D] text-[13px]">
                               {driverGroup.driverName}
                             </span>
                             <DriverPresenceIndicator driverId={Number.isFinite(routeTeamId) && routeTeamId > 0 ? routeTeamId : matchedTeam?.id} />
@@ -2177,10 +2359,11 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                             )}
                           </div>
                           {/* Vehicle is shown per-route on the timeline bar, not here */}
-                          <span className="text-[11px] text-gray-400 truncate">
+                          <span className="text-[11px] text-[#626F86] truncate tabular-nums"
+                            title={`${Math.round(totalDistanceMeters / 1000)} km${durationStr ? ` · ${durationStr}` : ""} · ${totalGroupedStopsCount} stop${totalGroupedStopsCount !== 1 ? "s" : ""}${driverGroup.routes.length > 1 ? ` across ${driverGroup.routes.length} trips` : ""}`}>
                             {Math.round(totalDistanceMeters / 1000)} km
-                            {durationStr ? ` • ${durationStr}` : ""}
-                            {` • ${totalGroupedStopsCount} stop${
+                            {durationStr ? ` · ${durationStr}` : ""}
+                            {totalGroupedStopsCount === 0 ? " · No trips yet" : ` · ${totalGroupedStopsCount} stop${
                               totalGroupedStopsCount !== 1 ? "s" : ""
                             }`}
                           </span>
@@ -2292,10 +2475,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                               >
                                 <div
                                   className={
-                                    "absolute top-2 bottom-2 border shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-[left,width,background-color,border-color] duration-75 " +
+                                    "absolute top-2 bottom-2 border transition-[left,width,background-color,border-color] duration-75 " +
                                     (isDraggingShift && shiftDrag?.dayKey === window.dayKey
-                                      ? "border-emerald-300/80 bg-emerald-100/65"
-                                      : "border-emerald-200/80 bg-emerald-50/50")
+                                      ? "border-[#B9C2BD] bg-[#E6EAE8]"
+                                      : "working-time-band border-[#DDE2DF] bg-[#EEF1EF]")
                                   }
                                   style={{ left, width: right - left }}
                                 />
@@ -2317,9 +2500,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           window.dayKey!, "start", window.shift!,
                                         )}
                                       >
-                                        <span className="absolute left-1/2 top-1/2 flex h-5 w-3 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm border border-emerald-700 bg-white text-emerald-800 shadow-sm">
-                                          <GripVertical size={10} />
-                                        </span>
+                                        <span aria-hidden="true" className="absolute left-1/2 top-1/2 h-6 w-[3px] -translate-x-1/2 -translate-y-1/2 bg-[#9AA59F] transition-colors group-hover:bg-[#003220] group-focus-visible:bg-[#003220]" />
                                       </button>
                                       <button
                                         type="button"
@@ -2336,9 +2517,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           window.dayKey!, "end", window.shift!,
                                         )}
                                       >
-                                        <span className="absolute left-1/2 top-1/2 flex h-5 w-3 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm border border-emerald-700 bg-white text-emerald-800 shadow-sm">
-                                          <GripVertical size={10} />
-                                        </span>
+                                        <span aria-hidden="true" className="absolute left-1/2 top-1/2 h-6 w-[3px] -translate-x-1/2 -translate-y-1/2 bg-[#9AA59F] transition-colors group-hover:bg-[#003220] group-focus-visible:bg-[#003220]" />
                                       </button>
                                     </>
                                   )}
@@ -2377,9 +2556,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                             }
                           >
                             <span className="absolute left-1/2 top-2 bottom-2 w-1 -translate-x-1/2 rounded-full border border-emerald-800 bg-white shadow-sm transition-all group-hover:w-1.5 group-focus-visible:w-1.5 group-focus-visible:ring-2 group-focus-visible:ring-emerald-400 group-focus-visible:ring-offset-1">
-                              <span className="absolute left-1/2 top-1/2 flex h-5 w-3 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm border border-emerald-700 bg-white text-emerald-800 shadow-sm">
-                                <GripVertical size={10} />
-                              </span>
+                              <span aria-hidden="true" className="absolute left-1/2 top-1/2 h-6 w-[3px] -translate-x-1/2 -translate-y-1/2 bg-[#9AA59F] transition-colors group-hover:bg-[#003220] group-focus-visible:bg-[#003220]" />
                             </span>
                           </button>
 
@@ -2412,9 +2589,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                             }
                           >
                             <span className="absolute left-1/2 top-2 bottom-2 w-1 -translate-x-1/2 rounded-full border border-emerald-800 bg-white shadow-sm transition-all group-hover:w-1.5 group-focus-visible:w-1.5 group-focus-visible:ring-2 group-focus-visible:ring-emerald-400 group-focus-visible:ring-offset-1">
-                              <span className="absolute left-1/2 top-1/2 flex h-5 w-3 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm border border-emerald-700 bg-white text-emerald-800 shadow-sm">
-                                <GripVertical size={10} />
-                              </span>
+                              <span aria-hidden="true" className="absolute left-1/2 top-1/2 h-6 w-[3px] -translate-x-1/2 -translate-y-1/2 bg-[#9AA59F] transition-colors group-hover:bg-[#003220] group-focus-visible:bg-[#003220]" />
                             </span>
                           </button>
 
@@ -2646,8 +2821,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 return (
                                   <TimelineTooltip key={`work-${routeIndex}-${index}`} title={`Working at client · ${timeMin} min · vehicle stays with the team leader`}>
                                     <div
-                                      className="absolute top-1/2 border-y border-slate-300 bg-slate-100 cursor-pointer"
-                                      style={{ left: startPos, width, height: 8, transform: "translateY(-50%)", opacity: isDimmed ? 0.15 : 0.85, pointerEvents: draggedStopInfo ? "none" : undefined }}
+                                      className="absolute top-1/2 cursor-pointer"
+                                      style={{ left: startPos, width, height: 5, transform: "translateY(-50%)", backgroundColor: "#64748b", opacity: isDimmed ? 0.15 : 0.6, pointerEvents: draggedStopInfo ? "none" : undefined }}
                                     />
                                   </TimelineTooltip>
                                 );
@@ -2664,7 +2839,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                 vehicleCapacity={routeVehicleCap}
                                 isDimmed={isDimmed}
                                 isDragging={Boolean(draggedStopInfo)}
+                                load={occupancyMap.get(index)}
                                 onEditWaiting={onEditWaiting && !route.needs_optimization && !pendingRouteIndices?.has(routeIndex) ? () => onEditWaiting(routeIndex, index) : undefined}
+                                editBlockedReason={onEditWaiting && (route.needs_optimization || pendingRouteIndices?.has(routeIndex))
+                                  ? "This trip changed since it was optimized, so its times are out of date. Optimize it (next to the driver's name), then change the wait." : undefined}
                               />;
                             })}
 
@@ -2792,7 +2970,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     }
                                   >
                                     <div
-                                      className="absolute top-1/2 -translate-y-1/2 h-6 border border-gray-300 cursor-pointer hover:opacity-100 transition-opacity"
+                                      className="absolute top-1/2 -translate-y-1/2 cursor-pointer"
                                       role={onEditWaiting && typeof idle.after_stop_index === "number" ? "button" : undefined}
                                       tabIndex={onEditWaiting && typeof idle.after_stop_index === "number" ? 0 : undefined}
                                       aria-label="Edit waiting time"
@@ -2801,15 +2979,16 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       style={{
                                         left: idleStartPos,
                                         width: idleWidth,
-                                        backgroundColor: "#f5f5f5",
-                                        opacity: isDimmed ? 0.3 : 0.6,
+                                        height: 5,
+                                        backgroundColor: "#cbd5e1",
+                                        opacity: isDimmed ? 0.15 : 1,
                                         pointerEvents: draggedStopInfo ? "none" : undefined,
                                         backgroundImage: `repeating-linear-gradient(
                                             45deg,
                                             transparent,
                                             transparent 3px,
-                                            rgba(0,0,0,0.08) 3px,
-                                            rgba(0,0,0,0.08) 6px
+                                            rgba(0,0,0,0.12) 3px,
+                                            rgba(0,0,0,0.12) 6px
                                           )`,
                                       }}
                                     />
@@ -2919,11 +3098,33 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     stop.status ||
                                     "assigned";
                                 }
-                                const isStopDone = isJob && group.rawStops.every((s: any) => {
-                                  const status = jobsMap.get(Number(s.job_id)) || s.job?.status || s.status || "assigned";
-                                  return status === "completed" || status === "success" ||
-                                    (s.stop_type === "pickup" && status === "in_transit");
-                                });
+                                // Each passenger at this stop is done, failed, skipped or still open. The stop's own
+                                // status (from the driver app or the web) wins over the job's, because a job's
+                                // status covers both of its stops. Pickups count as done once the job is in transit,
+                                // whichever spelling the server uses for the stop type.
+                                const passengerState = (s: any): "done" | "failed" | "skipped" | "open" => {
+                                  const own = String(s.status || "").toLowerCase();
+                                  // The job's status speaks for this stop only for one-direction jobs, or when the stop
+                                  // carries no status of its own (legacy combined jobs hold both legs).
+                                  const jobType = String(jobsByIdMap.get(Number(s.job_id))?.job_type || "").toLowerCase();
+                                  const trustJob = !own || ["one_way", "return_only", "go_only"].includes(jobType);
+                                  const job = trustJob ? String(jobsMap.get(Number(s.job_id)) || s.job?.status || "").toLowerCase() : "";
+                                  const type = String(s.stop_type || "").toLowerCase();
+                                  const isPickupStop = type === "pickup" || type === "pick_up";
+                                  if (own === "completed" || job === "completed" || job === "success" || (isPickupStop && job === "in_transit")) return "done";
+                                  if (own === "failed" || job === "failed") return "failed";
+                                  if (own === "skipped" || job === "skipped" || job === "cancelled") return "skipped";
+                                  return "open";
+                                };
+                                const stopStates = isJob ? group.rawStops.map(passengerState) : [];
+                                const doneCount = stopStates.filter((state: string) => state === "done").length;
+                                const openCount = stopStates.filter((state: string) => state === "open").length;
+                                const isStopDone = isJob && stopStates.length > 0 && doneCount === stopStates.length;
+                                // Some passengers done, some still to do: shown as a light fill, never as untouched.
+                                const isStopPartlyDone = isJob && doneCount > 0 && openCount > 0;
+                                if (isJob && !isStopDone && openCount === 0 && stopStates.length > 0) {
+                                  jobStatus = stopStates.includes("failed") ? "failed" : "skipped";
+                                }
 
                                 let blockBgColor = routeColor;
                                 let blockBorderColor = routeColor;
@@ -2934,6 +3135,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     blockBgColor = routeColor;
                                     blockBorderColor = routeColor;
                                     blockTextColor = "white";
+                                  } else if (isStopPartlyDone) {
+                                    blockBgColor = `${routeColor}40`;
+                                    blockBorderColor = routeColor;
+                                    blockTextColor = routeColor;
                                   } else if (jobStatus === "failed") {
                                     blockBgColor = "#f5222d";
                                     blockBorderColor = "#f5222d";
@@ -2986,295 +3191,137 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                   group.rawStops.some((s: any) => s.is_edited || s.time_edited)
                                 );
 
+                                const hm = (value: dayjs.Dayjs | null | undefined) => value?.isValid() ? value.format("h:mm A") : "--:--";
+                                const dayNote = (value: dayjs.Dayjs) => {
+                                  if (!value.isValid() || value.isSame(scheduleDay, "day")) return null;
+                                  const diff = value.startOf("day").diff(scheduleDay, "day");
+                                  return diff === 1 ? "next day" : diff === -1 ? "day before" : value.format("ddd, MMM D");
+                                };
+                                const legWord = stopLeg === "GO" ? "Outbound" : stopLeg === "RETURN" ? "Return" : null;
+                                const isEnd = stop.stop_type === "depot_end" || depotLabel === "End";
+                                const kindWord = isMixed ? "Drop-off + pickup" : isPickup ? "Pickup" : isDropoff ? "Drop-off" : isDepot ? (isEnd ? "Trip ends" : "Trip starts") : "Stop";
+                                const waitsMinutes = driverArrival?.isValid() && driverArrival.isBefore(arrivalTime) ? Math.round(arrivalTime.diff(driverArrival, "minute", true)) : 0;
+                                const seats = Number(vehicleCapacity) || 0;
+                                const overCapacity = seats > 0 && currentOccupancy > seats;
+                                const boarding = group.rawStops.filter((x: any) => x.stop_type === "pickup" || x.stop_type === "pick_up").length;
+                                const alighting = group.rawStops.filter((x: any) => x.stop_type === "dropoff" || x.stop_type === "drop_off").length;
+                                const people = isJob ? getStopTooltipStops(group) : [];
+                                const checks = people.map((x: any) => x.job_id ? getShiftCheck(Number(x.job_id), route.stops || [], stopLeg) : null);
+                                const checked = checks.filter(Boolean) as NonNullable<ReturnType<typeof getShiftCheck>>[];
+                                const late = checked.filter(c => c.tone === "bad").length;
+                                const tight = checked.filter(c => c.tone === "warn").length;
+                                const shifts = [...new Set(checked.map(c => c.label))];
+                                const verdict = !checked.length ? null
+                                  : late ? { tone: "bad", text: `${late} of ${checked.length} ${stopLeg === "RETURN" ? "picked up before their shift ends" : "late for their shift"}` }
+                                  : tight ? { tone: "warn", text: `${tight} of ${checked.length} ${tight === 1 ? "arrives" : "arrive"} with less margin than required` }
+                                  : { tone: "ok", text: `${checked.length === 1 ? "On time" : `All ${checked.length} on time`} · ${shifts.length === 1 ? shifts[0] : "mixed shifts"}` };
+                                const toneColor = (tone?: string) => tone === "bad" ? "#C9372C" : tone === "warn" ? "#B38600" : "#1F845A";
+                                const SHOWN = 4;
                                 const stopTooltipKey = `${routeIndex}-${groupIndex}`;
                                 const tooltipContent = (
-                                  <div className="pointer-events-auto select-text p-1 space-y-2.5 w-[310px] text-slate-800">
-                                    {simultaneousOffset !== undefined && <p className="text-xs text-slate-500">Multiple stops have the same scheduled time. Click to choose a stop.</p>}
-                                    {/* Header Badge Row */}
-                                    <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200 select-none">
-                                      {isMixed ? (
-                                        <span className="inline-flex items-center justify-center gap-1.5 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wider bg-indigo-100 text-indigo-900 border border-indigo-400">
-                                          <UserDeleteOutlined /> DROP-OFF + <UserAddOutlined /> PICKUP
-                                        </span>
-                                      ) : isPickup ? (
-                                        <span className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-400">
-                                          <UserAddOutlined className="text-emerald-700 font-bold" />
-                                          PICKUP
-                                        </span>
-                                      ) : isDropoff ? (
-                                        <span className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider bg-blue-100 text-blue-900 border border-blue-400">
-                                          <UserDeleteOutlined className="text-blue-700 font-bold" />
-                                          DROP-OFF
-                                        </span>
-                                      ) : isDepot ? (
-                                        <span className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-400">
-                                          {stop.stop_type === "depot_end" ? (
-                                            <Flag size={13} className="text-amber-700" />
-                                          ) : (
-                                            <House size={13} className="text-amber-700" />
-                                          )}
-                                          DEPOT {stop.stop_type === "depot_start" ? "(START)" : stop.stop_type === "depot_end" ? "(END)" : ""}
-                                        </span>
-                                      ) : null}
+                                  <div className="lang pointer-events-auto select-text w-[300px] text-[#12211A]">
+                                    {simultaneousOffset !== undefined && <p className="m-0 mb-2 text-[12px] text-[#626E67]">Several stops share this time. Click to choose one.</p>}
 
-                                      {stopLeg && (
-                                        <span
-                                          className="inline-flex shrink-0 items-center border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-700"
-                                          aria-label={`Leg: ${stopLeg}`}
-                                        >
-                                          {stopLeg}
-                                        </span>
-                                      )}
-
-                                      {stopVehicleName && (
-                                        <span
-                                          className="ml-auto inline-flex min-w-0 items-center gap-1 text-[10.5px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 border border-slate-300 rounded"
-                                          title={`Vehicle: ${stopVehicleName}${vehicleCapacity ? ` (${vehicleCapacity} seats)` : ""}`}
-                                        >
-                                          <Truck size={12} className="text-slate-600 shrink-0" />
-                                          <span className="truncate max-w-[110px]">{stopVehicleName}</span>
-                                          {vehicleCapacity ? (
-                                            <span className="text-[9.5px] font-extrabold text-slate-500 bg-white px-1 rounded border border-slate-200 shrink-0 ml-0.5">
-                                              {vehicleCapacity}s
-                                            </span>
-                                          ) : null}
-                                        </span>
-                                      )}
+                                    {/* 1 · When and what */}
+                                    <div className="flex items-center gap-2.5">
+                                      <span aria-hidden="true" className="inline-flex h-[30px] w-6 shrink-0 items-center justify-center">
+                                        {isDepot ? <span className="inline-flex h-5 w-5 items-center justify-center text-white" style={{ backgroundColor: routeColor }}>
+                                          {isEnd ? <Flag size={12} /> : <House size={12} />}</span>
+                                          : <span className="inline-flex scale-[0.7]"><StopArrowSvg isPickup={isPickup || isMixed} isMixed={isMixed} displayIndex={displayIndex} fill="#fff" stroke={routeColor} textColor={routeColor} /></span>}
+                                      </span>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-baseline gap-2">
+                                          <span className="text-[17px] font-medium leading-none tabular-nums">{hm(arrivalTime)}</span>
+                                          {dayNote(arrivalTime) && <span className="text-[11px] text-[#626E67]">{dayNote(arrivalTime)}</span>}
+                                        </div>
+                                        <div className="mt-1 text-[12px] text-[#4A5750]">{[kindWord, legWord, !isDepot ? `stop ${displayIndex}` : null].filter(Boolean).join(" · ")}</div>
+                                      </div>
+                                      {isStopEdited && <span className="shrink-0" title={isTimeEdited ? "Time changed by hand" : "Edited by hand"}><EditedMark size={14} /></span>}
                                     </div>
 
-                                    {/* Highlights Row for New / Edited Stop */}
-                                    {(isStopNew || isStopEdited) && (
-                                      <div className="flex items-center gap-1.5 py-0.5 select-none">
-                                        {isStopNew && (
-                                          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-400 px-2 py-0.5 rounded shadow-xs animate-pulse">
-                                            <SparklesIcon size={11} className="text-emerald-700" />
-                                            NEWLY ADDED STOP
-                                          </span>
-                                        )}
-                                        {isStopEdited && (
-                                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-purple-100 text-purple-900 border border-purple-300 px-2 py-0.5 rounded shadow-xs">
-                                            <ClockCircleOutlined className="text-purple-600" />
-                                            EDITED STOP
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
-
-                                    {/* Location / Address Row */}
-                                    {!isMixed && <div className="flex items-start gap-2.5 py-0.5">
-                                      {isDepot ? (
-                                        stop.stop_type === "depot_end" ? (
-                                          <Flag className="text-amber-600 text-base shrink-0 mt-0.5" />
-                                        ) : (
-                                          <House className="text-amber-600 text-base shrink-0 mt-0.5" />
-                                        )
-                                      ) : isPickup ? (
-                                        <EnvironmentOutlined className="text-emerald-600 text-base shrink-0 mt-0.5" />
-                                      ) : (
-                                        <EnvironmentOutlined className="text-blue-600 text-base shrink-0 mt-0.5" />
-                                      )}
-                                      <div className="flex flex-col min-w-0 flex-1">
-                                        <div className="flex items-center justify-between gap-1">
-                                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 select-none">
-                                            {isDepot
-                                              ? stop.stop_type === "depot_start"
-                                                ? "Driver Start Location"
-                                                : stop.stop_type === "depot_end"
-                                                  ? "Driver End Location"
-                                                  : "Depot Location"
-                                              : isPickup
-                                                ? "Pickup Address"
-                                                : isDropoff
-                                                  ? "Drop-off Address"
-                                                  : "Address"}
-                                          </span>
-                                          {formattedAddr && (
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                navigator.clipboard.writeText(formattedAddr);
-                                                message.success("Address copied to clipboard");
-                                              }}
-                                              className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer transition-colors border-none bg-transparent flex items-center gap-1 text-[10px] font-semibold select-none"
-                                              title="Copy address"
-                                            >
-                                              <CopyOutlined className="text-xs" />
-                                              <span>Copy</span>
-                                            </button>
-                                          )}
-                                        </div>
-                                        <span
-                                          className="text-xs font-bold text-slate-900 leading-snug select-text cursor-text break-words"
-                                          title={formattedAddr}
-                                        >
-                                          {formattedAddr}
-                                        </span>
-                                      </div>
+                                    {/* 2 · Where */}
+                                    {!isMixed && <div className="mt-2 flex items-center gap-2 text-[12px]">
+                                      <span className="min-w-0 flex-1 truncate text-[#4A5750]" title={formattedAddr}>{formattedAddr}</span>
+                                      {formattedAddr && <button type="button" title="Copy address" aria-label="Copy address"
+                                        onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(formattedAddr); message.success("Address copied"); }}
+                                        className="inline-flex shrink-0 border-0 bg-transparent p-0 text-[#626E67] cursor-pointer hover:text-[#0B5D3B]"><CopyOutlined className="text-[12px]" /></button>}
                                     </div>}
 
-                                    {/* Passengers / Job List */}
-                                    {isJob && group.rawStops.length > 0 && (
-                                      <div className="pt-2 border-t border-slate-200">
-                                        <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                                          <div className="flex items-center gap-1.5">
-                                            <UserOutlined className="text-slate-400" /> Passenger / Job(s)
-                                          </div>
-                                          {count > 1 && (
-                                            <span className="inline-flex items-center justify-center text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 border border-slate-300 rounded select-none">
-                                              ×{count} candidates
-                                            </span>
+                                    {/* 3 · The answer: is everyone on time */}
+                                    {verdict && <div className="mt-2.5 flex items-center gap-2 px-2 py-1.5 text-[12px]"
+                                      style={{ backgroundColor: verdict.tone === "bad" ? "#FDECEA" : verdict.tone === "warn" ? "#FFF8E6" : "#F1F8F4", color: toneColor(verdict.tone) }}>
+                                      <span aria-hidden="true" className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[10px] font-medium text-white" style={{ backgroundColor: toneColor(verdict.tone) }}>
+                                        {verdict.tone === "ok" ? "✓" : "!"}
+                                      </span>
+                                      <span className="min-w-0 truncate">{verdict.text}</span>
+                                    </div>}
+                                    {isStopNew && <p className="m-0 mt-2 text-[12px] text-[#0B5D3B]">New since the last optimization</p>}
+
+                                    {/* 4 · Who */}
+                                    {people.length > 0 && <ul className="m-0 mt-2.5 list-none border-t border-[#E3E8E5] p-0" aria-label="Passengers at this stop">
+                                      {people.slice(0, SHOWN).map((x: any, i: number) => {
+                                        const candName = getCandidateName(x);
+                                        const numJobId = Number(x.job_id || x.id || x.job?.id) || null;
+                                        const isPendingDelete = numJobId ? pendingDeletedJobIds.has(numJobId) : false;
+                                        // Same rule as the marker: a boarded passenger (job in transit) counts as done here too.
+                                        const personState = passengerState(x);
+                                        const status = personState === "done" ? "COMPLETED" : personState === "failed" ? "FAILED" : personState === "skipped" ? "SKIPPED" : "";
+                                        const isFinished = personState !== "open";
+                                        const check = checks[i];
+                                        return <li key={i} className="group/jobrow flex items-center gap-2 border-b border-[#E3E8E5] py-1.5 text-[12px] last:border-b-0">
+                                          <User size={13} className="shrink-0 text-[#626E67]" aria-hidden="true" />
+                                          {isMixed && <span className="shrink-0 text-[11px] text-[#626E67]">{x.stop_type === "pickup" ? "on" : "off"}</span>}
+                                          <button type="button" onClick={(e) => { e.stopPropagation(); onStopClick?.(x, routeIndex, displayIndex); }}
+                                            className={`min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[12px] cursor-pointer hover:text-[#0B5D3B] hover:underline ${isPendingDelete ? "text-[#C9372C] line-through" : "text-[#12211A]"}`}
+                                            title={`${candName || "Job"} · #${numJobId} · open details`}>
+                                            {candName || `Job #${numJobId}`}
+                                          </button>
+                                          {isPendingDelete ? (onUndoDeleteJob && numJobId ? <button type="button" onClick={(e) => { e.stopPropagation(); onUndoDeleteJob(numJobId); }}
+                                            className="shrink-0 border-0 bg-transparent p-0 text-[12px] text-[#0B5D3B] cursor-pointer hover:underline">Undo removal</button> : null)
+                                            : isFinished ? <span className={`shrink-0 text-[11px] ${status === "COMPLETED" ? "text-[#1F845A]" : status === "SKIPPED" ? "text-[#626E67]" : "text-[#C9372C]"}`}>{status === "COMPLETED" ? (x.stop_type === "pickup" || x.stop_type === "pick_up" ? "On board" : "Done") : status === "SKIPPED" ? "Skipped" : (x.stop_type === "pickup" || x.stop_type === "pick_up" ? "No-show" : "Failed")}</span>
+                                            : check ? <span className="shrink-0 text-[11px] tabular-nums group-hover/jobrow:hidden" style={{ color: toneColor(check.tone) }} title={check.label}>{check.short}</span>
+                                            : <span className="shrink-0 text-[11px] text-[#626E67] tabular-nums group-hover/jobrow:hidden">#{numJobId}</span>}
+                                          {!isPendingDelete && !isFinished && onRemoveStop && numJobId && (
+                                            <button type="button" title="Remove job from route" aria-label={`Remove job ${numJobId} from route`}
+                                              onClick={(e) => { e.stopPropagation(); setOpenStopTooltipKey(null); onRemoveStop(routeIndex, numJobId, x.stop_type); }}
+                                              className="hidden h-5 shrink-0 items-center gap-1 border-0 bg-transparent p-0 text-[11px] text-[#C9372C] cursor-pointer hover:underline group-hover/jobrow:inline-flex">
+                                              <DeleteOutlined className="text-[11px]" />Remove
+                                            </button>
                                           )}
-                                        </div>
-                                        <div className={`text-xs ${isMixed ? "max-h-64" : "max-h-36"} overflow-y-auto space-y-1.5 custom-scrollbar pr-0.5`}>
-                                          {getStopTooltipStops(group).map((s: any, i: number) => {
-                                            const candName = getCandidateName(s);
-                                            const rawJobId = s.job_id || s.id || s.job?.id;
-                                            const numJobId = rawJobId ? Number(rawJobId) : null;
-                                            const isPendingDelete = numJobId ? pendingDeletedJobIds.has(numJobId) : false;
-                                            const status = String(s.status ?? "").toUpperCase();
-                                            const isCompleted = status === "COMPLETED";
-                                            const isFailed = status === "FAILED";
-                                            const isFinished = isCompleted || isFailed;
-                                            const activityDetails = isMixed && (
-                                              <div className="mb-1 space-y-0.5" data-stop-activity={s.stop_type}>
-                                                <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600">
-                                                  {s.stop_type === "pickup" ? "Pickup" : "Drop-off"}
-                                                </div>
-                                                <div className="text-xs font-semibold text-slate-900 break-words">
-                                                  {s.address_formatted || `#${s.job_id || numJobId}`}
-                                                </div>
-                                              </div>
-                                            );
+                                        </li>;
+                                      })}
+                                      {people.length > SHOWN && <li className="pt-1.5 text-[12px] text-[#626E67]">+{people.length - SHOWN} more · click the stop to see all</li>}
+                                    </ul>}
 
-                                            if (isPendingDelete) {
-                                              return (
-                                                <React.Fragment key={i}>
-                                                  {activityDetails}
-                                                  <div
-                                                    className="bg-red-50 text-red-800 border border-dashed border-red-300 px-2 py-1.5 transition-all flex items-center justify-between text-xs font-semibold overflow-hidden opacity-75"
-                                                  >
-                                                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                                      <FileTextOutlined className="text-red-500 text-xs shrink-0" />
-                                                      <span className="font-bold text-red-900 shrink-0">#{s.job_id || numJobId}</span>
-                                                      {candName && (
-                                                        <span className="text-red-700 font-medium truncate shrink" title={candName}>({candName})</span>
-                                                      )}
-                                                      <span className="ml-1 text-[10px] font-extrabold uppercase bg-red-100 text-red-700 px-1 py-0.2 border border-red-300 shrink-0">
-                                                        Pending Delete
-                                                      </span>
-                                                    </div>
-                                                    {onUndoDeleteJob && numJobId && (
-                                                      <button
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          onUndoDeleteJob(numJobId);
-                                                        }}
-                                                        className="ml-2 text-xs font-bold text-red-700 hover:text-red-900 hover:bg-red-100 px-1.5 py-0.5 border border-red-300 transition-colors flex items-center gap-1 shrink-0 cursor-pointer bg-white"
-                                                        title="Undo staged deletion"
-                                                      >
-                                                        <UndoOutlined /> Undo
-                                                      </button>
-                                                    )}
-                                                  </div>
-                                                </React.Fragment>
-                                              );
-                                            }
-
-                                            return (
-                                              <React.Fragment key={i}>
-                                                {activityDetails}
-                                                <div
-                                                  className={`cursor-pointer text-slate-800 border px-2 py-1.5 transition-all flex items-center justify-between text-xs font-semibold overflow-hidden group/jobrow ${
-                                                    isCompleted
-                                                      ? "bg-green-50 border-green-200 hover:bg-green-100 hover:border-green-300"
-                                                      : isFailed
-                                                        ? "bg-red-50 border-red-200 hover:bg-red-100 hover:border-red-300"
-                                                        : "bg-slate-50 hover:bg-emerald-50 hover:text-emerald-900 border-slate-200 hover:border-emerald-400"
-                                                  }`}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onStopClick?.(s, routeIndex, displayIndex);
-                                                  }}
-                                                >
-                                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                                    <FileTextOutlined className="text-slate-500 text-xs shrink-0" />
-                                                    <span className="font-bold text-slate-900 shrink-0">#{s.job_id || numJobId}</span>
-                                                    {candName && (
-                                                      <span className="text-slate-600 font-medium truncate shrink" title={candName}>({candName})</span>
-                                                    )}
-                                                    {Boolean(s.is_edited || s.time_edited) && (
-                                                      <span className="ml-1 text-[10px] font-bold uppercase bg-purple-100 text-purple-800 px-1 py-0.2 border border-purple-300 shrink-0 flex items-center gap-0.5">
-                                                        <ClockCircleOutlined className="text-[9px]" /> Edited
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                  {!isFinished && onRemoveStop && numJobId && (
-                                                    <button
-                                                      type="button"
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setOpenStopTooltipKey(null);
-                                                        onRemoveStop(routeIndex, numJobId, s.stop_type);
-                                                      }}
-                                                      className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors border-none bg-transparent flex items-center shrink-0 cursor-pointer opacity-80 group-hover/jobrow:opacity-100"
-                                                      title="Remove job from route"
-                                                    >
-                                                      <DeleteOutlined className="text-xs" />
-                                                    </button>
-                                                  )}
-                                                </div>
-                                              </React.Fragment>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Footer Info (Occupancy & ETA) */}
-                                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between gap-2 text-xs">
-                                      {isJob && (
-                                        <div className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-50 border border-slate-200 text-slate-800 text-[11px] text-center font-medium min-w-0">
-                                          <CarOutlined className="text-emerald-700 text-xs shrink-0" />
-                                          <span className="truncate">
-                                            Occupancy: <strong className="text-emerald-800 font-bold">{currentOccupancy}</strong>
-                                            {vehicleCapacity ? ` / ${vehicleCapacity}` : ""}
-                                          </span>
-                                        </div>
-                                      )}
-                                      <div className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-50 border border-slate-200 text-slate-900 text-[11px] text-center font-medium min-w-0">
-                                        <ClockCircleOutlined className="text-slate-600 text-xs shrink-0" />
-                                        <span className="truncate">
-                                          {isDepot && (stop.stop_type === "depot_start" || depotLabel === "Start")
-                                            ? "Start Time: "
-                                            : isDepot && (stop.stop_type === "depot_end" || depotLabel === "End")
-                                              ? "End Time: "
-                                              : "ETA: "}
-                                          <strong className="text-slate-900 font-extrabold">{arrivalTime.isValid() ? arrivalTime.format("hh:mm A") : "--:--"}</strong>
-                                          {arrivalTime.isValid() && arrivalTime.format("YYYY-MM-DD") !== startTime.format("YYYY-MM-DD") && (
-                                            <span className="text-[10px] text-slate-500 font-semibold ml-1">
-                                              ({arrivalTime.format("ddd, MMM D")})
-                                            </span>
-                                          )}
+                                    {/* 5 · Facts: one labelled line each, same icon column, values aligned */}
+                                    <dl className="m-0 mt-2.5 grid grid-cols-[16px_84px_1fr] items-center gap-x-2 gap-y-1.5 border-t border-[#E3E8E5] pt-2.5 text-[12px] tabular-nums">
+                                      {isJob && (boarding > 0 || alighting > 0) && <>
+                                        <Users size={13} className="text-[#626E67]" aria-hidden="true" />
+                                        <dt className="text-[#626E67]">{boarding && alighting ? "On / off" : boarding ? "Getting on" : "Getting off"}</dt>
+                                        <dd className="m-0 text-[#12211A]">{boarding && alighting ? `${boarding} on · ${alighting} off` : `${boarding || alighting} ${(boarding || alighting) === 1 ? "person" : "people"}`}</dd>
+                                      </>}
+                                      {isJob && <>
+                                        <span aria-hidden="true" className="relative block h-2 w-3.5 bg-[#E3E8E5]">
+                                          <span className="absolute inset-y-0 left-0 block" style={{ width: `${seats ? Math.min(100, currentOccupancy / seats * 100) : 0}%`, backgroundColor: overCapacity ? "#C9372C" : routeColor }} />
                                         </span>
-                                      </div>
-                                    </div>
+                                        <dt className="text-[#626E67]">Then on board</dt>
+                                        <dd className={`m-0 ${overCapacity ? "text-[#C9372C]" : "text-[#12211A]"}`}>{currentOccupancy === 0 ? <>Empty{seats ? <span className="text-[#626E67]"> · {seats} seats free</span> : null}</> : <>{currentOccupancy}{seats ? ` of ${seats} seats` : ""}{overCapacity ? " · over capacity" : ""}</>}</dd>
+                                      </>}
+                                      {!isDepot && (waitsMinutes > 0 || serviceDuration > 0 || waitingAfterStop > 0) && <>
+                                        <Clock size={13} className="text-[#626E67]" aria-hidden="true" />
+                                        <dt className="text-[#626E67]">At the stop</dt>
+                                        <dd className="m-0 text-[#12211A]">{hm(waitsMinutes > 0 ? driverArrival : arrivalTime)} – {hm(departureTime)}
+                                          <span className="text-[#626E67]"> · {[waitsMinutes > 0 ? `waits ${waitsMinutes} min` : null, serviceDuration > 0 ? `${Math.round(serviceDuration)} min ${isPickup ? "boarding" : isDropoff ? "getting off" : "service"}` : null, waitingAfterStop > 0 ? `then waits ${Math.round(waitingAfterStop)} min` : null].filter(Boolean).join(", ")}</span>
+                                        </dd>
+                                      </>}
+                                      {stopVehicleName && <>
+                                        <Truck size={13} className="text-[#626E67]" aria-hidden="true" />
+                                        <dt className="text-[#626E67]">Vehicle</dt>
+                                        <dd className="m-0 truncate text-[#12211A]" title={stopVehicleName}>{stopVehicleName}</dd>
+                                      </>}
+                                    </dl>
 
-                                    {driverArrival?.isValid() && driverArrival.isBefore(arrivalTime) && (
-                                      <div className="text-[11px] text-slate-500 text-center pt-1 border-t border-slate-100">
-                                        Driver arrived: {driverArrival.format("hh:mm A")}
-                                        {driverArrival.format("YYYY-MM-DD") !== arrivalTime.format("YYYY-MM-DD") &&
-                                          ` (${driverArrival.format("ddd, MMM D")})`}
-                                      </div>
-                                    )}
-                                    {(serviceDuration > 0 || waitingAfterStop > 0) && (
-                                      <div className="text-[11px] text-slate-500 text-center pt-1 space-y-0.5 border-t border-slate-100">
-                                        <div>Departure: {departureTime.isValid() ? departureTime.format("hh:mm A") : "--:--"}</div>
-                                        {serviceDuration > 0 && <div>Service Duration: {serviceDuration} min</div>}
-                                        {waitingAfterStop > 0 && <div>Waiting after stop: {Math.round(waitingAfterStop * 10) / 10} min</div>}
-                                      </div>
-                                    )}
+                                    {isJob && Boolean(group.rawStops[0]?.job_id) && <p className="m-0 mt-2 text-[11px] text-[#626E67] select-none">Click for details · drag to move (pickup and drop-off move together)</p>}
                                   </div>
                                 );
 
@@ -3293,6 +3340,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                     selectionSourceRouteIndex === routeIndex
                                   );
 
+                                  // Markers are also reachable by keyboard (Tab, then Enter or Space), not only by mouse.
+                                  const stopAriaLabel = isDepot ? `Trip ${stop.stop_type === "depot_end" ? "end" : "start"}, ${hm(arrivalTime)}`
+                                    : `Stop ${displayIndex}, ${isPickup ? "pickup" : stop.stop_type === "dropoff" || stop.stop_type === "drop_off" ? "drop-off" : "stop"}, ${hm(arrivalTime)}`;
+                                  const handleStopItemKey = (e: React.KeyboardEvent) => {
+                                    if (e.key !== "Enter" && e.key !== " ") return;
+                                    e.preventDefault();
+                                    handleStopItemClick(e as unknown as React.MouseEvent);
+                                  };
                                   const handleStopItemClick = (e: React.MouseEvent) => {
                                     if (e.shiftKey || e.metaKey || e.ctrlKey) {
                                       e.stopPropagation();
@@ -3325,6 +3380,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                       setOverlappingStops({ routeIndex, groups });
                                       return;
                                     }
+                                    // The details card opens beside the timeline: close the hover card so it does not sit on top of it.
+                                    setOpenStopTooltipKey(null);
                                     onStopClick?.(
                                       group.rawStops[0],
                                       routeIndex,
@@ -3390,10 +3447,10 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             width: Math.max(blockWidth, 28),
                                             boxShadow: isStopEdited && !isStopSelected && !isStopNew && !isDropTarget && !isDraggingThis ? "none" : undefined,
                                             backgroundColor: isGroupPendingDelete ? undefined : blockBgColor,
-                                            borderColor: isGroupPendingDelete ? undefined : isStopSelected || isStopNew ? "#059669" : isStopEdited ? "#9333ea" : blockBorderColor,
+                                            borderColor: isGroupPendingDelete ? undefined : isStopSelected || isStopNew ? "#059669" : blockBorderColor,
                                             opacity: isDimmed ? 0.4 : isDraggingThis ? 0.3 : 1,
                                           }}
-                                          onClick={handleStopItemClick}
+                                          onClick={handleStopItemClick} onKeyDown={handleStopItemKey} role="button" tabIndex={0} aria-label={stopAriaLabel}
                                           title={!isDepot ? "Drag to move booking to another driver / Shift+Click to select" : undefined}
                                         >
 
@@ -3408,13 +3465,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           {isStopNew && !isStopSelected && (
                                             <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-[#003220] text-white text-[8px] font-black uppercase rounded-none shadow-xs flex items-center gap-0.5 tracking-tight animate-bounce z-30 select-none pointer-events-none whitespace-nowrap">
                                               <SparklesIcon size={8} /> NEW
-                                            </div>
-                                          )}
-
-                                          {/* Edited Job Badge */}
-                                          {!isStopNew && isStopEdited && !isStopSelected && (
-                                            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded-none flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
-                                              <ClockCircleOutlined className="text-[8px]" /> EDITED
                                             </div>
                                           )}
 
@@ -3444,12 +3494,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
 
                                           {/* Corner edited indicator */}
                                           {!isDepot && isStopEdited && !isStopNew && (
-                                            <div 
-                                              className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-none border border-white z-20"
-                                              title="Job edited"
-                                            >
-                                              <ClockCircleOutlined className="text-[7.5px]" />
-                                            </div>
+                                            <EditedMark title="Edited by hand" className="absolute -bottom-2 -right-2.5 z-20 pointer-events-none" />
                                           )}
                                         </div>
                                       </TimelineTooltip>
@@ -3487,6 +3532,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           displayIndex={displayIndex}
                                           routeColor={routeColor}
                                           isStopDone={isStopDone}
+                                          isStopPartlyDone={isStopPartlyDone}
+                                          doneLabel={stopStates.length > 1 ? `${doneCount} of ${stopStates.length} passengers done` : undefined}
                                           jobStatus={jobStatus}
                                           isStopSelected={isStopSelected}
                                           isStopNew={isStopNew}
@@ -3496,7 +3543,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           isDropTarget={isDropTarget}
                                           isDimmed={isDimmed}
                                           left={left}
-                                          onClick={handleStopItemClick}
+                                          onClick={handleStopItemClick} onKeyDown={handleStopItemKey} role="button" tabIndex={0}
                                           draggable={!isDepot && Boolean(firstJobId)}
                                           onDragStart={(e) =>
                                             firstJobId &&
@@ -3510,7 +3557,6 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                             )
                                           }
                                           onDragEnd={handleTimelineStopDragEnd}
-                                          title="Drag to move this booking's pickup and drop-off together at their scheduled times"
                                         />
                                       </TimelineTooltip>
                                     );
@@ -3542,8 +3588,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           ? handleTripDragStart(e, routeIndex, group.firstRawIndex)
                                           : firstJobId && handleTimelineStopDragStart(e, routeIndex, group.firstRawIndex, groupRawIndices, firstJobId, displayIndex)}
                                         onDragEnd={handleTimelineStopDragEnd}
-                                        className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 shadow-md z-10 transition-[transform,box-shadow,opacity] duration-150 ${
-                                          !isDepot || (stop.stop_type === "depot_start" && onMoveTrip) ? "cursor-grab active:cursor-grabbing hover:scale-110 hover:shadow-lg" : "cursor-pointer"
+                                        className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center border-2 z-10 transition-[transform,box-shadow,opacity] duration-150 ${
+                                          !isDepot || (stop.stop_type === "depot_start" && onMoveTrip) ? "cursor-grab active:cursor-grabbing hover:scale-110" : "cursor-pointer"
                                         } ${
                                           isDraggingThis ? "w-8 h-8 opacity-30 border-2 border-dashed border-emerald-500 bg-emerald-50/50 scale-95 shadow-inner" : "w-8 h-8 bg-white"
                                         } ${
@@ -3564,17 +3610,17 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           boxShadow: isStopEdited && !isStopSelected && !isStopNew && !isDropTarget && !isDraggingThis ? "none" : undefined,
                                           backgroundColor: isGroupPendingDelete
                                             ? undefined
-                                            : "#ffffff",
+                                            : isDepot && !isDraggingThis
+                                              ? routeColor
+                                              : "#ffffff",
                                           borderColor: isGroupPendingDelete
                                             ? undefined
                                             : isStopSelected || isStopNew
                                             ? "#059669"
-                                            : isStopEdited
-                                            ? "#9333ea"
                                             : blockBorderColor,
                                           opacity: isDimmed ? 0.4 : isDraggingThis ? 0.3 : 1,
                                         }}
-                                        onClick={handleStopItemClick}
+                                        onClick={handleStopItemClick} onKeyDown={handleStopItemKey} role="button" tabIndex={0} aria-label={stopAriaLabel}
                                         title={stop.stop_type === "depot_start" && onMoveTrip ? "Drag home to move this complete trip to another driver" : !isDepot ? "Drag to move booking to another driver / Shift+Click to select" : undefined}
                                       >
 
@@ -3592,18 +3638,11 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                           </div>
                                         )}
 
-                                        {/* Edited Job Badge */}
-                                        {!isStopNew && isStopEdited && !isDepot && !isStopSelected && (
-                                          <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-purple-600 text-white text-[8px] font-black uppercase rounded flex items-center gap-0.5 tracking-tight z-30 select-none pointer-events-none whitespace-nowrap">
-                                            <ClockCircleOutlined className="text-[8px]" /> EDITED
-                                          </div>
-                                        )}
-
                                         {isDepot ? (
                                           depotLabel === "End" ? (
-                                            <Flag size={16} color={routeColor} className="shrink-0" />
+                                            <Flag size={16} color="#ffffff" className="shrink-0" />
                                           ) : (
-                                            <Home size={16} color={routeColor} className="shrink-0" />
+                                            <Home size={16} color="#ffffff" className="shrink-0" />
                                           )
                                         ) : (
                                           <>
@@ -3629,12 +3668,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                               </div>
                                             ) : null}
                                             {!isDepot && isStopEdited && !isStopNew && (
-                                              <div 
-                                                className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-full border border-white z-20"
-                                                title="Job edited"
-                                              >
-                                                <ClockCircleOutlined className="text-[7.5px]" />
-                                              </div>
+                                              <EditedMark title="Edited by hand" className="absolute -bottom-2 -right-2.5 z-20 pointer-events-none" />
                                             )}
                                           </>
                                         )}

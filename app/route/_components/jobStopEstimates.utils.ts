@@ -75,3 +75,25 @@ export function getStopProgress(stop: JobTimingStop | undefined, kind: "pickup" 
   const actualTime = status === "pending" ? undefined : stop?.actual_departure_time || undefined;
   return { status, label, actualTime, timezone: stop?.actual_timezone };
 }
+
+/**
+ * The stop's own status can lag behind its job: completing a pickup from the web sets the job to
+ * in_transit but leaves the pickup stop "pending" (seen on plan 177: 5 of 5 in-transit jobs). The job's
+ * status is then the better answer for that stop, so the card, the buttons and the timeline agree.
+ */
+export function reconcileStopProgress(
+  progress: ReturnType<typeof getStopProgress>, jobStatus: string | null | undefined,
+  kind: "pickup" | "dropoff" | "arrival", shuttle = true,
+): ReturnType<typeof getStopProgress> {
+  if (progress.status !== "pending") return progress;
+  const job = String(jobStatus || "").toLowerCase();
+  const done = job === "completed" || (kind === "pickup" && job === "in_transit");
+  if (done) return { ...progress, status: "completed", label: shuttle ? kind === "pickup" ? "Boarded" : "Dropped off" : "Completed" };
+  if (job === "failed") {
+    return kind === "dropoff"
+      ? { ...progress, status: "skipped", label: "Skipped" }
+      : { ...progress, status: "failed", label: shuttle && kind === "pickup" ? "No show" : "Failed" };
+  }
+  if (job === "skipped" || job === "cancelled") return { ...progress, status: "skipped", label: "Skipped" };
+  return progress;
+}

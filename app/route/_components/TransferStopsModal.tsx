@@ -1,32 +1,12 @@
 "use client";
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import {
-  Modal,
-  Button,
-  Tag,
-  Tooltip,
-  Input,
-  Select,
-  Checkbox,
-  message,
-  Switch,
-  Badge,
-} from "antd";
-import {
-  SearchOutlined,
-  SwapOutlined,
-  ClockCircleOutlined,
-  EnvironmentOutlined,
-  UserOutlined,
-  ArrowRightOutlined,
-  CheckCircleOutlined,
-  CarOutlined,
-} from "@ant-design/icons";
-import { ArrowDown, ArrowUp, Sparkles as SparklesIcon, Users } from "lucide-react";
+import { Modal, Button, Input, Select, Checkbox, message, Switch } from "antd";
+import { SearchOutlined } from "@ant-design/icons";
+import { Car, Users } from "lucide-react";
 import dayjs from "dayjs";
 import type { Job } from "@/types/job.type";
-import { formatTime12h } from "@/utils/app.utils";
 import { getRouteColor } from "@/utils/timeline.utils";
+import { StopArrowSvg, EditedMark } from "./TimelineStopArrow";
 import { legJobIds, type TransferSelection } from "./transferStops.utils";
 import { tripLabel } from "./tripLabel.utils";
 
@@ -75,7 +55,6 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
   const activeSourceIndex = selectedSourceIndex ?? sourceRouteIndex;
   const [selectedJobIds, setSelectedJobIds] = useState<Set<number>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState<"all" | "pickup" | "dropoff">("all");
   const [autoSelectLinkedStops, setAutoSelectLinkedStops] = useState(true);
   const [reoptimize, setReoptimize] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -147,7 +126,6 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
   useEffect(() => {
     if (open) {
       setSearchTerm("");
-      setFilterType("all");
       setScope("jobs");
       setReoptimize(false);
       setTransferLeg(routes[activeSourceIndex ?? -1]?.leg === "RETURN" ? "RETURN" : "GO");
@@ -177,20 +155,25 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
     ? new Set(legJobIds(sourceRoute, jobs, transferLeg)) : selectedJobIds,
   [scope, sourceRoute, jobs, transferLeg, selectedJobIds]);
 
-  // Filtered stops
-  const filteredStops = useMemo(() => {
-    return stopsList.filter((item) => {
-      if (filterType !== "all" && item.stop_type !== filterType) {
-        return false;
-      }
-      if (!searchTerm.trim()) return true;
-      const q = searchTerm.toLowerCase();
-      const matchName = item.candidate_name?.toLowerCase().includes(q);
-      const matchAddr = item.address_formatted?.toLowerCase().includes(q);
-      const matchJob = String(item.job_id).includes(q);
-      return Boolean(matchName || matchAddr || matchJob);
+  // One row per job: its pickup and drop-off always move together.
+  const jobGroups = useMemo(() => {
+    const byJob = new Map<number, { job_id: number; name?: string; stops: TransferStopItem[] }>();
+    stopsList.forEach(item => {
+      const group = byJob.get(item.job_id) ?? { job_id: item.job_id, name: item.candidate_name, stops: [] };
+      group.stops.push(item);
+      group.name = group.name || item.candidate_name;
+      byJob.set(item.job_id, group);
     });
-  }, [stopsList, filterType, searchTerm]);
+    return [...byJob.values()];
+  }, [stopsList]);
+
+  const filteredGroups = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return jobGroups;
+    return jobGroups.filter(group => String(group.job_id).includes(q)
+      || group.name?.toLowerCase().includes(q)
+      || group.stops.some(stop => stop.address_formatted?.toLowerCase().includes(q)));
+  }, [jobGroups, searchTerm]);
 
   // Toggle selection for a stop
   const toggleJobSelection = (jobId: number) => {
@@ -211,7 +194,7 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
     setScope("jobs");
     setSelectedJobIds((prev) => {
       const next = new Set(prev);
-      filteredStops.forEach((s) => next.add(s.job_id));
+      filteredGroups.forEach((group) => next.add(group.job_id));
       return next;
     });
   };
@@ -260,432 +243,147 @@ const TransferStopsModal: React.FC<TransferStopsModalProps> = ({
   const targetColor = targetRouteIndex !== null ? getRouteColor(targetRouteIndex) : "#3b82f6";
 
   const allFilteredSelected =
-    filteredStops.length > 0 && filteredStops.every((s) => selectedJobIds.has(s.job_id));
+    filteredGroups.length > 0 && filteredGroups.every((group) => effectiveJobIds.has(group.job_id));
 
   // Count total selected stops (including linked pickups and dropoffs)
   const selectedStopsCount = stopsList.filter((s) => effectiveJobIds.has(s.job_id)).length;
 
+  const targetName = targetRoute?.team_member_name || "the other driver";
+  const canMove = effectiveJobIds.size > 0 && targetRouteIndex !== null && targetRouteIndex !== activeSourceIndex;
+  const clock = (value?: string) => value && dayjs(value).isValid() ? dayjs(value).format("h:mm A") : "Time not set";
+
   return (
     <Modal
       open={open}
-      title={null}
-      footer={null}
-      closable={false}
-      width={780}
+      onCancel={isSubmitting ? undefined : onClose}
+      closable={!isSubmitting}
+      maskClosable={!isSubmitting}
+      width={760}
       centered
-      destroyOnClose
-      rootClassName="transfer-stops-modal"
-      className="transfer-stops-modal rounded-none"
-      styles={{
-        body: {
-          padding: 0,
-          borderRadius: 0,
-          overflow: "hidden",
-        },
-      }}
+      destroyOnHidden
+      rootClassName="lang"
+      title={<div>
+        <div className="text-[16px] font-medium text-[#12211A]">Move jobs to another driver</div>
+        <div className="mt-0.5 text-[12px] font-normal text-[#4A5750]">Each job&apos;s pickup and drop-off move together. Planned times stay as they are until the route is re-optimized.</div>
+      </div>}
+      styles={{ body: { maxHeight: "calc(100dvh - 260px)", overflowY: "auto" } }}
+      footer={<div className="flex flex-col gap-3 border-t border-[#E3E8E5] pt-3 text-left">
+        <label htmlFor="reoptimize-switch" className="flex cursor-pointer items-start gap-2.5">
+          <Switch size="small" checked={reoptimize} onChange={setReoptimize} id="reoptimize-switch" disabled={isSubmitting} className="mt-0.5" />
+          <span>
+            <span className="block text-[13px] text-[#12211A]">Re-optimize {targetRoute ? `${targetName}'s` : "the receiving"} route after the move</span>
+            <span className="block text-[12px] text-[#626E67]">{reoptimize ? "The new stop order and times are worked out for that route." : "The jobs keep their planned times; re-optimize later to fit them in."}</span>
+          </span>
+        </label>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="mr-auto text-[12px] text-[#4A5750] tabular-nums" aria-live="polite">
+            {effectiveJobIds.size > 0 ? `${effectiveJobIds.size} ${effectiveJobIds.size === 1 ? "job" : "jobs"} · ${selectedStopsCount} stops selected` : "No jobs selected"}
+          </span>
+          <Button onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+          <Button type="primary" onClick={handleConfirmTransfer} loading={isSubmitting} disabled={!canMove}>
+            {`${effectiveJobIds.size > 0 ? `Move ${effectiveJobIds.size} ${effectiveJobIds.size === 1 ? "job" : "jobs"}` : "Move jobs"}${targetRoute ? ` to ${targetName}` : ""}`}
+          </Button>
+        </div>
+      </div>}
     >
-      <style>{`
-        .transfer-stops-modal,
-        .transfer-stops-modal * {
-          border-radius: 0 !important;
-        }
-        .transfer-stops-modal .ant-modal-content,
-        .transfer-stops-modal .ant-modal-body,
-        .transfer-stops-modal .ant-select-selector,
-        .transfer-stops-modal .ant-select-dropdown,
-        .transfer-stops-modal .ant-input,
-        .transfer-stops-modal .ant-btn,
-        .transfer-stops-modal .ant-checkbox-inner,
-        .transfer-stops-modal .ant-switch,
-        .transfer-stops-modal .ant-switch-handle,
-        .transfer-stops-modal .ant-tag {
-          border-radius: 0 !important;
-        }
-        .transfer-stops-modal .ant-select-focused .ant-select-selector,
-        .transfer-stops-modal .ant-select:hover .ant-select-selector,
-        .transfer-stops-modal .ant-input:focus,
-        .transfer-stops-modal .ant-input:hover {
-          border-color: #003220 !important;
-        }
-        .transfer-stops-modal .ant-checkbox-checked .ant-checkbox-inner {
-          background-color: #003220 !important;
-          border-color: #003220 !important;
-        }
-        .transfer-stops-modal .ant-switch.ant-switch-checked {
-          background-color: #003220 !important;
-        }
-      `}</style>
-      <div className="flex flex-col max-h-[88dvh] bg-white rounded-none">
-        {/* Header - Syncnox Forest Green Branding */}
-        <div className="px-3 sm:px-6 py-4 bg-[#003220] text-white flex items-center justify-between gap-2 border-b border-emerald-950 rounded-none">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="w-10 h-10 rounded-none bg-emerald-900/60 border border-emerald-700/60 flex items-center justify-center text-emerald-300 shrink-0">
-              <SwapOutlined className="text-lg" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2 m-0">
-                Transfer Stops to Another Driver
-              </h2>
-              <p className="text-xs text-emerald-100/75 m-0 mt-0.5">
-                Move jobs or a complete leg. Planned times stay the same until re-optimization.
-              </p>
+      <div className="flex flex-col gap-4">
+        {/* From → To */}
+        <div className="grid grid-cols-1 items-stretch gap-2 md:grid-cols-[1fr_auto_1fr]">
+          <div className="min-w-0 border border-[#E3E8E5] bg-[#F8FAF9] px-3 py-2.5" style={{ boxShadow: `inset 3px 0 0 ${sourceColor}` }}>
+            <div className="text-[11px] uppercase tracking-wide text-[#626E67]">From</div>
+            <div className="mt-0.5 truncate text-[14px] font-medium text-[#12211A]">{sourceRoute?.team_member_name || "Driver name unavailable"}</div>
+            <Select aria-label="Trip to move jobs from" size="small" className="mt-1.5 w-full" value={activeSourceIndex}
+              disabled={isSubmitting} onChange={setSelectedSourceIndex} popupMatchSelectWidth={false}
+              options={routes.map((trip, index) => ({ trip, index })).filter(({ trip }) => trip.team_member_id === sourceRoute?.team_member_id)
+                .map(({ trip, index }) => ({ value: index, label: tripLabel(trip, { driver: false }) }))} />
+            <div className="mt-1 flex items-center gap-1.5 text-[12px] text-[#626E67]">
+              <span>{jobGroups.length} {jobGroups.length === 1 ? "job" : "jobs"}</span>
+              {sourceRoute?.vehicle_name && <><span aria-hidden="true">·</span><Car size={13} aria-hidden="true" /><span className="truncate">{sourceRoute.vehicle_name}</span></>}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="w-11 h-11 shrink-0 rounded-none bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors border-none cursor-pointer outline-none"
-            title="Close"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Driver Route Selector Panel */}
-        <div className="p-4 bg-slate-50 border-b border-slate-200 rounded-none">
-          <div className="grid grid-cols-1 md:grid-cols-11 gap-3 items-center">
-            {/* Source Driver Card */}
-            <div className="md:col-span-5 bg-white p-3 rounded-none border border-slate-200 flex items-center gap-3">
-              <div
-                className="w-2 h-10 rounded-none shrink-0"
-                style={{ backgroundColor: sourceColor }}
-              />
-              <div className="flex-1 min-w-0">
-                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                  Source Driver
-                </div>
-                <div className="text-sm font-bold text-slate-900 truncate">
-                  {sourceRoute?.team_member_name || "Driver name unavailable"}
-                </div>
-                <Select aria-label="Source trip" size="small" className="w-full mt-1" value={activeSourceIndex}
-                  disabled={isSubmitting} onChange={setSelectedSourceIndex}
-                  options={routes.map((trip, index) => ({ trip, index })).filter(({trip}) => trip.team_member_id === sourceRoute?.team_member_id)
-                    .map(({trip,index}) => ({ value: index, label: tripLabel(trip, { driver: false, vehicle: true }) }))} />
-                <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
-                  <span>{stopsList.length} stops</span>
-                  {sourceRoute?.vehicle_name && (
-                    <>
-                      <span>•</span>
-                      <span className="truncate flex items-center gap-1">
-                        <CarOutlined className="text-[10px]" /> {sourceRoute.vehicle_name}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Transfer Direction Arrow */}
-            <div className="md:col-span-1 flex justify-center text-slate-400">
-              <div className="w-8 h-8 rounded-none bg-white border border-slate-200 flex items-center justify-center shadow-xs">
-                <ArrowRightOutlined className="text-sm text-[#003220] font-bold" />
-              </div>
-            </div>
-
-            {/* Target Driver Card / Select */}
-            <div className="md:col-span-5 bg-white p-3 rounded-none border border-slate-200 flex items-center gap-3">
-              <div
-                className="w-2 h-10 rounded-none shrink-0"
-                style={{ backgroundColor: targetColor }}
-              />
-              <div className="flex-1 min-w-0">
-                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                  Destination Driver
-                </div>
-                <Select
-                  disabled={isSubmitting}
-                  value={targetRouteIndex}
-                  onChange={(val) => setTargetRouteIndex(val)}
-                  placeholder="Select destination driver..."
-                  className="w-full mt-0.5 rounded-none"
-                  size="small"
-                  style={{ borderRadius: 0 }}
-                  options={routes
-                    .map((r, idx) => ({
-                      value: idx,
-                      disabled: idx === sourceRouteIndex || r.team_member_id === sourceRoute?.team_member_id,
-                      label: (
-                        <div className="flex items-center justify-between text-xs py-0.5">
-                          <span className={`font-semibold ${idx === sourceRouteIndex ? "text-slate-400" : "text-slate-800"}`}>
-                            {tripLabel(r)}
-                            {idx === sourceRouteIndex && " (Source)"}
-                          </span>
-                          <span className="text-[10px] text-slate-400 ml-2">
-                            {r.stops?.filter((s: any) => s.job_id)?.length || 0} stops
-                          </span>
-                        </div>
-                      ),
-                    }))}
-                />
-              </div>
-            </div>
+          <span aria-hidden="true" className="self-center justify-self-center text-[18px] leading-none text-[#626E67]">→</span>
+          <div className="min-w-0 border border-[#E3E8E5] bg-[#F8FAF9] px-3 py-2.5" style={{ boxShadow: `inset 3px 0 0 ${targetRoute ? targetColor : "#C4CCC7"}` }}>
+            <div className="text-[11px] uppercase tracking-wide text-[#626E67]">To</div>
+            <div className={`mt-0.5 truncate text-[14px] font-medium ${targetRoute ? "text-[#12211A]" : "text-[#626E67]"}`}>{targetRoute ? targetName : "Choose a driver"}</div>
+            <Select aria-label="Driver and trip to move jobs to" disabled={isSubmitting} value={targetRouteIndex}
+              onChange={(val) => setTargetRouteIndex(val)} placeholder="Search a driver" className="mt-1.5 w-full" size="small"
+              labelRender={({ value }) => tripLabel(routes[Number(value)], { driver: false })}
+              showSearch optionFilterProp="search" popupMatchSelectWidth={false}
+              options={routes.map((r, idx) => ({
+                value: idx,
+                search: tripLabel(r, { vehicle: true }),
+                disabled: idx === sourceRouteIndex || r.team_member_id === sourceRoute?.team_member_id,
+                label: <span className="flex items-center justify-between gap-3">
+                  <span className="truncate">{tripLabel(r, { vehicle: true })}</span>
+                  <span className="shrink-0 text-[11px] text-[#626E67]">{new Set((r.stops || []).filter((stop: any) => stop.job_id).map((stop: any) => stop.job_id)).size} jobs</span>
+                </span>,
+              }))} />
+            {targetRoute && <div className="mt-1 flex items-center gap-1.5 text-[12px] text-[#626E67]">
+              <span>{new Set((targetRoute.stops || []).filter((stop: any) => stop.job_id).map((stop: any) => stop.job_id)).size} jobs now</span>
+              {targetRoute.vehicle_name && <><span aria-hidden="true">·</span><Car size={13} aria-hidden="true" /><span className="truncate">{targetRoute.vehicle_name}</span></>}
+            </div>}
           </div>
         </div>
 
-        <div className="px-5 py-3 border-b border-slate-200 flex flex-wrap items-center gap-3">
-          <div className="inline-flex border border-slate-300">
+        {/* What to move */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="radiogroup" aria-label="What to move" className="inline-flex border border-[#D5DCD8]">
             {(["jobs", "leg"] as const).map(value => (
-              <button key={value} type="button" onClick={() => setScope(value)} disabled={isSubmitting}
-                className={`px-3 py-1.5 text-xs border-none cursor-pointer ${scope === value ? "bg-[#003220] text-white" : "bg-white text-slate-700"}`}>
-                {value === "jobs" ? "Selected jobs" : "Complete leg"}
+              <button key={value} type="button" role="radio" aria-checked={scope === value} onClick={() => setScope(value)} disabled={isSubmitting}
+                className={`h-8 border-0 px-3 text-[12px] cursor-pointer ${scope === value ? "bg-[#003220] text-white" : "bg-white text-[#4A5750] hover:text-[#12211A]"}`}>
+                {value === "jobs" ? "Choose jobs" : "A whole direction"}
               </button>
             ))}
           </div>
-          {scope === "leg" && <Select value={transferLeg} onChange={setTransferLeg} size="small" disabled={isSubmitting}
+          {scope === "leg" && <Select value={transferLeg} onChange={setTransferLeg} size="small" disabled={isSubmitting} aria-label="Direction to move"
             options={(["GO", "RETURN"] as const).map(leg => ({ value: leg, label: `${leg === "GO" ? "Outbound trip" : "Return trip"} (${legJobIds(sourceRoute, jobs, leg).length} jobs)`,
               disabled: legJobIds(sourceRoute, jobs, leg).length === 0 }))} />}
-          <span className="text-xs text-slate-500">Pickup and drop-off always move together.</span>
-        </div>
-
-        {/* Search, Filter & Quick-action Toolbar */}
-        <div className="px-5 py-2.5 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 rounded-none">
-          <div className="flex items-center gap-2 flex-1 min-w-0 w-full sm:min-w-[240px]">
-            <Input
-              size="small"
-              placeholder="Search candidate, address, or Job ID..."
-              prefix={<SearchOutlined className="text-slate-400 text-xs" />}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              allowClear
-              className="rounded-none text-xs"
-              style={{ borderRadius: 0 }}
-            />
-            <div className="flex items-center rounded-none bg-slate-100 p-0.5 text-xs shrink-0 border border-slate-200">
-              <button
-                type="button"
-                onClick={() => setFilterType("all")}
-                className={`px-2.5 py-1 rounded-none text-[11px] font-medium border-none cursor-pointer transition-all ${
-                  filterType === "all"
-                    ? "bg-[#003220] text-white shadow-xs font-bold"
-                    : "bg-transparent text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                All ({stopsList.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterType("pickup")}
-                className={`px-2.5 py-1 rounded-none text-[11px] font-medium border-none cursor-pointer transition-all ${
-                  filterType === "pickup"
-                    ? "bg-[#003220] text-white shadow-xs font-bold"
-                    : "bg-transparent text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Pickups
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterType("dropoff")}
-                className={`px-2.5 py-1 rounded-none text-[11px] font-medium border-none cursor-pointer transition-all ${
-                  filterType === "dropoff"
-                    ? "bg-[#003220] text-white shadow-xs font-bold"
-                    : "bg-transparent text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Drop-offs
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <Button
-              size="small"
-              onClick={allFilteredSelected ? handleDeselectAll : handleSelectAllFiltered}
-              disabled={isSubmitting}
-              className="text-xs rounded-none border border-slate-300 hover:border-[#003220] hover:text-[#003220]"
-              style={{ borderRadius: 0 }}
-            >
-              {allFilteredSelected ? "Clear Selection" : "Select All Filtered"}
-            </Button>
-            {effectiveJobIds.size > 0 && (
-              <span className="m-0 text-xs font-semibold px-2 py-0.5 rounded-none bg-emerald-50 text-[#003220] border border-emerald-300">
-                {effectiveJobIds.size} jobs ({selectedStopsCount} stops) selected
-              </span>
-            )}
+          <div className="ml-auto flex min-w-[220px] flex-1 items-center gap-2 sm:flex-none">
+            <Input size="small" placeholder="Search name, address or job #" aria-label="Search jobs"
+              prefix={<SearchOutlined className="text-[#626E67]" />} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} allowClear />
+            <button type="button" onClick={allFilteredSelected ? handleDeselectAll : handleSelectAllFiltered} disabled={isSubmitting || !filteredGroups.length}
+              className="shrink-0 border-0 bg-transparent p-0 text-[12px] text-[#0B5D3B] cursor-pointer hover:underline disabled:cursor-not-allowed disabled:opacity-50">
+              {allFilteredSelected ? "Clear" : searchTerm ? "Select shown" : "Select all"}
+            </button>
           </div>
         </div>
 
-        {/* Stops List */}
-        <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2 min-h-[260px] max-h-[420px] custom-scrollbar bg-slate-50/50 rounded-none">
-          {filteredStops.length === 0 ? (
-            <div className="py-12 text-center text-slate-400">
-              <Users className="w-10 h-10 mx-auto text-slate-300 stroke-[1.5] mb-2" />
-              <div className="text-sm font-medium">No stops found</div>
-              <div className="text-xs text-slate-400 mt-1">
-                {searchTerm ? "Try adjusting your search query or filter" : "This route has no job stops"}
-              </div>
-            </div>
-          ) : (
-            filteredStops.map((item) => {
-              const isSelected = effectiveJobIds.has(item.job_id);
-              const isPickup = item.stop_type === "pickup";
-              const isDropoff = item.stop_type === "dropoff";
-
-              const arrTime = item.arrival_time ? dayjs(item.arrival_time) : null;
-              const formattedTime = arrTime && arrTime.isValid() ? arrTime.format("hh:mm A") : null;
-
-              return (
-                <div
-                  key={item.key}
-                  onClick={() => toggleJobSelection(item.job_id)}
-                  className={`group relative flex items-center gap-3 p-3 rounded-none border transition-all cursor-pointer select-none ${
-                    isSelected
-                      ? "bg-emerald-50/60 border-l-4 border-l-[#003220] border-t-emerald-300 border-r-emerald-300 border-b-emerald-300 shadow-xs"
-                      : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs"
-                  }`}
-                >
-                  {/* Checkbox */}
-                  <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={isSelected}
-                      onChange={() => toggleJobSelection(item.job_id)}
-                      style={{ borderRadius: 0 }}
-                    />
-                  </div>
-
-                  {/* Stop Index Badge */}
-                  <div
-                    className={`w-7 h-7 rounded-none flex items-center justify-center font-bold text-xs shrink-0 ${
-                      isSelected
-                        ? "bg-[#003220] text-white"
-                        : "bg-slate-100 text-slate-700 border border-slate-200 group-hover:bg-slate-200"
-                    }`}
-                  >
-                    {item.originalIndex + 1}
-                  </div>
-
-                  {/* Stop Type Pin (Square, zero border radius) */}
-                  <div className="shrink-0">
-                    {isPickup ? (
-                      <div
-                        className="w-6 h-6 rounded-none bg-emerald-50 border border-emerald-300 flex items-center justify-center text-emerald-700"
-                        title="Pickup"
-                      >
-                        <ArrowDown size={13} strokeWidth={2.5} />
-                      </div>
-                    ) : isDropoff ? (
-                      <div
-                        className="w-6 h-6 rounded-none bg-blue-50 border border-blue-300 flex items-center justify-center text-blue-700"
-                        title="Drop-off"
-                      >
-                        <ArrowUp size={13} strokeWidth={2.5} />
-                      </div>
-                    ) : (
-                      <div className="w-6 h-6 rounded-none bg-slate-100 border border-slate-300 flex items-center justify-center text-slate-700 text-[10px] font-bold">
-                        J
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Stop Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-xs text-slate-900 truncate flex items-center gap-1">
-                        <UserOutlined className="text-slate-400 text-[11px]" />
-                        {item.candidate_name || `Job #${item.job_id}`}
-                      </span>
-
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded-none m-0 border uppercase font-semibold ${
-                          isPickup
-                            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                            : isDropoff
-                            ? "bg-blue-50 text-blue-800 border-blue-200"
-                            : "bg-slate-100 text-slate-700 border-slate-200"
-                        }`}
-                      >
-                        {item.stop_type}
-                      </span>
-
-                      {item.is_new && (
-                        <span className="px-1.5 py-0.5 bg-[#003220] text-white text-[8px] font-black uppercase rounded-none flex items-center gap-0.5">
-                          <SparklesIcon size={7} /> NEW
-                        </span>
-                      )}
-
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        Job #{item.job_id}
-                      </span>
-                    </div>
-
-                    <div className="text-[11px] text-slate-500 truncate flex items-center gap-1 mt-0.5">
-                      <EnvironmentOutlined className="text-slate-400 shrink-0 text-[10px]" />
-                      <span className="truncate">{item.address_formatted}</span>
-                    </div>
-                  </div>
-
-                  {/* Arrival ETA */}
-                  {formattedTime && (
-                    <div className="text-right shrink-0">
-                      <div className="text-[10px] text-slate-400 font-medium">ETA</div>
-                      <div className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                        <ClockCircleOutlined className="text-[10px] text-slate-400" />
-                        {formattedTime}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 rounded-none">
-          <div className="flex items-center gap-2">
-            <Switch
-              size="small"
-              checked={reoptimize}
-              onChange={setReoptimize}
-              id="reoptimize-switch"
-              style={{ borderRadius: 0 }}
-              className="rounded-none"
-            />
-            <label
-              htmlFor="reoptimize-switch"
-              className="text-xs text-slate-700 cursor-pointer select-none font-medium"
-            >
-              Re-optimize target route after transfer
-            </label>
-          </div>
-
-          <div className="flex flex-wrap min-w-0 max-w-full items-center gap-2">
-            <Button
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="rounded-none border-slate-300 text-slate-700 hover:border-[#003220] hover:text-[#003220]"
-              style={{ borderRadius: 0 }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="primary"
-              onClick={handleConfirmTransfer}
-              loading={isSubmitting}
-              disabled={
-                effectiveJobIds.size === 0 ||
-                targetRouteIndex === null ||
-                targetRouteIndex === activeSourceIndex
-              }
-              style={{
-                backgroundColor:
-                  effectiveJobIds.size > 0 && targetRouteIndex !== null && targetRouteIndex !== activeSourceIndex
-                    ? "#003220"
-                    : undefined,
-                borderColor:
-                  effectiveJobIds.size > 0 && targetRouteIndex !== null && targetRouteIndex !== activeSourceIndex
-                    ? "#003220"
-                    : undefined,
-                borderRadius: 0,
-              }}
-              className="rounded-none font-semibold text-xs shadow-none"
-              icon={<SwapOutlined />}
-            >
-              Transfer {effectiveJobIds.size > 0 ? `${effectiveJobIds.size} Job(s)` : "Stops"}
-              {targetRoute && <span className="hidden sm:inline">{` to ${targetRoute.team_member_name || "selected driver"}`}</span>}
-            </Button>
-          </div>
-        </div>
+        {/* Jobs */}
+        <ul className="m-0 list-none border border-[#E3E8E5] p-0" aria-label="Jobs on this trip">
+          {filteredGroups.length === 0 ? (
+            <li className="py-10 text-center text-[#626E67]">
+              <Users className="mx-auto mb-2 h-8 w-8" aria-hidden="true" />
+              <div className="text-[13px]">{searchTerm ? "No job matches this search." : "This trip has no jobs."}</div>
+            </li>
+          ) : filteredGroups.map(group => {
+            const isSelected = effectiveJobIds.has(group.job_id);
+            const ordered = [...group.stops].sort((a, b) => a.originalIndex - b.originalIndex);
+            return <li key={group.job_id} className="border-b border-[#E3E8E5] last:border-b-0">
+              <label className={`flex cursor-pointer items-start gap-3 px-3 py-2.5 ${isSelected ? "bg-[#F1F8F4] shadow-[inset_3px_0_0_#003220]" : "bg-white hover:bg-[#F8FAF9]"}`}>
+                <Checkbox checked={isSelected} onChange={() => toggleJobSelection(group.job_id)} className="mt-0.5" disabled={isSubmitting} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="truncate text-[13px] font-medium text-[#12211A]">{group.name || `Job #${group.job_id}`}</span>
+                    <span className="text-[12px] text-[#626E67] tabular-nums">Job #{group.job_id}</span>
+                    {group.stops.some(stop => stop.is_new) && <span className="text-[11px] text-[#0B5D3B]">New</span>}
+                    {group.stops.some(stop => stop.time_edited) && <span className="inline-flex items-center gap-1 text-[11px] text-[#4A5750]"><EditedMark size={11} />Edited</span>}
+                  </span>
+                  <span className="mt-1 grid gap-1">
+                    {ordered.map(stop => {
+                      const pickup = stop.stop_type === "pickup" || stop.stop_type === "pick_up";
+                      return <span key={stop.key} className="grid grid-cols-[16px_128px_1fr] items-center gap-2 text-[12px]">
+                        <span aria-hidden="true" className="inline-flex h-4 w-4 items-center justify-center"><span className="inline-flex scale-[0.45]">
+                          <StopArrowSvg isPickup={pickup} displayIndex="" fill="#fff" stroke="#0B5D3B" textColor="#0B5D3B" /></span></span>
+                        <span className="tabular-nums"><span className="text-[#626E67]">{pickup ? "Pickup" : "Drop-off"}</span> <span className="text-[#12211A]">{clock(stop.arrival_time)}</span></span>
+                        <span className="truncate text-[#4A5750]" title={stop.address_formatted}>{stop.address_formatted}</span>
+                      </span>;
+                    })}
+                  </span>
+                </span>
+              </label>
+            </li>;
+          })}
+        </ul>
       </div>
     </Modal>
   );

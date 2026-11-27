@@ -3,9 +3,19 @@ import { Vehicle } from "@/types/vehicle.type";
 import { Depot } from "@/types/depots.type";
 import { LocationMapping } from "@/apis/location-mapping.api";
 
+/**
+ * A cell that starts with =, +, -, @, tab or carriage return is run as a formula when the file is opened in
+ * Excel or Google Sheets (OWASP "CSV injection"). Names and notes come from uploaded sheets, so such a cell
+ * gets a leading apostrophe and is shown as text. Phone numbers and signed numbers ("+1 514…", "-12.5") are
+ * left as they are, so exported files still import cleanly.
+ */
+const FORMULA_START = /^[=+\-@\t\r\uFF1D\uFF0B\uFF0D\uFF20]/;
+const PLAIN_NUMBER = /^[+-]?[\d\s().-]+$/;
+
 export function csvEscape(val: any): string {
   if (val === null || val === undefined) return "";
-  const str = String(val);
+  let str = String(val);
+  if (FORMULA_START.test(str) && !PLAIN_NUMBER.test(str)) str = `'${str}`;
   if (/[",\n\r]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
   }

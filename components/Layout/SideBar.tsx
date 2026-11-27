@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { Avatar, Modal, Popover, Tooltip } from "antd";
@@ -12,9 +12,9 @@ import {
   EnvironmentOutlined,
   UserOutlined,
   SettingOutlined,
-  DownOutlined,
 } from "@ant-design/icons";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
+import { SidebarSimple, SignOut } from "@phosphor-icons/react/ssr";
 import { TabKey, useIndexStore } from "@/store/index.store";
 import { useOnboardingStore } from "@/store/onboarding.store";
 import { useTeamStore } from "@/store/team.store";
@@ -22,6 +22,7 @@ import { useVehicleStore } from "@/store/vehicle.store";
 import { useDepotStore } from "@/store/depots.store";
 import { signOut } from "next-auth/react";
 import { MENU_ITEMS } from "./sidebar.constants";
+import { SETTINGS_GROUPS, isSettingsPath } from "@/config/settings.config";
 
 const getInitials = (name: string) => {
   if (!name) return "";
@@ -95,6 +96,11 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
 
   const [showStatsInPopover, setShowStatsInPopover] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Settings takes over the sidebar, as in Jira: the same width shows the settings list with a way back.
+  const [settingsLayer, setSettingsLayer] = useState(() => isSettingsPath(pathname));
+  useEffect(() => {
+    setSettingsLayer(isSettingsPath(pathname));
+  }, [pathname]);
   const [collapsedSettingsOpen, setCollapsedSettingsOpen] = useState(false);
 
   const handleToggleSidebar = useCallback(() => {
@@ -111,14 +117,14 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
       <div className="flex flex-col items-center pt-1">
         <Avatar
           size={52}
-          style={{ backgroundColor: "#003220", color: "#ffffff" }}
-          className="font-bold text-sm shadow-md border-2 border-white flex items-center justify-center rounded-none"
+          shape="square" style={{ backgroundColor: "#F3F6F4", color: "#12211A", borderRadius: 0 }}
+          className="font-medium text-sm flex items-center justify-center"
           icon={!hasCompanyName ? <UserOutlined /> : undefined}
         >
           {hasCompanyName ? initials : null}
         </Avatar>
         <h3
-          className="text-sm font-bold text-gray-900 leading-tight mb-0.5 text-center truncate max-w-full px-2 mt-2"
+          className="text-sm font-medium text-[#12211A] leading-tight mb-0.5 text-center truncate max-w-full px-2 mt-2"
           title={businessName}
         >
           {businessName}
@@ -135,11 +141,11 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
       </div>
 
       {/* Settings Action Button */}
-      <div className="pt-2 border-t border-gray-200">
+      <div className="pt-2 border-t border-[#E3E8E5]">
         <button
           type="button"
           onClick={() => setShowStatsInPopover((prev) => !prev)}
-          className="w-full flex items-center justify-between text-xs px-3 py-2 bg-gray-50 rounded border border-gray-200 hover:bg-emerald-50 hover:border-emerald-300 transition-all cursor-pointer font-semibold text-gray-700 hover:text-[#003220]"
+          className="w-full flex items-center justify-between text-[13px] px-2.5 h-9 bg-transparent border-0 hover:bg-[#F3F6F4] transition-colors cursor-pointer font-medium text-[#12211A]"
         >
           <div className="flex items-center gap-2">
             <SettingOutlined className="text-sm text-center text-gray-500" />
@@ -160,15 +166,15 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
               handleNavigation("/team", "team");
               router.push("/team");
             }}
-            className="w-full flex items-center justify-between text-xs px-2.5 py-2 bg-white rounded-none border border-gray-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all cursor-pointer text-left group"
+            className="w-full flex items-center justify-between text-[13px] px-2.5 h-9 bg-transparent border-0 hover:bg-[#F3F6F4] transition-colors cursor-pointer text-left group"
           >
-            <div className="flex items-center gap-2 text-gray-700 group-hover:text-[#003220] font-medium">
-              <div className="w-5 h-5 rounded-none bg-emerald-100/80 group-hover:bg-[#003220] group-hover:text-white flex items-center justify-center text-[#003220] text-xs shrink-0 transition-colors">
+            <div className="flex items-center gap-2.5 text-[#12211A]">
+              <div className="flex items-center justify-center text-[#4A5750] text-base shrink-0">
                 <TeamOutlined />
               </div>
               <span>Team Members</span>
             </div>
-            <span className="bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-[#003220] border border-emerald-200 rounded-none">
+            <span className="text-[13px] font-medium tabular-nums text-[#12211A]">
               {teams.length}
             </span>
           </button>
@@ -179,15 +185,15 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
               handleNavigation("/vehicle", "vehicle");
               router.push("/vehicle");
             }}
-            className="w-full flex items-center justify-between text-xs px-2.5 py-2 bg-white rounded-none border border-gray-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all cursor-pointer text-left group"
+            className="w-full flex items-center justify-between text-[13px] px-2.5 h-9 bg-transparent border-0 hover:bg-[#F3F6F4] transition-colors cursor-pointer text-left group"
           >
-            <div className="flex items-center gap-2 text-gray-700 group-hover:text-[#003220] font-medium">
-              <div className="w-5 h-5 rounded-none bg-emerald-100/80 group-hover:bg-[#003220] group-hover:text-white flex items-center justify-center text-[#003220] text-xs shrink-0 transition-colors">
+            <div className="flex items-center gap-2.5 text-[#12211A]">
+              <div className="flex items-center justify-center text-[#4A5750] text-base shrink-0">
                 <CarOutlined />
               </div>
               <span>Vehicles</span>
             </div>
-            <span className="bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-[#003220] border border-emerald-200 rounded-none">
+            <span className="text-[13px] font-medium tabular-nums text-[#12211A]">
               {vehicles.length}
             </span>
           </button>
@@ -198,15 +204,15 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
               handleNavigation("/locations", "location");
               router.push("/locations");
             }}
-            className="w-full flex items-center justify-between text-xs px-2.5 py-2 bg-white rounded-none border border-gray-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all cursor-pointer text-left group"
+            className="w-full flex items-center justify-between text-[13px] px-2.5 h-9 bg-transparent border-0 hover:bg-[#F3F6F4] transition-colors cursor-pointer text-left group"
           >
-            <div className="flex items-center gap-2 text-gray-700 group-hover:text-[#003220] font-medium">
-              <div className="w-5 h-5 rounded-none bg-emerald-100/80 group-hover:bg-[#003220] group-hover:text-white flex items-center justify-center text-[#003220] text-xs shrink-0 transition-colors">
+            <div className="flex items-center gap-2.5 text-[#12211A]">
+              <div className="flex items-center justify-center text-[#4A5750] text-base shrink-0">
                 <EnvironmentOutlined />
               </div>
               <span>Locations</span>
             </div>
-            <span className="bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-[#003220] border border-emerald-200 rounded-none">
+            <span className="text-[13px] font-medium tabular-nums text-[#12211A]">
               {depots.length}
             </span>
           </button>
@@ -218,19 +224,19 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
   const getMenuItemClasses = (path: string, hasActiveSub = false) => {
     const active = isActive(path);
     if (active) {
-      return "w-full flex items-center py-2 px-3 rounded-none transition-all duration-200 cursor-pointer bg-primary text-white";
+      return "w-full flex items-center h-9 px-4 border-0 transition-colors cursor-pointer bg-white text-[#12211A] font-medium shadow-[inset_2px_0_0_#0B5D3B]";
     }
     if (hasActiveSub) {
-      return "w-full flex items-center py-2 px-3 rounded-none transition-all duration-200 cursor-pointer bg-gray-100 text-gray-700 font-medium";
+      return "w-full flex items-center h-9 px-4 border-0 bg-transparent transition-colors cursor-pointer text-[#12211A] font-medium";
     }
-    return "w-full flex items-center py-2 px-3 rounded-none transition-all duration-200 cursor-pointer hover:bg-emerald-50 text-gray-700";
+    return "w-full flex items-center h-9 px-4 border-0 bg-transparent transition-colors cursor-pointer text-[#4A5750] hover:bg-[#E9EEEB] hover:text-[#12211A]";
   };
 
   return (
     <aside
       aria-label={mobile ? "Mobile navigation" : "Sidebar"}
-      className={`relative z-20 bg-white flex flex-col border-r shrink-0 transition-[width] duration-200 ease-in-out ${
-        mobile ? "h-full w-full [&_nav_button]:min-h-11 [&_nav_a>div]:min-h-11 [&_footer_button]:min-h-11" : `h-dvh ${sidebarCollapsed ? "w-14" : "w-48"}`
+      className={`relative z-20 bg-[#F3F6F4] flex flex-col shrink-0 transition-[width] duration-200 ease-in-out ${
+        mobile ? "h-full w-full [&_nav_button]:min-h-11 [&_nav_a>div]:min-h-11 [&_footer_button]:min-h-11" : `h-dvh ${sidebarCollapsed ? "w-14" : "w-52"}`
       }`}
     >
       {!mobile && (
@@ -240,33 +246,34 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
             onClick={handleToggleSidebar}
             aria-label={sidebarCollapsed ? "Open sidebar" : "Close sidebar"}
             aria-expanded={!sidebarCollapsed}
-            className="absolute -right-3 top-4 z-30 flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-emerald-50 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-colors cursor-pointer"
+            className={`absolute z-30 flex h-7 w-7 items-center justify-center border-0 bg-transparent text-[#626E67] hover:bg-[#E3E8E5] hover:text-[#12211A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B5D3B] transition-colors cursor-pointer ${sidebarCollapsed ? "left-1/2 top-[54px] -translate-x-1/2" : "right-2 top-[14px]"}`}
           >
-            {sidebarCollapsed ? <ChevronRight size={14} strokeWidth={2} /> : <ChevronLeft size={14} strokeWidth={2} />}
+            <SidebarSimple size={18} weight="light" aria-hidden="true" />
           </button>
         </Tooltip>
       )}
 
       {/* Logo Section */}
       {!mobile && (sidebarCollapsed ? (
-        <div className="h-14 px-2 mb-2 flex items-center justify-center shrink-0">
+        <div className="h-14 px-2 mb-10 flex items-center justify-center shrink-0">
           <Link
             href="/dashboard"
             onClick={() => handleNavigation("/dashboard", "dashboard")}
             aria-label="Syncnox dashboard"
-            className="w-10 h-10 flex items-center justify-center hover:bg-emerald-50 transition-colors focus-visible:outline-2 focus-visible:outline-primary"
+            className="w-10 h-10 flex items-center justify-center hover:bg-[#E9EEEB] transition-colors focus-visible:outline-2 focus-visible:outline-primary"
           >
             <Image
               src="/logo.svg"
               alt="SYNCNOX"
               width={22}
               height={22}
+              className="mix-blend-multiply"
               priority
             />
           </Link>
         </div>
       ) : (
-        <div className="h-14 px-3 mb-2 flex items-center justify-between shrink-0">
+        <div className="h-14 pl-4 pr-10 mb-2 flex items-center justify-between shrink-0">
           <Link
             href="/dashboard"
             onClick={() => handleNavigation("/dashboard", "dashboard")}
@@ -278,7 +285,7 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
                 alt="SYNCNOX"
                 width={116}
                 height={32}
-                className="h-7 w-auto object-contain"
+                className="h-7 w-auto object-contain mix-blend-multiply"
                 priority
               />
             </div>
@@ -289,14 +296,52 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
       {/* Main Menu Items */}
       <nav
         className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
-          mobile ? "px-2 pt-3" : sidebarCollapsed ? "px-1.5" : "px-2"
+          mobile ? "pt-3" : ""
         }`}
         style={{
           scrollbarWidth: "thin",
           scrollbarColor: "#E5E7EB transparent",
         }}
       >
-        {MENU_ITEMS.map((item) => {
+        {!sidebarCollapsed && settingsLayer ? (
+          <div>
+            <button
+              type="button"
+              onClick={() => setSettingsLayer(false)}
+              className={`flex w-full cursor-pointer items-center gap-2.5 border-0 bg-transparent px-4 text-sm transition-colors text-[#4A5750] hover:bg-[#E9EEEB] hover:text-[#12211A] ${mobile ? "min-h-11" : "h-9"}`}
+            >
+              <ArrowLeft size={16} aria-hidden="true" />
+              Back
+            </button>
+            <p className="m-0 px-4 pb-1 pt-3 text-[17px] font-medium tracking-[-0.015em] text-[#12211A]">Settings</p>
+            {SETTINGS_GROUPS.map((group) => (
+              <div key={group.key} className="pt-3">
+                <p className="m-0 px-4 pb-1.5 text-[11px] font-medium uppercase tracking-[0.09em] text-[#626E67]">{group.shortLabel}</p>
+                {group.items.map((entry) => {
+                  const on = pathname === entry.path || pathname.startsWith(`${entry.path}/`);
+                  const EntryIcon = entry.icon;
+                  return (
+                    <Link
+                      key={entry.key}
+                      href={entry.path}
+                      aria-current={on ? "page" : undefined}
+                      onClick={() => handleNavigation(entry.path, entry.tabKey)}
+                    >
+                      <div
+                        className={`mb-0.5 flex items-center gap-2.5 px-4 text-sm transition-colors ${mobile ? "min-h-11" : "h-8"} ${
+                          on ? "bg-white text-[#12211A] font-medium shadow-[inset_2px_0_0_#0B5D3B]" : "text-[#4A5750] hover:bg-[#E9EEEB] hover:text-[#12211A]"
+                        }`}
+                      >
+                        <EntryIcon size={17} strokeWidth={1.75} className="shrink-0" />
+                        <span className="truncate">{entry.label}</span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        ) : MENU_ITEMS.map((item) => {
           const hasSubItems = item.subItems && item.subItems.length > 0;
           const activeSub = hasActiveSubItem(item.subItems);
           const active = isActive(item.path) || activeSub;
@@ -304,7 +349,7 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
 
           if (sidebarCollapsed) {
             return (
-              <div key={item.path} className="mb-1 flex justify-center">
+              <div key={item.path} className="mb-0.5 flex justify-center [&>a]:block [&>a]:w-full [&>span]:block [&>span]:w-full">
                 {hasSubItems ? (
                   <Popover
                     placement="rightTop"
@@ -341,13 +386,13 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
                               <div
                                 className={`flex items-center py-1.5 px-2.5 text-xs rounded-none cursor-pointer transition-colors ${
                                   subActive
-                                    ? "bg-primary text-white font-medium"
-                                    : "hover:bg-emerald-50 text-gray-700"
+                                    ? "bg-white text-[#12211A] font-medium shadow-[inset_2px_0_0_#0B5D3B]"
+                                    : "text-[#4A5750] hover:bg-[#E9EEEB] hover:text-[#12211A]"
                                 }`}
                               >
                                 <SubIcon
                                   className={`mr-2 text-xs shrink-0 ${
-                                    subActive ? "text-white" : "text-gray-500"
+                                    subActive ? "text-[#12211A]" : "text-[#626E67]"
                                   }`}
                                 />
                                 <span className="truncate">{subItem.label}</span>
@@ -364,15 +409,15 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
                       aria-expanded={
                         item.label === "Settings" ? collapsedSettingsOpen : undefined
                       }
-                      className={`w-10 h-10 flex items-center justify-center rounded-none transition-all duration-200 cursor-pointer ${
+                      className={`w-full h-10 flex items-center justify-center border-0 transition-colors cursor-pointer ${
                         activeSub
-                          ? "bg-gray-100 text-primary font-medium"
-                          : "text-gray-700 hover:bg-emerald-50 hover:text-primary"
+                          ? "bg-white text-[#12211A] shadow-[inset_2px_0_0_#0B5D3B]"
+                          : "bg-transparent text-[#4A5750] hover:bg-[#E9EEEB] hover:text-[#12211A]"
                       }`}
                     >
                       <Icon
                         className={`text-base ${
-                          active ? "text-primary" : "text-gray-700"
+                          active ? "text-[#12211A]" : "text-[#4A5750]"
                         }`}
                       />
                     </button>
@@ -390,15 +435,15 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
                       <button
                         type="button"
                         aria-label={item.label}
-                        className={`w-10 h-10 flex items-center justify-center rounded-none transition-all duration-200 cursor-pointer ${
+                        className={`w-full h-10 flex items-center justify-center border-0 transition-colors cursor-pointer ${
                           active
-                            ? "bg-primary text-white"
-                            : "text-gray-700 hover:bg-emerald-50 hover:text-primary"
+                            ? "bg-white text-[#12211A] shadow-[inset_2px_0_0_#0B5D3B]"
+                            : "bg-transparent text-[#4A5750] hover:bg-[#E9EEEB] hover:text-[#12211A]"
                         }`}
                       >
                         <Icon
                           className={`text-base ${
-                            active ? "text-white" : "text-gray-700"
+                            active ? "text-[#12211A]" : "text-[#4A5750]"
                           }`}
                         />
                       </button>
@@ -410,7 +455,7 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
           }
 
           return (
-            <div key={item.path} className="mb-1">
+            <div key={item.path} className="mb-0.5">
               {hasSubItems ? (
                 item.label === "Settings" ? (
                   <>
@@ -418,24 +463,19 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
                       type="button"
                       aria-expanded={settingsOpen}
                       className={getMenuItemClasses(item.path, activeSub)}
-                      onClick={() => setSettingsOpen(!settingsOpen)}
+                      onClick={() => setSettingsLayer(true)}
                     >
                       <div className="w-5 h-5 flex items-center justify-center shrink-0">
                         <Icon
                           className={`text-base ${
-                            active ? "text-primary" : "text-gray-700"
+                            active ? "text-[#12211A]" : "text-[#4A5750]"
                           }`}
                         />
                       </div>
-                      <span className="ml-2.5 text-sm font-medium whitespace-nowrap overflow-hidden">
+                      <span className="ml-2.5 text-sm whitespace-nowrap overflow-hidden">
                         {item.label}
                       </span>
-                      <DownOutlined
-                        className={`ml-auto transition-transform ${
-                          settingsOpen ? "rotate-180" : ""
-                        }`}
-                        style={{ fontSize: 12 }}
-                      />
+                      <ChevronRight size={14} className="ml-auto text-[#626E67]" aria-hidden="true" />
                     </button>
                     {settingsOpen && (
                       <div className="mt-1 mb-1 space-y-0.5">
@@ -453,13 +493,13 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
                               <div
                                 className={`flex items-center py-1.5 pl-8 pr-2.5 text-xs rounded-none cursor-pointer transition-colors ${
                                   subActive
-                                    ? "bg-primary text-white font-medium"
-                                    : "hover:bg-emerald-50 text-gray-600"
+                                    ? "bg-white text-[#12211A] font-medium shadow-[inset_2px_0_0_#0B5D3B]"
+                                    : "text-[#4A5750] hover:bg-[#E9EEEB] hover:text-[#12211A]"
                                 }`}
                               >
                                 <SubIcon
                                   className={`mr-2 text-xs shrink-0 ${
-                                    subActive ? "text-white" : "text-gray-500"
+                                    subActive ? "text-[#12211A]" : "text-[#626E67]"
                                   }`}
                                 />
                                 <span className="truncate">{subItem.label}</span>
@@ -476,11 +516,11 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
                       <div className="w-5 h-5 flex items-center justify-center shrink-0">
                         <Icon
                           className={`text-base ${
-                            active ? "text-primary" : "text-gray-700"
+                            active ? "text-[#12211A]" : "text-[#4A5750]"
                           }`}
                         />
                       </div>
-                      <span className="ml-2.5 text-sm font-medium whitespace-nowrap overflow-hidden">
+                      <span className="ml-2.5 text-sm whitespace-nowrap overflow-hidden">
                         {item.label}
                       </span>
                     </div>
@@ -501,13 +541,13 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
                             <div
                               className={`flex items-center py-1.5 pl-8 pr-2.5 text-xs rounded-none cursor-pointer transition-colors ${
                                 subActive
-                                  ? "bg-primary text-white font-medium"
-                                  : "hover:bg-emerald-50 text-gray-600"
+                                  ? "bg-white text-[#12211A] font-medium shadow-[inset_2px_0_0_#0B5D3B]"
+                                  : "text-[#4A5750] hover:bg-[#E9EEEB] hover:text-[#12211A]"
                               }`}
                             >
                               <SubIcon
                                 className={`mr-2 text-xs shrink-0 ${
-                                  subActive ? "text-white" : "text-gray-500"
+                                  subActive ? "text-[#12211A]" : "text-[#626E67]"
                                 }`}
                               />
                               <span className="truncate">{subItem.label}</span>
@@ -528,7 +568,7 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
                     <div className="w-5 h-5 flex items-center justify-center shrink-0">
                       <Icon
                         className={`text-base ${
-                          active ? "text-white" : "text-gray-700"
+                          active ? "text-[#12211A]" : "text-[#4A5750]"
                         }`}
                       />
                     </div>
@@ -549,8 +589,8 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
 
       {/* Bottom Section - User Profile & Logout */}
       <footer
-        className={`shrink-0 border-t pt-2.5 pb-3 flex flex-col gap-1 ${
-          sidebarCollapsed ? "px-1.5 items-center" : "px-2"
+        className={`shrink-0 pt-2 pb-3 flex flex-col gap-0.5 ${
+          sidebarCollapsed ? "items-center" : ""
         }`}
       >
         {/* User Profile */}
@@ -562,8 +602,8 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
           arrow={false}
           styles={{
             container: sidebarCollapsed
-              ? { padding: 2, borderRadius: 10 }
-              : { padding: 2, borderRadius: 10, marginLeft: 30 },
+              ? { padding: 2, borderRadius: 0 }
+              : { padding: 2, borderRadius: 0, marginLeft: 30 },
           }}
         >
           {sidebarCollapsed ? (
@@ -572,11 +612,11 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
               placement="right"
               mouseEnterDelay={0.15}
             >
-              <div className="w-10 h-10 flex items-center justify-center cursor-pointer rounded hover:bg-emerald-50 transition-colors">
+              <div className="w-14 h-10 flex items-center justify-center cursor-pointer hover:bg-[#E9EEEB] transition-colors">
                 <Avatar
-                  size={34}
-                  style={{ backgroundColor: "#003220", color: "#ffffff" }}
-                  className="font-bold text-xs shrink-0 shadow-sm flex items-center justify-center"
+                  size={30}
+                  shape="square" style={{ backgroundColor: "#ffffff", color: "#12211A", borderRadius: 0 }}
+                  className="font-medium text-xs shrink-0 flex items-center justify-center"
                   icon={!hasCompanyName ? <UserOutlined /> : undefined}
                 >
                   {hasCompanyName ? initials : null}
@@ -584,18 +624,18 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
               </div>
             </Tooltip>
           ) : (
-            <div className="flex items-center px-1 py-1.5 cursor-pointer rounded hover:bg-emerald-50 transition-colors group">
+            <div className="flex items-center px-4 h-11 cursor-pointer hover:bg-[#E9EEEB] transition-colors group">
               <Avatar
-                size={34}
-                style={{ backgroundColor: "#003220", color: "#ffffff" }}
-                className="font-bold text-xs shrink-0 shadow-sm flex items-center justify-center"
+                size={30}
+                shape="square" style={{ backgroundColor: "#ffffff", color: "#12211A", borderRadius: 0 }}
+                className="font-medium text-xs shrink-0 flex items-center justify-center"
                 icon={!hasCompanyName ? <UserOutlined /> : undefined}
               >
                 {hasCompanyName ? initials : null}
               </Avatar>
-              <div className="ml-2 overflow-hidden truncate">
+              <div className="ml-2.5 overflow-hidden truncate">
                 <p
-                  className="text-xs font-semibold text-gray-800 truncate group-hover:text-primary transition-colors"
+                  className="m-0 text-[13px] font-medium text-[#12211A] truncate"
                   title={businessName}
                 >
                   {businessName}
@@ -612,28 +652,18 @@ const SideBar = ({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?
               type="button"
               onClick={handleLogout}
               aria-label="Log out"
-              className="w-10 h-9 flex items-center justify-center rounded-none text-red-600 hover:bg-red-50 transition-all duration-200 cursor-pointer"
+              className="w-full h-9 flex items-center justify-center border-0 bg-transparent transition-colors cursor-pointer text-[#4A5750] hover:bg-[#E9EEEB] hover:text-[#12211A]"
             >
-              <Image
-                src="/logout.svg"
-                alt="Logout"
-                width={16}
-                height={16}
-              />
+              <SignOut size={18} weight="light" aria-hidden="true" />
             </button>
           </Tooltip>
         ) : (
           <button
             type="button"
             onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-none text-red-600 hover:bg-red-50 transition-all duration-200 cursor-pointer text-xs font-semibold"
+            className="w-full flex items-center gap-2.5 px-4 h-9 border-0 bg-transparent transition-colors cursor-pointer text-sm text-[#4A5750] hover:bg-[#E9EEEB] hover:text-[#12211A]"
           >
-            <Image
-              src="/logout.svg"
-              alt="Logout"
-              width={16}
-              height={16}
-            />
+            <SignOut size={18} weight="light" aria-hidden="true" />
             <span>Log out</span>
           </button>
         )}

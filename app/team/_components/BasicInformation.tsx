@@ -4,14 +4,10 @@ import {
   Input,
   Select,
   TimePicker,
-  Row,
-  Col,
   Checkbox,
   Switch,
   Button,
-  Typography,
-  Space,
-  Flex,
+  Radio,
 } from "antd";
 import { FormInstance } from "antd/es/form";
 import { CopyOutlined } from "@ant-design/icons";
@@ -28,8 +24,17 @@ import AddressAutocomplete, {
 } from "@/components/AddressAutocomplete";
 import { CustomFieldDefinition, getCustomFields } from "@/apis/custom-fields.api";
 import { DynamicCustomFieldsForm } from "@/components/DynamicCustomFieldsForm";
+import FormSection from "@/components/Settings/FormSection";
+import { BriefcaseBusiness, Clock, Gauge, Hash, Mail, MapPinned, Phone, ShieldCheck, UserRound } from "lucide-react";
+import { SteeringWheel } from "@phosphor-icons/react/ssr";
 
-const { Text } = Typography;
+// Roles as choice buttons, each with a symbol people already associate with it
+const ROLE_ICONS: Record<string, React.ComponentType<{ size?: number }>> = { admin: ShieldCheck, driver: (props) => <SteeringWheel weight="light" {...props} />, manager: BriefcaseBusiness };
+const ROLE_CHOICES = ROLE_TYPE_OPTIONS.map((option) => {
+  const Icon = ROLE_ICONS[option.value];
+  return { value: option.value, label: <span className="inline-flex items-center gap-1.5">{Icon && <Icon size={15} />}{option.label}</span> };
+});
+
 
 const DAYS = [
   { key: "monday", label: "Monday" },
@@ -103,187 +108,93 @@ const BasicInformation = ({
     form.submit();
   };
 
+  // Where a driver's day starts or ends: one of the depots, or an address of their own
+  const endpoint = (which: "start" | "end") => {
+    const sameAsDepot = which === "start" ? startLocationSameAsDepot : endLocationSameAsDepot;
+    const setSameAsDepot = which === "start" ? onStartLocationSameAsDepotChange : onEndLocationSameAsDepotChange;
+    const depotId = which === "start" ? startDepotId : endDepotId;
+    const setDepotId = which === "start" ? setStartDepotId : setEndDepotId;
+    const address = which === "start" ? startAddress : endAddress;
+    return (
+      <Form.Item label={which === "start" ? "Start location" : "End location"}>
+        <Radio.Group
+          aria-label={`${which === "start" ? "Start" : "End"} location type`}
+          className="!mb-2"
+          value={sameAsDepot ? "depot" : "address"}
+          onChange={(event) => setSameAsDepot(event.target.value === "depot")}
+          options={[
+            { value: "depot", label: "A depot" },
+            { value: "address", label: "Another address" },
+          ]}
+        />
+        {sameAsDepot ? (
+          <Select
+            placeholder="Select depot"
+            options={depotOptions}
+            value={depotId}
+            onChange={(value) => setDepotId?.(value)}
+            disabled={!setDepotId}
+            getPopupContainer={() => document.body}
+          />
+        ) : (
+          <Form.Item name={`${which}_address`} noStyle>
+            <AddressAutocomplete
+              value={address}
+              placeholder="Type to search address"
+              onChange={(value) => {
+                form.setFieldsValue({ [`${which}_address`]: value || null, [`${which}_location`]: undefined });
+              }}
+              onSelect={(addressData: AddressData) => {
+                form.setFieldsValue({ [`${which}_address`]: addressData.address_formatted, [`${which}_location`]: addressData.location });
+              }}
+            />
+          </Form.Item>
+        )}
+      </Form.Item>
+    );
+  };
+
   return (
     <>
-      {/* Name and Role Type */}
-      <Row gutter={16}>
-        <Col xs={24} sm={12}>
-          <Form.Item
-            label="Name"
-            name="name"
-            rules={[{ required: true, message: "Name is required" }]}
-          >
-            <Input placeholder="Name" />
-          </Form.Item>
-        </Col>
-        <Col xs={24} sm={12}>
-          <Form.Item
-            label="Role Type"
-            name="role_type"
-            rules={[{ required: true, message: "Role type is required" }]}
-          >
-            <Select placeholder="Select role" options={ROLE_TYPE_OPTIONS} getPopupContainer={() => document.body} />
-          </Form.Item>
-        </Col>
-      </Row>
+      <FormSection icon={UserRound} title="Profile" description="Who this person is and what they do in Syncnox.">
+        <Form.Item label="Name" name="name" rules={[{ required: true, message: "Name is required" }]}>
+          <Input />
+        </Form.Item>
+        <Form.Item label="Role" name="role_type" rules={[{ required: true, message: "Role type is required" }]}>
+          <Radio.Group optionType="button" options={ROLE_CHOICES} />
+        </Form.Item>
+        <Form.Item label="External identifier" name="external_identifier" extra="The ID this person has in your own systems, if any.">
+          <Input style={{ maxWidth: 250 }} prefix={<Hash size={14} className="text-[#626E67]" />} />
+        </Form.Item>
+      </FormSection>
 
-      {/* External Identifier and Email */}
-      <Row gutter={16}>
-        <Col xs={24} sm={12}>
-          <Form.Item label="External Identifier" name="external_identifier">
-            <Input placeholder="External Identifier" />
-          </Form.Item>
-        </Col>
-        <Col xs={24} sm={12}>
-          <Form.Item
-            label="Email"
-            name="email"
-            rules={[{ type: "email", message: "Please enter a valid email" }]}
-          >
-            <Input type="email" placeholder="Email" />
-          </Form.Item>
-        </Col>
-      </Row>
-
-      {/* Phone Number (Optional) */}
-      <Form.Item label="Phone Number (Optional)">
-        <Row gutter={8}>
-          <Col xs={24} sm={8}>
-            <Form.Item
-              name={["phone", "countryCode"]}
-              noStyle
-              initialValue={`🇺🇸 +1`}
-            >
+      <FormSection icon={Phone} title="Contact" description="How dispatch reaches them.">
+        <Form.Item label="Email" name="email" rules={[{ type: "email", message: "Please enter a valid email" }]}>
+          <Input type="email" prefix={<Mail size={14} className="text-[#626E67]" />} />
+        </Form.Item>
+        <Form.Item label="Phone number">
+          <div className="grid grid-cols-[150px_minmax(0,1fr)] gap-2">
+            <Form.Item name={["phone", "countryCode"]} noStyle initialValue={`🇺🇸 +1`}>
               <Select showSearch optionFilterProp="children" className="w-full" getPopupContainer={() => document.body}>
                 {COUNTRY_CODES.map((item) => (
-                  <Select.Option
-                    key={item.code}
-                    value={`${item.flag} ${item.code}`}
-                  >
+                  <Select.Option key={item.code} value={`${item.flag} ${item.code}`}>
                     {item.flag} {item.code} &nbsp; {item.name}
                   </Select.Option>
                 ))}
               </Select>
             </Form.Item>
-          </Col>
-          <Col xs={24} sm={16}>
-            <Form.Item
-              name={["phone", "number"]}
-              noStyle
-              rules={[phoneNumberPattern]}
-            >
-              <Input type="number" placeholder="Phone Number (Optional)" maxLength={15} />
+            <Form.Item name={["phone", "number"]} noStyle rules={[phoneNumberPattern]} normalize={(value) => String(value ?? "").replace(/\D/g, "")}>
+              <Input type="tel" inputMode="tel" autoComplete="tel-national" aria-label="Phone number" maxLength={15} prefix={<Phone size={14} className="text-[#626E67]" />} />
             </Form.Item>
-          </Col>
-        </Row>
-      </Form.Item>
+          </div>
+        </Form.Item>
+      </FormSection>
 
-      {/* Start and End Location */}
       {isDriver && (
-        <Row gutter={16}>
-          <Col xs={24} sm={12}>
-            <Form.Item
-              label={
-                <span>
-                  Start location{" "}
-                  <Checkbox
-                    checked={startLocationSameAsDepot}
-                    onChange={(e) =>
-                      onStartLocationSameAsDepotChange(e.target.checked)
-                    }
-                    style={{ marginLeft: 8 }}
-                  >
-                    Same as depot
-                  </Checkbox>
-                </span>
-              }
-            >
-              {startLocationSameAsDepot ? (
-                <Select
-                  placeholder="Select depot"
-                  options={depotOptions}
-                  value={startDepotId}
-                  onChange={(value) => setStartDepotId?.(value)}
-                  disabled={!setStartDepotId}
-                  getPopupContainer={() => document.body}
-                />
-              ) : (
-                <Form.Item
-                  name="start_address"
-                  noStyle
-                >
-                  <AddressAutocomplete
-                    value={startAddress}
-                    placeholder="Type to search address"
-                    onChange={(value) => {
-                      form.setFieldsValue({
-                        start_address: value || null,
-                        start_location: undefined,
-                      });
-                    }}
-                    onSelect={(addressData: AddressData) => {
-                      form.setFieldsValue({
-                        start_address: addressData.address_formatted,
-                        start_location: addressData.location,
-                      });
-                    }}
-                  />
-                </Form.Item>
-              )}
-            </Form.Item>
-          </Col>
-          <Col xs={24} sm={12}>
-            <Form.Item
-              label={
-                <span>
-                  End location{" "}
-                  <Checkbox
-                    checked={endLocationSameAsDepot}
-                    onChange={(e) =>
-                      onEndLocationSameAsDepotChange(e.target.checked)
-                    }
-                    style={{ marginLeft: 8 }}
-                  >
-                    Same as depot
-                  </Checkbox>
-                </span>
-              }
-            >
-              {endLocationSameAsDepot ? (
-                <Select
-                  placeholder="Select depot"
-                  options={depotOptions}
-                  value={endDepotId}
-                  onChange={(value) => setEndDepotId?.(value)}
-                  disabled={!setEndDepotId}
-                  getPopupContainer={() => document.body}
-                />
-              ) : (
-                <Form.Item
-                  name="end_address"
-                  noStyle
-                >
-                  <AddressAutocomplete
-                    value={endAddress}
-                    placeholder="Type to search address"
-                    onChange={(value) => {
-                      form.setFieldsValue({
-                        end_address: value || null,
-                        end_location: undefined,
-                      });
-                    }}
-                    onSelect={(addressData: AddressData) => {
-                      form.setFieldsValue({
-                        end_address: addressData.address_formatted,
-                        end_location: addressData.location,
-                      });
-                    }}
-                  />
-                </Form.Item>
-              )}
-            </Form.Item>
-          </Col>
-        </Row>
+        <FormSection icon={MapPinned} title="Start and end of day" description="Where this driver's routes begin and finish.">
+          {endpoint("start")}
+          {endpoint("end")}
+        </FormSection>
       )}
 
       {/* Hidden location fields for start */}
@@ -305,211 +216,125 @@ const BasicInformation = ({
       {/* Driver-specific fields - only show for drivers */}
       {isDriver && (
         <>
-          <Row gutter={16}>
-            <Col span={24}>
-              {/* Distance Limit */}
-              <Form.Item label="Distance limit (km)" name="max_distance">
-                <Input
-                  type="number"
-                  className="w-full"
-                  placeholder="50"
-                  min={0}
-                  addonAfter="km"
-                />
-              </Form.Item>
-            </Col>
-          </Row>
+          <FormSection icon={Clock} title="Working hours" description="The days and hours this driver can be given work.">
+            <div className="border border-[#D5DCD8]">
+              {DAYS.map((day) => (
+                <Form.Item noStyle key={day.key} shouldUpdate>
+                  {() => {
+                    const schedule = form.getFieldValue(["day_schedules", day.key]) || {};
+                    const isEnabled = schedule.enabled !== false;
 
-          {/* Day-Wise Working Hours Schedule (Monday - Sunday) */}
-          <div
-            style={{
-              marginTop: 8,
-              marginBottom: 16,
-              border: "1px solid #f0f0f0",
-              borderRadius: 8,
-              padding: "12px 16px",
-              backgroundColor: "#fafafa",
-            }}
-          >
-            <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
-              <div>
-                <Text strong style={{ fontSize: 12, letterSpacing: "0.05em", display: "block" }}>
-                  DAY-WISE WORKING HOURS (MON - SUN)
-                </Text>
-                <Text type="secondary" style={{ fontSize: 11 }}>
-                  Configure shift start and end times for each day.
-                </Text>
-              </div>
-              <Button
-                type="link"
-                size="small"
-                icon={<CopyOutlined />}
-                onClick={copyMondayToAllDays}
-                style={{ padding: 0, fontSize: 12 }}
-              >
-                Copy Mon to All Days
-              </Button>
-            </Flex>
-
-            {DAYS.map((day) => (
-              <Form.Item noStyle key={day.key} shouldUpdate>
-                {() => {
-                  const schedule = form.getFieldValue(["day_schedules", day.key]) || {};
-                  const isEnabled = schedule.enabled !== false;
-
-                  return (
-                    <div className="mb-3 grid grid-cols-1 items-center gap-2 xl:grid-cols-[110px_minmax(0,1fr)]">
-                      <div className="min-w-0">
-                        <Space size="small">
+                    return (
+                      <div className="flex min-h-11 flex-wrap items-center gap-x-4 gap-y-1 border-b border-[#E3E8E5] px-3 py-1.5 last:border-b-0">
+                        <label className="flex w-32 shrink-0 cursor-pointer items-center gap-2.5">
                           <Form.Item
                             name={["day_schedules", day.key, "enabled"]}
+                            // A day with no saved value counts as working, so the switch shows on without
+                            // overwriting the form's own initial values (which caused a warning per day).
+                            getValueProps={(value) => ({ checked: value !== false })}
                             valuePropName="checked"
                             noStyle
-                            initialValue={isEnabled}
                           >
                             <Switch size="small" />
                           </Form.Item>
-                          <Text
-                            style={{
-                              fontSize: 13,
-                              fontWeight: isEnabled ? 500 : 400,
-                              color: isEnabled ? undefined : "#8c8c8c",
-                            }}
-                          >
-                            {day.label}
-                          </Text>
-                        </Space>
-                      </div>
-
-                      <div className="min-w-0">
+                          <span className={`text-[13px] ${isEnabled ? "font-medium text-[#12211A]" : "text-[#626E67]"}`}>{day.label}</span>
+                        </label>
                         {isEnabled ? (
-                          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-                            <div className="min-w-0">
-                              <Form.Item
-                                name={["day_schedules", day.key, "start_time"]}
-                                noStyle
-                              >
-                                <TimePicker
-                                  needConfirm={false}
-                                  size="small"
-                                  format="HH:mm"
-                                  placeholder="Start"
-                                  aria-label={`${day.label} work starts`}
-                                  style={{ width: "100%" }}
-                                  getPopupContainer={() => document.body}
-                                />
-                              </Form.Item>
-                            </div>
-                            <div className="text-center">
-                              <Text type="secondary" style={{ fontSize: 11 }}>-</Text>
-                            </div>
-                            <div className="min-w-0">
-                              <Form.Item
-                                name={["day_schedules", day.key, "end_time"]}
-                                noStyle
-                              >
-                                <TimePicker
-                                  needConfirm={false}
-                                  size="small"
-                                  format="HH:mm"
-                                  placeholder="End"
-                                  aria-label={`${day.label} work ends`}
-                                  style={{ width: "100%" }}
-                                  getPopupContainer={() => document.body}
-                                />
-                              </Form.Item>
-                            </div>
+                          <div className="flex items-center gap-2">
+                            <Form.Item name={["day_schedules", day.key, "start_time"]} noStyle>
+                              <TimePicker
+                                needConfirm={false}
+                                size="small"
+                                format="HH:mm"
+                                placeholder="Start"
+                                aria-label={`${day.label} work starts`}
+                                style={{ width: 104 }}
+                                getPopupContainer={() => document.body}
+                              />
+                            </Form.Item>
+                            <span className="text-xs text-[#626E67]">to</span>
+                            <Form.Item name={["day_schedules", day.key, "end_time"]} noStyle>
+                              <TimePicker
+                                needConfirm={false}
+                                size="small"
+                                format="HH:mm"
+                                placeholder="End"
+                                aria-label={`${day.label} work ends`}
+                                style={{ width: 104 }}
+                                getPopupContainer={() => document.body}
+                              />
+                            </Form.Item>
                           </div>
                         ) : (
-                          <Text type="secondary" style={{ fontSize: 12, fontStyle: "italic" }}>
-                            Off / Non-working
-                          </Text>
+                          <span className="text-xs text-[#626E67]">Not working</span>
                         )}
                       </div>
-                    </div>
-                  );
-                }}
-              </Form.Item>
-            ))}
-          </div>
+                    );
+                  }}
+                </Form.Item>
+              ))}
+            </div>
+            <Button type="link" size="small" icon={<CopyOutlined />} onClick={copyMondayToAllDays} style={{ padding: 0, fontSize: 12, marginTop: 8 }}>
+              Copy Mon to All Days
+            </Button>
+          </FormSection>
 
-          <Row>
-            {/* Allowed Overtime */}
-            <Form.Item name="allowed_overtime" valuePropName="checked">
+          <FormSection icon={Gauge} title="Limits and breaks" description="Caps the optimizer respects when it plans this driver's day.">
+            <Form.Item label="Distance limit" name="max_distance" extra="The most this driver may travel in a day.">
+              <Input type="number" style={{ maxWidth: 180 }} min={0} addonAfter="km" />
+            </Form.Item>
+            <Form.Item name="allowed_overtime" valuePropName="checked" className="!mb-2">
               <Checkbox>Allowed Overtime</Checkbox>
             </Form.Item>
-
-            {/* Schedule Break */}
-            <Form.Item>
-              <Checkbox
-                checked={scheduleBreak}
-                onChange={(e) => onScheduleBreakChange(e.target.checked)}
-              >
+            <Form.Item className={scheduleBreak ? "!mb-3" : ""}>
+              <Checkbox checked={scheduleBreak} onChange={(e) => onScheduleBreakChange(e.target.checked)}>
                 Schedule a break for this driver
               </Checkbox>
             </Form.Item>
-          </Row>
-
-          {/* Break Time (conditional) */}
-          {scheduleBreak && (
-            <Form.Item label="Break must happen between">
-              <Row gutter={16}>
-                <Col xs={24} sm={12}>
+            {scheduleBreak && (
+              <Form.Item label="Break must happen between">
+                <div className="flex items-center gap-2">
                   <Form.Item
                     name="break_time_start"
                     noStyle
-                    rules={[
-                      createTimeWindowStartValidator(
-                        form,
-                        "break_time_end",
-                        "Break start time",
-                        "Break end time"
-                      ),
-                    ]}
+                    rules={[createTimeWindowStartValidator(form, "break_time_end", "Break start time", "Break end time")]}
                   >
                     <TimePicker
                       needConfirm={false}
-                      className="w-full"
                       format="HH:mm"
-                      placeholder="Select time"
+                      placeholder="Start"
+                      style={{ width: 120 }}
                       getPopupContainer={() => document.body}
                       onChange={() => {
                         form.validateFields(["break_time_end"]);
                       }}
                     />
                   </Form.Item>
-                </Col>
-                <Col xs={24} sm={12}>
+                  <span className="text-xs text-[#626E67]">and</span>
                   <Form.Item
                     name="break_time_end"
                     noStyle
-                    rules={[
-                      createTimeWindowEndValidator(
-                        form,
-                        "break_time_start",
-                        "Break start time",
-                        "Break end time"
-                      ),
-                    ]}
+                    rules={[createTimeWindowEndValidator(form, "break_time_start", "Break start time", "Break end time")]}
                   >
                     <TimePicker
                       needConfirm={false}
-                      className="w-full"
                       format="HH:mm"
-                      placeholder="Select time"
+                      placeholder="End"
+                      style={{ width: 120 }}
                       getPopupContainer={() => document.body}
                       onChange={() => {
                         form.validateFields(["break_time_start"]);
                       }}
                     />
                   </Form.Item>
-                </Col>
-              </Row>
-            </Form.Item>
-          )}
+                </div>
+              </Form.Item>
+            )}
+          </FormSection>
         </>
       )}
 
+      {customFieldDefs.length > 0 && <div className="border-t border-[#D5DCD8] pt-6" />}
       <DynamicCustomFieldsForm
         customFields={customFieldDefs}
         values={customFieldValues}

@@ -1,6 +1,5 @@
 "use client";
 
-import { Radio } from "antd";
 import { ClipboardPenLine, Table2 } from "lucide-react";
 import type { EntityView } from "@/store/settings-view.store";
 
@@ -9,16 +8,24 @@ export default function EntityViewToggle({ value, onChange, label }: {
   onChange: (view: EntityView) => void;
   label: string;
 }) {
+  // Two views of the same records, as plain words on one thin line with a green line under the one in use
+  const options: { value: EntityView; label: string; icon: typeof Table2 }[] = [
+    { value: "form", label: "Form", icon: ClipboardPenLine },
+    { value: "table", label: "Table", icon: Table2 },
+  ];
   return (
-    <Radio.Group
-      aria-label={`${label} view`}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      buttonStyle="solid"
-      className="shrink-0"
-    >
-      <Radio.Button value="form" className="!inline-flex items-center !h-9 lg:!h-8"><span className="inline-flex items-center gap-1.5"><ClipboardPenLine size={14} aria-hidden="true" />Form</span></Radio.Button>
-      <Radio.Button value="table" className="!inline-flex items-center !h-9 lg:!h-8"><span className="inline-flex items-center gap-1.5"><Table2 size={14} aria-hidden="true" />Table</span></Radio.Button>
-    </Radio.Group>
+    <div role="group" aria-label={`${label} view`} className="inline-flex shrink-0 gap-1 shadow-[inset_0_-1px_0_#D5DCD8]">
+      {options.map((option) => {
+        const on = option.value === value, Icon = option.icon;
+        return (
+          <button key={option.value} type="button" aria-pressed={on} aria-label={`${option.label} view`} data-tip={`${option.label} view`} onClick={() => onChange(option.value)}
+            className={`tip inline-flex h-8 w-9 cursor-pointer items-center justify-center border-0 bg-transparent outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0B5D3B] ${
+              on ? "text-[#12211A] shadow-[inset_0_-2px_0_#0B5D3B]" : "text-[#626E67] hover:text-[#12211A]"
+            }`}>
+            <Icon size={17} aria-hidden="true" />
+          </button>
+        );
+      })}
+    </div>
   );
 }

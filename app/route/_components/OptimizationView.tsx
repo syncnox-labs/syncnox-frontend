@@ -1,4 +1,5 @@
 "use client";
+import { CheckCircle, Circle } from "@phosphor-icons/react/ssr";
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { isAxiosError } from "axios";
@@ -37,7 +38,7 @@ import {
 import dayjs from "dayjs";
 
 import GoogleMaps, { MarkerData } from "@/components/GoogleMaps";
-import { CircleX, X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil } from "lucide-react";
+import { Route as RouteIcon, FileText, Truck as TruckIcon, CircleX, X, Maximize2, Minimize2, ChevronUp, ChevronDown, ChevronRight, Map as MapIcon, Building2, MapPin, Milestone, Search, PenTool, Trash2, ArrowRightLeft, Settings, Pencil } from "lucide-react";
 import DrawingStatusTip from "@/app/team/_components/DrawingStatusTip";
 import MapSearch from "./MapSearch";
 import MapComparePanel from "./MapComparePanel";
@@ -48,7 +49,7 @@ import TimelineView from "./TimelineView";
 import CandidateMessagesModal from "./CandidateMessagesModal";
 import { candidateMessagesEnabled } from "@/apis/candidateMessages.api";
 import AssignedJobsTable from "./AssignedJobsTable";
-import RouteViewSwitch from "./RouteViewSwitch";
+import ShareDriversModal, { type ShareDriverOption } from "./ShareDriversModal";
 import RouteShareButton from "./RouteShareButton";
 import VehicleAssignments from "./VehicleAssignments";
 import type { VehicleAssignment } from "./vehicleSchedule.utils";
@@ -60,6 +61,7 @@ import type { TripMoveSelection } from "./tripMove.utils";
 import PendingOptimizationIndicator from "./PendingOptimizationIndicator";
 import ManualRoutingDrawer from "./ManualRoutingDrawer";
 import RouteWaitingModal from "./RouteWaitingModal";
+import OptimizationProgress from "@/components/OptimizationProgress";
 import RouteETAModal, { type ETASelection } from "./RouteETAModal";
 import { endpointMergeSelection, type WaitingSelection } from "./routeWaiting.utils";
 import AssignJobsModal from "./AssignJobsModal";
@@ -652,6 +654,21 @@ const OptimizationView = ({
 
   // Map panel layout state & imperative refs
   const [mapViewState, setMapViewState] = useState<"normal" | "fullscreen" | "collapsed">("normal");
+  // Where the map sits next to the trips. Remembered per browser; falls back to "map above".
+  const [panelLayout, setPanelLayout] = useState<"stacked" | "side">(() => {
+    try { return typeof window !== "undefined" && window.localStorage.getItem("syncnox.routeLayout") === "side" ? "side" : "stacked"; }
+    catch { return "stacked"; }
+  });
+  const panelLayoutRef = useRef(panelLayout);
+  panelLayoutRef.current = panelLayout;
+  // Side by side, the trips need the width (time runs left to right), so the map gets the smaller share.
+  const splitMap = panelLayout === "side" ? 38 : 60;
+  const changePanelLayout = useCallback((next: "stacked" | "side") => {
+    try { window.localStorage.setItem("syncnox.routeLayout", next); } catch {}
+    setMapViewState("normal");
+    setPanelLayout(next);
+    setTimeout(() => window.dispatchEvent(new Event("resize")), 150);
+  }, []);
   const mapPanelRef = useRef<ImperativePanelHandle>(null);
   const timelinePanelRef = useRef<ImperativePanelHandle>(null);
 
@@ -663,8 +680,8 @@ const OptimizationView = ({
 
   const handleToggleFullscreen = useCallback(() => {
     if (mapViewState === "fullscreen") {
-      mapPanelRef.current?.resize(60);
-      timelinePanelRef.current?.resize(40);
+      mapPanelRef.current?.resize(splitMap);
+      timelinePanelRef.current?.resize(100 - splitMap);
       setMapViewState("normal");
     } else {
       mapPanelRef.current?.resize(100);
@@ -672,12 +689,12 @@ const OptimizationView = ({
       setMapViewState("fullscreen");
     }
     triggerMapResize();
-  }, [mapViewState, triggerMapResize]);
+  }, [mapViewState, triggerMapResize, splitMap]);
 
   const handleToggleCollapse = useCallback(() => {
     if (mapViewState === "collapsed") {
-      mapPanelRef.current?.resize(60);
-      timelinePanelRef.current?.resize(40);
+      mapPanelRef.current?.resize(splitMap);
+      timelinePanelRef.current?.resize(100 - splitMap);
       setMapViewState("normal");
     } else {
       mapPanelRef.current?.resize(0);
@@ -685,19 +702,19 @@ const OptimizationView = ({
       setMapViewState("collapsed");
     }
     triggerMapResize();
-  }, [mapViewState, triggerMapResize]);
+  }, [mapViewState, triggerMapResize, splitMap]);
 
   const revealMapSearch = useCallback(() => {
     if (mapViewState !== "collapsed") return;
-    mapPanelRef.current?.resize(60);
-    timelinePanelRef.current?.resize(40);
+    mapPanelRef.current?.resize(splitMap);
+    timelinePanelRef.current?.resize(100 - splitMap);
     setMapViewState("normal");
     triggerMapResize();
-  }, [mapViewState, triggerMapResize]);
+  }, [mapViewState, triggerMapResize, splitMap]);
 
   const handlePanelLayout = useCallback((sizes: number[]) => {
     if (!sizes || sizes.length < 2) return;
-    const mapSize = sizes[0];
+    const mapSize = sizes[panelLayoutRef.current === "side" ? 1 : 0];
     if (mapSize >= 95) {
       setMapViewState("fullscreen");
     } else if (mapSize <= 5) {
@@ -872,6 +889,72 @@ const OptimizationView = ({
         err?.response?.data?.detail ??
         "Failed to share routes. Please try again.";
       message.error(detail);
+    } finally {
+      shareInFlight.current = false;
+      setIsSharing(false);
+      setSharingDriverId(null);
+    }
+  };
+
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  // One entry per person with stops on this plan, in plan order.
+  const shareDrivers = useMemo<ShareDriverOption[]>(() => {
+    const byId = new Map<number, ShareDriverOption>();
+    (route.result?.routes ?? []).forEach(trip => {
+      const id = trip.team_member_id;
+      if (!id || !(trip.stops ?? []).some((stop: any) => stop.job_id != null)) return;
+      const entry = byId.get(id) ?? { id, name: trip.team_member_name || `Team member #${id}`, trips: 0, stops: 0, firstStart: null };
+      entry.trips += 1;
+      entry.stops += getGroupedStopsCount(trip.stops);
+      const first = (trip.stops ?? []).find((stop: any) => stop.arrival_time)?.arrival_time ?? null;
+      if (first && (!entry.firstStart || first < entry.firstStart)) entry.firstStart = first;
+      byId.set(id, entry);
+    });
+    return [...byId.values()];
+  }, [route.result?.routes]);
+
+  /** Everyone → one plan-wide share. A subset → one share per person, results combined. */
+  const handleShareSelected = async (driverIds: number[], everyone: boolean) => {
+    if (everyone) { setShareDialogOpen(false); await handleShareToApp(); return; }
+    if (shareInFlight.current) return;
+    shareInFlight.current = true;
+    setIsSharing(true);
+    const routes = route.result?.routes ?? [];
+    let combined: ShareRouteResponse | null = null;
+    const failed: ShareRouteResponse["skipped_drivers"] = [];
+    try {
+      for (const driverId of driverIds) {
+        const routeIndex = routes.findIndex(trip => trip.team_member_id === driverId);
+        const target = getDriverShareTarget(routes, routeIndex, route.id);
+        if (!target) continue;
+        setSharingDriverId(driverId);
+        try {
+          const result = await shareOptimizationRoutes(target.optimizationId, driverId);
+          if (target.optimizationId === route.id) {
+            setSharingState({ last_shared_at: result.last_shared_at, sharing_status: result.sharing_status });
+          }
+          combined = combined ? {
+            ...result,
+            shared_count: combined.shared_count + result.shared_count,
+            driver_ids: [...combined.driver_ids, ...result.driver_ids],
+            online_drivers: [...combined.online_drivers, ...result.online_drivers],
+            skipped_drivers: [...combined.skipped_drivers, ...(result.skipped_drivers ?? [])],
+            notifications_pending: combined.notifications_pending || result.notifications_pending,
+          } : { ...result, skipped_drivers: [...(result.skipped_drivers ?? [])] };
+        } catch (err: any) {
+          const name = shareDrivers.find(driver => driver.id === driverId)?.name ?? `Team member #${driverId}`;
+          failed.push({ driver_id: driverId, driver_name: name, route_ids: [],
+            reason: (typeof err?.detail === "string" ? err.detail : undefined) ?? err?.response?.data?.detail ?? "Sharing failed" });
+        }
+      }
+      if (combined || failed.length) {
+        setShareResult({
+          ...(combined ?? { last_shared_at: sharingState?.last_shared_at ?? null, sharing_status: sharingState?.sharing_status ?? null,
+            shared_count: 0, driver_ids: [], online_drivers: [], skipped_drivers: [] } as unknown as ShareRouteResponse),
+          skipped_drivers: [...(combined?.skipped_drivers ?? []), ...failed],
+        });
+      }
+      setShareDialogOpen(false);
     } finally {
       shareInFlight.current = false;
       setIsSharing(false);
@@ -1495,7 +1578,6 @@ const OptimizationView = ({
         route.result?.routes?.[routeIndex]?.team_member_name || "Driver";
 
       try {
-        message.loading({ content: "Saving stop order…", key: "save_reopt", duration: 0 });
         // Save the new stop order and recalculate ETAs & polylines
         const res = await reorderRouteStops(
           route.id,
@@ -1516,7 +1598,6 @@ const OptimizationView = ({
             route.result?.routes?.[routeIndex]?.source_optimization_id || route.id;
           const reoptRes = await reOptimizeRoute(route.id, routeIndex);
           if (reoptRes.success) {
-            message.loading({ content: `Re-optimizing ${driverName}'s route…`, key: "save_reopt", duration: 0 });
             setPendingDeletedJobIds(new Set());
 
             await waitUntilComplete(targetSourceOptId);
@@ -1569,22 +1650,31 @@ const OptimizationView = ({
     [route.id, route.result?.routes, fetchOptimization],
   );
 
-  const handleReOptimize = useCallback(
-    async (routeIndex: number) => {
+  // Re-optimize one trip: a real dialog with the two choices side by side, instead of a confirm with a hidden checkbox.
+  const [reoptimizeTarget, setReoptimizeTarget] = useState<{ routeIndex: number; keepOrder: boolean } | null>(null);
+  const [reoptimizeRunning, setReoptimizeRunning] = useState(false);
+  // What the progress overlay says while the optimizer works: set by whichever action started it.
+  const [progressInfo, setProgressInfo] = useState<{ title: string; context?: string; activities: string[] } | null>(null);
+  const planActivities = (routeIndex: number | null, keepOrder: boolean) => {
+    const trips = routeIndex === null ? (route.result?.routes ?? []) : [route.result?.routes?.[routeIndex]].filter(Boolean);
+    const jobs = new Set(trips.flatMap((trip: any) => (trip.stops ?? []).map((stop: any) => stop.job_id).filter((id: any) => id != null))).size;
+    return [
+      keepOrder ? `Keeping your stop order for ${jobs} jobs` : `Trying different stop orders for ${jobs} jobs`,
+      "Using current travel times between stops",
+      "Checking drivers' working hours",
+      "Fitting passengers into the seats each vehicle has",
+      isWorkerShuttle ? "Checking that everyone arrives before their shift starts" : "Keeping each stop inside its time window",
+    ];
+  };
+  const handleReOptimize = useCallback((routeIndex: number) => {
+    setReoptimizeTarget({ routeIndex, keepOrder: false });
+  }, []);
+  const runReOptimize = useCallback(
+    async (routeIndex: number, preserveOrder: boolean) => {
       const driverName =
         route.result?.routes?.[routeIndex]?.team_member_name || "Driver";
-      let preserveOrder = false;
-      Modal.confirm({
-        title: "Reoptimize Route",
-        content: React.createElement("div", { className: "space-y-3" },
-          React.createElement("p", null, `Recalculate ${driverName}'s route using current travel times and constraints.`),
-          React.createElement(Checkbox, { onChange: event => { preserveOrder = event.target.checked; } },
-            "Keep the current stop order"),
-          React.createElement("p", { className: "text-sm text-slate-500" },
-            "With this option, pickup and drop-off times can change, but stops stay in order. If no valid schedule is found, no changes are saved.")),
-        okText: "Reoptimize",
-        okButtonProps: { style: { backgroundColor: "#003220" } },
-        onOk: async () => {
+      {
+        {
           try {
           // Save removals through route history before reoptimization.
             if (pendingDeletedJobIds.size > 0) {
@@ -1607,7 +1697,6 @@ const OptimizationView = ({
                 message.success(res.message);
                 return;
               }
-              message.loading({ content: `Re-optimizing ${driverName}'s route…`, key: "reopt", duration: 0 });
               setPendingDeletedJobIds(new Set());
               // Wait for the dispatch WebSocket completion event
 
@@ -1625,8 +1714,8 @@ const OptimizationView = ({
               setOptimizationResult(current.status === "completed" ? "completed" : "failed", undefined, errorMessage);
             }
           }
-        },
-      });
+        }
+      }
     },
     [route.id, route.result?.routes, setOptimizationResult, pendingDeletedJobIds, applyStagedRemovals, waitUntilComplete],
   );
@@ -1953,7 +2042,13 @@ const OptimizationView = ({
             });
           });
 
-          message.loading({ content: "Re-optimization queued. Waiting for result…", key: "reopt_all", duration: 0 });
+          setProgressInfo({ title: "Re-optimizing all routes", context: (() => {
+            // Count trips the way the header does: a trip with no jobs is not work.
+            const working = (route.result?.routes ?? []).filter(r => r.stops?.some(s => s.job_id != null));
+            const people = new Set(working.map(r => r.team_member_id).filter(Boolean)).size;
+            return `${working.length} ${working.length === 1 ? "trip" : "trips"} · ${people} ${people === 1 ? "person" : "people"}`;
+          })(),
+            activities: planActivities(null, false) });
           await reOptimize(route.id);
           setPendingDeletedJobIds(new Set());
           // Wait for the dispatch WebSocket completion event
@@ -1981,6 +2076,18 @@ const OptimizationView = ({
     route.result?.routes?.reduce((acc, r) => acc + (r.stops?.length || 0), 0) ||
     0;
   const totalVehicles = route.result?.routes?.length || 0;
+  // Trips with at least one job; empty trips are not work and are not counted.
+  const usedTrips = (route.result?.routes || []).filter(trip => (trip.stops || []).some((stop: any) => stop.job_id != null));
+  const usedPeople = new Set(usedTrips.map(trip => trip.team_member_id).filter(Boolean)).size;
+  const usedVehicles = new Set(usedTrips.map(trip => trip.vehicle_id).filter(Boolean)).size;
+  const [showPlanSummary, setShowPlanSummary] = useState(false);
+  useEffect(() => {
+    try { setShowPlanSummary(window.localStorage.getItem("syncnox.planSummary") === "open"); } catch {}
+  }, []);
+  const togglePlanSummary = () => setShowPlanSummary(open => {
+    try { window.localStorage.setItem("syncnox.planSummary", open ? "closed" : "open"); } catch {}
+    return !open;
+  });
 
   const formattedRouteDate = useMemo(() => {
     if (!route?.scheduled_date) return "";
@@ -2057,273 +2164,33 @@ const OptimizationView = ({
     ...routeMenuItems,
   ];
 
-  return (
-    <div ref={workspaceRef} className="route-workspace flex flex-col h-full min-w-0 absolute inset-0">
-      {/* Full-screen loading overlay — shown during any async optimization op */}
-      {(isOptimizing || route.status === "processing" || route.status === "queued") && (
-        <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 px-5 sm:px-10 py-6 sm:py-8 flex flex-col items-center gap-4 w-[calc(100%-24px)] max-w-sm">
-            <div className="relative">
-              <Spin size="large" />
-              <div className="absolute inset-0 rounded-full animate-ping opacity-20 bg-emerald-400" style={{ animationDuration: "1.5s" }} />
-            </div>
-            <div className="text-center">
-              <div className="font-bold text-gray-900 text-base">Optimizing Routes</div>
-              <div className="text-xs text-gray-500 mt-1">
-                {route.status === "processing" || route.status === "queued"
-                  ? "The routing engine is running in the background. This usually takes 10–60 seconds."
-                  : "Processing your request…"}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-full px-4 py-1.5 font-semibold">
-              <LoadingOutlined spin />
-              <span>Auto-refreshing when complete</span>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Route header */}
-      <nav aria-label="Optimization details" className="route-header bg-white border-b border-gray-200 px-3 shrink-0 min-h-14 py-2">
-        <div className="contents">
-          {/* Left: Route details */}
-          <div className="route-details flex items-center gap-3 min-w-0">
-            <Icon
-              component={ArrowLeftOutlined}
-              style={{ color: "#003220" }}
-              onClick={handleBackToPlanRoutes}
-              className="cursor-pointer text-base shrink-0 hover:opacity-75 transition-opacity"
-            />
+  // Timeline / Jobs / Vehicles switch the lower panel, so the tabs live in that panel.
+  const changeDetailView = (value: "timeline" | "table" | "vehicles") => {
+    setDetailView(value);
+    if (value === "table") setHasOpenedTable(true);
+    if (value === "vehicles") {
+      setHasOpenedVehicles(true);
+      if (mapViewState === "fullscreen") handleToggleFullscreen();
+    }
+  };
+  const viewTabs = (
+    <div role="tablist" aria-label="Route view" className="flex items-stretch self-stretch shrink-0 pr-2 mr-1">
+      {([["timeline", "Timeline", RouteIcon], ["table", "Jobs", FileText], ["vehicles", "Vehicles", TruckIcon]] as const).map(([value, label, Icon]) => (
+        <button key={value} type="button" role="tab" aria-selected={detailView === value} aria-label={label}
+          data-tip={detailView === value ? undefined : label} onClick={() => changeDetailView(value)}
+          className={`tip inline-flex items-center gap-1.5 px-2 text-[12px] whitespace-nowrap bg-transparent cursor-pointer border-0 border-b-2 ${detailView === value
+            ? "border-[#003220] text-[#12211A] font-medium" : "border-transparent text-[#626E67] hover:text-[#12211A]"}`}>
+          <Icon size={16} aria-hidden="true" />
+          {detailView === value && <span>{label}</span>}
+        </button>
+      ))}
+    </div>
+  );
 
-            <div className="flex flex-col justify-center min-w-0">
-              {isEditingName ? (
-                <Input
-                  size="small"
-                  value={tempRouteName}
-                  onChange={(e) => setTempRouteName(e.target.value)}
-                  onBlur={handleNameSave}
-                  onKeyDown={handleNameKeyDown}
-                  autoFocus
-                  disabled={isSavingName}
-                  maxLength={50}
-                  className="w-full max-w-56 text-sm font-semibold rounded-none"
-                />
-              ) : (
-                <div className="flex items-center gap-2 min-w-0">
-                  <div
-                    className="flex items-center gap-2 cursor-pointer group min-w-0"
-                    onClick={handleNameClick}
-                    title="Click to edit route name"
-                  >
-                    <Title
-                      level={5}
-                      className="!m-0 group-hover:text-primary transition-colors truncate font-bold text-gray-900 leading-tight"
-                      style={{ margin: 0 }}
-                    >
-                      {route.route_name}
-                    </Title>
-                    <EditOutlined className="text-gray-400 group-hover:text-primary transition-colors text-xs shrink-0" />
-                  </div>
-                </div>
-              )}
-
-              {/* Stats below Route Name (Sample UI style) */}
-              <div className="flex flex-wrap items-center gap-y-1 text-xs text-gray-500 font-normal leading-tight mt-0.5 select-none">
-                {formattedRouteDate && <span>{formattedRouteDate}</span>}
-                {formattedRouteDate && <span className="mx-1 text-gray-400">·</span>}
-                <span>
-                  {totalVehicles} {totalVehicles === 1 ? "route" : "routes"}
-                </span>
-                {isIssueMinimized && (
-                  <>
-                    <span className="mx-1 text-gray-400">·</span>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-red-700 font-medium hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-red-600 cursor-pointer"
-                      aria-label="Show optimization issue details"
-                      aria-expanded={false}
-                      onClick={() => setMinimizedIssue(null)}
-                    >
-                      <CircleX size={12} aria-hidden="true" />
-                      Optimization Issue
-                      <ChevronDown size={12} aria-hidden="true" />
-                    </button>
-                  </>
-                )}
-                {hasPendingOptimization ? (
-                  <>
-                    <span className="mx-1 text-gray-400">·</span>
-                    <PendingOptimizationIndicator drivers={pendingDrivers}
-                      disabled={isOptimizing || route.status === "processing" || route.status === "queued"}
-                      onOptimize={handleReOptimize} onOptimizeAll={handleReOptimizeAll} />
-                  </>
-                ) : isRouteOptimized ? (
-                  <>
-                    <span className="mx-1 text-gray-400">·</span>
-                    <span className="inline-flex items-center gap-1 text-emerald-700 font-medium">
-                      <span className="w-1.5 h-1.5 rounded-none bg-emerald-600" />
-                      Optimized
-                    </span>
-                  </>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          {/* Right: Sharing state and actions */}
-          <div className="route-header-controls">
-            <div className="route-sharing-state flex flex-col items-end justify-self-end gap-0.5 min-w-0 text-[11px]" aria-live="polite">
-              {checkingShareStatus ? (
-                <span className="text-slate-500">Checking share status…</span>
-              ) : shareStatusError ? (
-                <span className="text-slate-500">Share status unavailable</span>
-              ) : (
-                <span
-                  className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold ${
-                    sharingState?.sharing_status === "shared"
-                      ? "bg-emerald-50 text-emerald-800"
-                      : "bg-amber-50 text-amber-800"
-                  }`}
-                >
-                  <span
-                    className={`size-1.5 rounded-full ${
-                      sharingState?.sharing_status === "shared"
-                        ? "bg-emerald-600"
-                        : "bg-amber-500"
-                    }`}
-                  />
-                  {sharingState?.sharing_status === "shared" ? "Shared" : "Pending share"}
-                </span>
-              )}
-              {(sharingState?.last_shared_at || route.last_shared_at) ? (
-                <time
-                  className="text-slate-500"
-                  dateTime={sharingState?.last_shared_at || route.last_shared_at || undefined}
-                  title={dayjs(sharingState?.last_shared_at || route.last_shared_at).format("D MMM YYYY, h:mm:ss A Z")}
-                >
-                  Last shared {dayjs(sharingState?.last_shared_at || route.last_shared_at).format("D MMM, h:mm A")}
-                </time>
-              ) : !checkingShareStatus && !shareStatusError && (
-                <span className="text-slate-500">Not shared yet</span>
-              )}
-            </div>
-            {!isCompactHeader && <div className="route-actions flex flex-wrap items-center justify-end gap-1 min-w-0">
-              {/* Undo Button */}
-              {undoStep && (
-                <Button
-                  size="small"
-                  onClick={handleUndo}
-                  aria-label={`Undo ${undoStep.label}`}
-                  title={`Undo`}
-                  className="border-slate-300 text-slate-700 bg-white font-semibold flex shrink-0 items-center gap-2"
-                  loading={isUndoing}
-                  disabled={isUndoing || isRemovingJob || (route.status !== "completed" && route.status !== "failed")}
-                  icon={
-                    <Icon component={() => (
-                      <svg width="1em" height="1em" fill="currentColor" viewBox="0 0 1024 1024">
-                        <path d="M793 242H366v-74c0-6.7-7.7-10.4-12.9-6.3l-142 112a8 8 0 0 0 0 12.6l142 112c5.2 4.1 12.9.4 12.9-6.3v-74h415v470H175c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h618c35.3 0 64-28.7 64-64V306c0-35.3-28.7-64-64-64z"/>
-                      </svg>
-                    )} />
-                  }
-                >
-                  <span className="route-action-label">Undo</span>
-                </Button>
-              )}
-
-              {/* Reoptimize All Routes button — highlighted when job edits are pending */}
-              {route.status === "completed" && (
-                <Tooltip title="Reoptimize All Routes">
-                  <Button
-                    size="small"
-                    ghost={true}
-                    aria-label="Reoptimize All Routes"
-                    icon={<ReloadOutlined />}
-                    onClick={handleReOptimizeAll}
-                    className={hasPendingOptimization
-                      ? "border-amber-400 text-amber-700 bg-amber-50 font-semibold"
-                      : ""}
-                  />
-                </Tooltip>
-              )}
-              <RouteShareButton showWhatsApp={Boolean(isWorkerShuttle && messagingEnabled)} isSharing={isSharing}
-                shareDisabled={isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued"}
-                shareLabel={shareButtonLabel} onShare={() => void handleShareToApp()}
-                onWhatsApp={() => setMessageSelection({ planId: route.id })} />
-            </div>}
-            <div className="shrink-0">
-              <Dropdown
-                trigger={["click"]}
-                placement="bottomRight"
-                classNames={{ root: "route-actions-menu" }}
-                menu={{ items: isCompactHeader ? compactRouteMenuItems : routeMenuItems }}
-              >
-                <Button size="small" icon={<MenuOutlined />} aria-label="Route actions" aria-haspopup="menu" aria-busy={isSharing} title="Route actions" />
-              </Dropdown>
-            </div>
-          </div>
-        </div>
-
-        {/* Narrow workspaces use equal-width, labelled view tabs. */}
-        <div className="route-view-switch flex items-center min-w-0">
-          <RouteViewSwitch
-            value={detailView}
-            onChange={value => {
-              setDetailView(value);
-              if (value === "table") setHasOpenedTable(true);
-              if (value === "vehicles") {
-                setHasOpenedVehicles(true);
-                if (mapViewState === "fullscreen") handleToggleFullscreen();
-              }
-            }}
-          />
-        </div>
-      </nav>
-
-      {/* Trip merge diagnostics banner disabled for now; keep for future use.
-      {isWorkerShuttle && route.result?.consolidation &&
-        (route.result.consolidation.status === "timed_out" || !!route.result.consolidation.skipped_candidates?.length) && (
-        <details className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-950">
-          <summary className="cursor-pointer font-semibold">
-            {route.result.consolidation.status === "timed_out"
-              ? "Trip merge search reached its time limit"
-              : "Some possible trip merges were skipped"}
-          </summary>
-          {route.result.consolidation.status === "timed_out" &&
-            <p className="mt-2">Some trips may not have been checked. Review the routes or reoptimize again.</p>}
-          {!!route.result.consolidation.skipped_candidates?.length && (
-            <ul className="mt-2 max-h-32 list-disc space-y-1 overflow-y-auto pl-5">
-              {route.result.consolidation.skipped_candidates.map((candidate, index) => {
-                const reasons: Record<string, string> = {
-                  protected_trip: "The trip is protected by a manual, shared or in-progress change.",
-                  trip_data_unavailable: "The trip is incomplete, outside the planning period, or its saved data cannot be verified.",
-                  break_or_idle: "A recorded break or idle block needs to be preserved.",
-                  locked_vehicle: "The later trip has a different locked vehicle.",
-                  driver_or_vehicle_unavailable: "The driver or first vehicle is unavailable or incompatible.",
-                  capacity_or_booking_constraints: "The first vehicle or booking constraints do not permit this merge.",
-                  road_data_unavailable: "Road travel could not be verified.",
-                  constraints_or_conflict: "The combined schedule could not be verified.",
-                };
-                return <li key={`${candidate.driver_id}-${candidate.last_dropoff}-${candidate.next_pickup}-${index}`}>
-                  {candidate.driver_name || `Driver #${candidate.driver_id}`}: {dayjs(candidate.last_dropoff).format("D MMM h:mm A")}
-                  {" → "}{dayjs(candidate.next_pickup).format("D MMM h:mm A")}. {candidate.detail || reasons[candidate.reason] || "The merge could not be verified."}
-                </li>;
-              })}
-            </ul>
-          )}
-        </details>
-      )}
-      */}
-
-      {/* Error Banner */}
-      {error && !isIssueMinimized && (
-        <OptimizationIssueBanner error={error} onMinimize={() => setMinimizedIssue(issueKey)} />
-      )}
-
-      {/* Main Content Area */}
-      <div className="flex-1 min-h-0 relative">
-        <PanelGroup direction="vertical" onLayout={handlePanelLayout}>
-          {/* Map Panel */}
-          <Panel ref={mapPanelRef} defaultSize={60} minSize={0} collapsible={true}>
+  // Map and trips panels, rendered in the order the chosen layout needs.
+  const mapPanelNode = (
+          <Panel id="route-map" order={panelLayout === "side" ? 2 : 1} ref={mapPanelRef} defaultSize={splitMap} minSize={0} collapsible={true}>
             <div
               className={`h-full w-full ${
                 mapViewState === "fullscreen"
@@ -2348,245 +2215,94 @@ const OptimizationView = ({
                 isDrawingArea={!comparingStops && isDrawingArea}
                 onAreaDrawn={handleAreaDrawn}
                 selectionArea={comparingStops ? null : selectionArea}
-                mapToolbarExtra={!comparingStops ? (
-                  <Popover
-                    title="Map settings"
-                    trigger="click"
-                    placement="bottomRight"
-                    open={isMapSettingsOpen}
-                    onOpenChange={setIsMapSettingsOpen}
-                    content={
-                      <div className="flex flex-col gap-3 w-[min(280px,calc(100vw-64px))] max-w-[320px] text-xs">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsMapSettingsOpen(false);
-                            handleToggleAreaDrawing();
-                          }}
-                          aria-pressed={isDrawingArea}
-                          className="flex items-center gap-2 text-left py-1 text-gray-700 hover:text-[#003220] cursor-pointer"
-                        >
-                          <Pencil size={15} />
-                          {isDrawingArea ? "Cancel drawing" : "Draw an area to select jobs"}
-                        </button>
-                        <div className="flex items-center justify-between gap-4 border-t border-gray-100 pt-3">
-                          <span id="driver-working-time-label" className="text-gray-700">
-                            Show driver working time in timeline
-                          </span>
-                          <Switch
-                            size="small"
-                            aria-labelledby="driver-working-time-label"
-                            checked={showDriverWorkingTime}
-                            onChange={handleToggleDriverWorkingTime}
-                            className={showDriverWorkingTime ? "!bg-[#003220]" : ""}
-                          />
-                        </div>
-                      </div>
-                    }
-                  >
-                    <Button
-                      type="text"
-                      aria-label="Map settings"
-                      aria-expanded={isMapSettingsOpen}
-                      title="Map settings"
-                      icon={<Settings size={16} />}
-                      style={{
-                        borderRadius: 0,
-                        color: isDrawingArea || selectionArea ? "#E8834B" : undefined,
-                      }}
-                    />
-                  </Popover>
-                ) : null}
                 showInfoWindow={(m) => comparingStops || Boolean(m.isDepot || m.isAdditionalLocation)}
                 layersDropdownExtra={!comparingStops ? (
-                  <div className="flex flex-col gap-2.5 text-xs font-sans w-[min(240px,calc(100vw-64px))] max-w-[280px]">
-                    <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                      Map Overlays
-                    </div>
-                    <div className="flex items-center justify-between py-0.5">
-                      <span className="font-semibold text-gray-700 flex items-center gap-2">
-                        <Milestone size={14} className="text-[#003220]" />
-                        <span>Stops</span>
-                        {totalStopsCount > 0 && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded-none font-bold">
-                            {totalStopsCount}
-                          </span>
+                  <div className="lang flex w-[min(272px,calc(100vw-64px))] flex-col text-[13px]">
+                    <div className="pb-1.5 text-[11px] font-medium uppercase tracking-wider text-[#626E67]">Show on map</div>
+                    {([
+                      { key: "stops", icon: <Milestone size={14} />, label: "Stops", count: totalStopsCount, checked: showStops, onChange: handleToggleStops },
+                      { key: "depots", icon: <Building2 size={14} />, label: "Depots", count: depots.length, checked: showDepots, onChange: handleToggleDepots },
+                    ] as const).map(row => (
+                      <label key={row.key} className="flex h-10 cursor-pointer items-center gap-2.5 sm:h-8">
+                        <span aria-hidden="true" className={row.checked ? "text-[#0B5D3B]" : "text-[#9AA59F]"}>{row.icon}</span>
+                        <span className={`min-w-0 flex-1 truncate ${row.checked ? "text-[#12211A]" : "text-[#626E67]"}`}>{row.label}</span>
+                        {row.count > 0 && <span className="tabular-nums text-[12px] text-[#626E67]">{row.count}</span>}
+                        <Switch size="small" checked={row.checked} onChange={row.onChange} aria-label={`Show ${row.label.toLowerCase()}`}
+                          className={row.checked ? "!bg-[#0B5D3B]" : ""} />
+                      </label>
+                    ))}
+
+                    {/* Additional locations: one switch for the layer, then the types it shows */}
+                    <div className="flex h-10 items-center gap-2.5 sm:h-8">
+                      <span aria-hidden="true" className={showAdditionalLocations ? "text-[#0B5D3B]" : "text-[#9AA59F]"}><MapPin size={14} /></span>
+                      <button
+                        type="button"
+                        disabled={!showAdditionalLocations || availableLocationTypes.length === 0}
+                        aria-expanded={showAdditionalLocations ? isAdditionalTypesExpanded : false}
+                        onClick={() => setIsAdditionalTypesExpanded((prev) => !prev)}
+                        className={`flex min-w-0 flex-1 items-center gap-1 border-0 bg-transparent p-0 text-left text-[13px] ${
+                          showAdditionalLocations ? "cursor-pointer text-[#12211A] hover:text-[#0B5D3B]" : "cursor-default text-[#626E67]"}`}
+                      >
+                        <span className="truncate">Additional locations</span>
+                        {showAdditionalLocations && availableLocationTypes.length > 0 && (
+                          <ChevronDown size={13} aria-hidden="true" className={`shrink-0 text-[#626E67] transition-transform ${isAdditionalTypesExpanded ? "" : "-rotate-90"}`} />
                         )}
-                      </span>
-                      <Switch
-                        size="small"
-                        checked={showStops}
-                        onChange={handleToggleStops}
-                        className={showStops ? "!bg-[#003220]" : ""}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between py-0.5">
-                      <span className="font-semibold text-gray-700 flex items-center gap-2">
-                        <Building2 size={14} className="text-[#003220]" />
-                        <span>Depots</span>
-                        {depots.length > 0 && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded-none font-bold">
-                            {depots.length}
-                          </span>
-                        )}
-                      </span>
-                      <Switch
-                        size="small"
-                        checked={showDepots}
-                        onChange={handleToggleDepots}
-                        className={showDepots ? "!bg-[#003220]" : ""}
-                      />
+                      </button>
+                      {locationMappings.length > 0 && (
+                        <span className="tabular-nums text-[12px] text-[#626E67]">
+                          {showAdditionalLocations && visibleLocationTypes !== undefined && visibleLocationTypes.length < availableLocationTypes.length
+                            ? `${additionalLocationMarkers.length} of ${locationMappings.length}` : locationMappings.length}
+                        </span>
+                      )}
+                      <Switch size="small" checked={showAdditionalLocations} onChange={handleToggleAdditionalLocations}
+                        aria-label="Show additional locations" className={showAdditionalLocations ? "!bg-[#0B5D3B]" : ""} />
                     </div>
 
-                    {/* Additional Locations with expandable type configuration */}
-                    <div className="flex flex-col">
-                      <div className="flex items-center justify-between py-0.5">
-                        <button
-                          type="button"
-                          disabled={!showAdditionalLocations}
-                          aria-expanded={
-                            showAdditionalLocations
-                              ? isAdditionalTypesExpanded
-                              : false
-                          }
-                          className={`flex items-center gap-1.5 select-none group bg-transparent border-none p-0 text-left ${
-                            showAdditionalLocations
-                              ? "cursor-pointer"
-                              : "cursor-default"
-                          }`}
-                          onClick={() => setIsAdditionalTypesExpanded((prev) => !prev)}
-                        >
-                          <span
-                            className={`text-gray-400 transition-transform duration-200 items-center justify-center w-4 h-4 -ml-0.5 ${
-                              showAdditionalLocations
-                                ? "inline-flex group-hover:text-gray-700"
-                                : "hidden"
-                            }`}
-                            style={{
-                              transform: isAdditionalTypesExpanded
-                                ? "rotate(90deg)"
-                                : "rotate(0deg)",
-                            }}
-                          >
-                            <ChevronRight size={13} />
+                    {showAdditionalLocations && isAdditionalTypesExpanded && availableLocationTypes.length > 0 && (
+                      <div className="mb-1 ml-6 flex flex-col">
+                        <div className="flex h-7 items-center justify-between text-[12px] text-[#626E67]">
+                          <span className="tabular-nums">{activeTypesCount} of {availableLocationTypes.length} types shown</span>
+                          <span className="flex items-center gap-2">
+                            <button type="button" onClick={handleSelectAllTypes}
+                              disabled={activeTypesCount === availableLocationTypes.length}
+                              className="cursor-pointer border-0 bg-transparent p-0 text-[12px] font-medium text-[#0B5D3B] hover:underline disabled:cursor-default disabled:text-[#9AA59F] disabled:no-underline">All</button>
+                            <button type="button" onClick={handleDeselectAllTypes}
+                              disabled={activeTypesCount === 0}
+                              className="cursor-pointer border-0 bg-transparent p-0 text-[12px] font-medium text-[#0B5D3B] hover:underline disabled:cursor-default disabled:text-[#9AA59F] disabled:no-underline">None</button>
                           </span>
-                          <span className="font-semibold text-gray-700 flex items-center gap-2">
-                            <MapPin size={14} className="text-[#003220]" />
-                            <span>Additional Locations</span>
-                            {locationMappings.length > 0 && (
-                              <span className="text-[10px] font-mono px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded-none font-bold">
-                                {showAdditionalLocations &&
-                                visibleLocationTypes !== undefined &&
-                                visibleLocationTypes.length < availableLocationTypes.length
-                                  ? `${additionalLocationMarkers.length}/${locationMappings.length}`
-                                  : locationMappings.length}
-                              </span>
-                            )}
-                          </span>
-                        </button>
-                        <Switch
-                          size="small"
-                          checked={showAdditionalLocations}
-                          onChange={handleToggleAdditionalLocations}
-                          className={showAdditionalLocations ? "!bg-[#003220]" : ""}
-                        />
-                      </div>
-
-                      {/* Expandable Location Types breakdown */}
-                      {showAdditionalLocations &&
-                        isAdditionalTypesExpanded &&
-                        availableLocationTypes.length > 0 && (
-                        <div className="ml-5 pl-2.5 pr-1 py-1.5 border-l-2 border-[#003220]/25 bg-gray-50/80 rounded-sm flex flex-col gap-1.5 my-1">
-                          <div className="flex items-center justify-between text-[10px] text-gray-500 font-medium pb-1 border-b border-gray-200/60">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                              By Type ({activeTypesCount}/{availableLocationTypes.length})
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={handleSelectAllTypes}
-                                className="text-[10px] font-semibold text-[#003220] hover:underline bg-transparent border-none cursor-pointer p-0"
-                              >
-                                All
-                              </button>
-                              <span className="text-gray-300">|</span>
-                              <button
-                                type="button"
-                                onClick={handleDeselectAllTypes}
-                                className="text-[10px] font-semibold text-gray-500 hover:underline bg-transparent border-none cursor-pointer p-0"
-                              >
-                                None
-                              </button>
-                            </div>
-                          </div>
-
+                        </div>
+                        {availableLocationTypes.length > 8 && (
                           <Input
                             size="small"
                             allowClear
                             value={locationTypeSearch}
-                            onChange={(event) =>
-                              setLocationTypeSearch(event.target.value)
-                            }
-                            placeholder="Search location types"
+                            onChange={(event) => setLocationTypeSearch(event.target.value)}
+                            placeholder="Find a type"
                             aria-label="Search additional location types"
-                            prefix={
-                              <Search size={12} className="text-gray-400" />
-                            }
-                            className="!text-[11px]"
+                            prefix={<Search size={12} className="text-[#626E67]" />}
+                            className="!mb-1 !rounded-none !text-[12px]"
                           />
-
-                          <div className="flex flex-col gap-1 max-h-[170px] overflow-y-auto pr-1 custom-scrollbar">
-                            {filteredLocationTypes.map((type) => {
-                              const checked = isTypeVisible(type.value);
-                              return (
-                                <div
-                                  key={type.value}
-                                  onClick={() => handleToggleType(type.value)}
-                                  className={`flex items-center justify-between py-1 px-1.5 rounded cursor-pointer select-none transition-colors ${
-                                    checked && showAdditionalLocations
-                                      ? "hover:bg-gray-200/60"
-                                      : "hover:bg-gray-200/40 opacity-70"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-1.5 min-w-0 pr-2">
-                                    <span
-                                      className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs"
-                                      style={{ backgroundColor: type.color }}
-                                    />
-                                    <span
-                                      className={`text-[11px] truncate ${
-                                        checked && showAdditionalLocations
-                                          ? "text-gray-800 font-medium"
-                                          : "text-gray-500"
-                                      }`}
-                                      title={type.label}
-                                    >
-                                      {type.label}
-                                    </span>
-                                    {type.count > 0 && (
-                                      <span className="text-[10px] font-mono px-1 py-0.1 bg-gray-200/70 text-gray-600 rounded text-center shrink-0">
-                                        {type.count}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <Checkbox
-                                    checked={checked}
-                                    onClick={(event) => event.stopPropagation()}
-                                    onChange={() => handleToggleType(type.value)}
-                                    className="!m-0 shrink-0"
-                                  />
-                                </div>
-                              );
-                            })}
-                            {filteredLocationTypes.length === 0 && (
-                              <div className="py-3 px-2 text-center text-[11px] text-gray-400">
-                                No location types found
+                        )}
+                        <div className="custom-scrollbar flex max-h-[240px] flex-col overflow-y-auto border-l border-[#E3E8E5]">
+                          {filteredLocationTypes.map((type) => {
+                            const checked = isTypeVisible(type.value);
+                            return (
+                              <div key={type.value} onClick={() => handleToggleType(type.value)}
+                                className="flex h-10 cursor-pointer select-none items-center gap-2 pl-2.5 pr-1 hover:bg-[#F3F6F4] sm:h-7">
+                                <Checkbox checked={checked} onClick={(event) => event.stopPropagation()} onChange={() => handleToggleType(type.value)}
+                                  aria-label={`Show ${type.label}`} className="!m-0 shrink-0" />
+                                <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0" style={{ backgroundColor: type.color, opacity: checked ? 1 : 0.35 }} />
+                                <span className={`min-w-0 flex-1 truncate text-[12px] ${checked ? "text-[#12211A]" : "text-[#626E67]"}`} title={type.label}>{type.label}</span>
+                                {type.count > 0 && <span className="tabular-nums text-[12px] text-[#626E67]">{type.count}</span>}
                               </div>
-                            )}
-                          </div>
+                            );
+                          })}
+                          {filteredLocationTypes.length === 0 && (
+                            <div className="px-2.5 py-2 text-[12px] text-[#626E67]">No type matches</div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 ) : null}
               />
@@ -2639,7 +2355,7 @@ const OptimizationView = ({
                 onCancel={() => {
                   if (!isMovingAreaJobs) setIsMoveAreaModalOpen(false);
                 }}
-                destroyOnClose
+                destroyOnHidden
               >
                 <Select
                   className="w-full"
@@ -2682,7 +2398,7 @@ const OptimizationView = ({
                       {focusedRoute?.team_member_name || "Driver name unavailable"}
                     </span>
                     <span className="text-[11px] text-gray-400">
-                      {getGroupedStopsCount(focusedRoute?.stops)} stops
+                      {getGroupedStopsCount(focusedRoute?.stops)} stops on this trip
                     </span>
                     <Tooltip title="Clear focus (Esc)">
                       <button
@@ -2703,38 +2419,62 @@ const OptimizationView = ({
                   candidates={candidateIndex}
                   onSelect={handleSelectCandidate}
                   onOpenAddJob={() => setIsAddJobOpen(true)}
+                  extraTools={<>
+                    <span aria-hidden="true" className="h-5 w-px bg-gray-200" />
+                    <Tooltip title={isDrawingArea ? "Cancel drawing (Esc)" : "Select jobs by drawing an area"}>
+                      <button type="button" aria-pressed={isDrawingArea}
+                        aria-label={isDrawingArea ? "Cancel drawing" : "Select jobs by drawing an area"}
+                        onClick={handleToggleAreaDrawing}
+                        className={`flex h-8 w-8 cursor-pointer items-center justify-center border-0 transition-colors ${isDrawingArea
+                          ? "bg-[#003220] text-white" : "bg-transparent text-gray-700 hover:bg-emerald-50 hover:text-[#003220]"}`}>
+                        <Pencil size={16} />
+                      </button>
+                    </Tooltip>
+                    <span aria-hidden="true" className="h-5 w-px bg-gray-200" />
+                    <Tooltip title="Compare stops: pick stops from any team member or unassigned jobs and see them alone on the map">
+                      <button ref={compareButtonRef} type="button" aria-label="Compare stops" onClick={() => {
+                        clearAreaSelection();
+                        setIsMapSettingsOpen(false);
+                        setSelectedDrawerJob(null);
+                        setSelectedMarkerId(null);
+                        setComparingStops(true);
+                      }}
+                        className="flex h-8 w-8 cursor-pointer items-center justify-center border-0 bg-transparent text-gray-700 transition-colors hover:bg-emerald-50 hover:text-[#003220]">
+                        <ArrowRightLeft size={16} />
+                      </button>
+                    </Tooltip>
+                  </>}
                 />
-                <button ref={compareButtonRef} type="button" onClick={() => {
-                  clearAreaSelection();
-                  setIsMapSettingsOpen(false);
-                  setSelectedDrawerJob(null);
-                  setSelectedMarkerId(null);
-                  setComparingStops(true);
-                }} className="flex min-h-9 cursor-pointer items-center gap-2 self-start border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 shadow-md hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-700">
-                  <ArrowRightLeft size={14} /> Compare stops
-                </button>
                 </>}
               </div>
             </div>
           </Panel>
-
-          <ResizeHandle />
-
-          <Panel ref={timelinePanelRef} defaultSize={40} minSize={0} collapsible={true}>
+  );
+  const timelinePanelNode = (
+          <Panel id="route-timeline" order={panelLayout === "side" ? 1 : 2} ref={timelinePanelRef} defaultSize={100 - splitMap} minSize={0} collapsible={true}>
             <div className="flex flex-col h-full bg-gray-50 min-h-0 min-w-0">
               {mapViewState === "collapsed" && (
-                <div className="bg-[#ecfdf5] text-[#003220] px-3 sm:px-4 py-2 flex items-center justify-between gap-2 border-b border-emerald-100 shrink-0 transition-all">
-                  <div className="flex items-center gap-2 text-xs font-semibold">
-                    <MapIcon size={14} className="text-[#003220]" />
-                    <span>Map view is currently collapsed</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleToggleCollapse}
-                    className="min-h-11 lg:min-h-8 shrink-0 px-3 py-1 bg-[#003220] hover:bg-[#002A00] text-white text-xs font-bold rounded-none border-none outline-none shadow-sm transition-all cursor-pointer"
-                  >
-                    Show Map
-                  </button>
+                <button
+                  type="button"
+                  onClick={handleToggleCollapse}
+                  aria-label="Show map"
+                  className="lang group flex h-9 w-full shrink-0 cursor-pointer items-center justify-between gap-3 border-0 border-b border-solid border-[#E3E8E5] bg-white px-3 text-left sm:px-4 hover:bg-[#F8FAF9]"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <MapIcon size={14} className="shrink-0 text-[#626E67]" aria-hidden="true" />
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-[#626E67]">Map</span>
+                    <span className="truncate text-[12px] text-[#4A5750]">
+                      Hidden{totalStopsCount > 0 ? ` · ${totalStopsCount} stops` : ""}
+                    </span>
+                  </span>
+                  <span className="inline-flex h-7 shrink-0 items-center gap-1.5 border border-solid border-[#C4CCC7] bg-white px-2.5 text-[12px] font-medium text-[#12211A] group-hover:border-[#0B5D3B] group-hover:text-[#0B5D3B]">
+                    <ChevronDown size={13} aria-hidden="true" /> Show map
+                  </span>
+                </button>
+              )}
+              {detailView !== "timeline" && (
+                <div className="lang flex items-center gap-2 px-3 border-b border-[#E3E8E5] bg-white shrink-0" style={{ height: 41 }}>
+                  {viewTabs}
                 </div>
               )}
               <div className="flex-1 min-h-0 min-w-0">
@@ -2778,7 +2518,11 @@ const OptimizationView = ({
                     onReOptimize={handleReOptimize}
                     pendingRouteIndices={pendingRouteIndices}
                     onReorderStops={handleReorderStops}
-                    onSaveAndReOptimize={handleSaveAndReOptimize}
+                    onSaveAndReOptimize={(routeIndex: number, ...rest: any[]) => {
+                      setProgressInfo({ title: `Saving the order and re-optimizing ${route.result?.routes?.[routeIndex]?.team_member_name ?? "the trip"}`,
+                        context: "your new stop order is saved first", activities: planActivities(routeIndex, false) });
+                      return (handleSaveAndReOptimize as any)(routeIndex, ...rest);
+                    }}
                     onRemoveStop={(rIdx, jId, stopType) => handleRemoveJob(rIdx, jId, stopType)}
                     focusedRouteIndex={focusedRouteIndex}
                     onFocusRoute={handleFocusRoute}
@@ -2791,6 +2535,10 @@ const OptimizationView = ({
                     onUndoDeleteJob={handleUndoStageDeleteJob}
                     reorderingRouteIndex={reorderingRouteIndex}
                     onTransferStops={handleTransferStops}
+                    layout={panelLayout}
+                    onLayoutChange={changePanelLayout}
+                    leadingControls={viewTabs}
+                    onToggleWorkingTime={handleToggleDriverWorkingTime}
                   />
                 </div>
                 {hasOpenedTable && (
@@ -2805,18 +2553,325 @@ const OptimizationView = ({
                       onOpenJob={handleOpenTableJob}
                       driverFilter={driverSearch}
                       onClearDriverFilter={() => setDriverSearch("")}
+                      planDate={route.scheduled_date}
+                      focusName={focusedRouteIndex !== null ? focusedRoute?.team_member_name || "this driver" : null}
+                      onClearFocus={clearFocus}
                     />
                   </div>
                 )}
                 {hasOpenedVehicles && (
                   <div className="relative h-full min-h-0 overflow-hidden" hidden={detailView !== "vehicles"}>
                     <VehicleAssignments routes={route.result?.routes || []} vehicles={vehicles}
-                      loading={isVehiclesLoading} error={vehiclesError} onViewTrip={handleViewVehicleTrip} />
+                      loading={isVehiclesLoading} error={vehiclesError} onViewTrip={handleViewVehicleTrip}
+                      planDate={route.scheduled_date} />
                   </div>
                 )}
               </div>
             </div>
           </Panel>
+  );
+
+  const optimizingNow = Boolean(isOptimizing || route.status === "processing" || route.status === "queued");
+  const [progressLinger, setProgressLinger] = useState(false);
+  const wasOptimizing = useRef(false);
+  useEffect(() => {
+    if (optimizingNow) { wasOptimizing.current = true; setProgressLinger(false); return; }
+    if (!wasOptimizing.current) return;
+    wasOptimizing.current = false;
+    // Keep the finished steps on screen briefly so each tick is seen, then get out of the way.
+    setProgressLinger(true);
+    const timer = setTimeout(() => { setProgressLinger(false); setProgressInfo(null); }, 1400);
+    return () => clearTimeout(timer);
+  }, [optimizingNow]);
+
+  return (
+    <div ref={workspaceRef} className="route-workspace flex flex-col h-full min-w-0 absolute inset-0">
+      {/* One progress view for any optimization: no toast strip, no second spinner. */}
+      {(optimizingNow || progressLinger) && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60">
+          <div className="w-[calc(100%-24px)] max-w-md border border-[#D5DCD8] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(18,33,26,0.12)]">
+            <OptimizationProgress
+              title={progressInfo?.title ?? "Optimizing the plan"}
+              context={progressInfo?.context}
+              accepted={route.status === "processing" || route.status === "queued"}
+              queued={route.status === "queued"}
+              done={!optimizingNow}
+              activities={progressInfo?.activities ?? planActivities(null, false)}
+              note="You can keep looking at the plan behind this; it updates by itself when the result arrives."
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Route header */}
+      <nav aria-label="Optimization details" className="route-header bg-white border-b border-gray-200 px-3 shrink-0 min-h-14 py-2">
+        <div className="contents">
+          {/* Left: Route details */}
+          <div className="route-details flex items-center gap-3 min-w-0">
+            <Icon
+              component={ArrowLeftOutlined}
+              style={{ color: "#003220" }}
+              onClick={handleBackToPlanRoutes}
+              className="cursor-pointer text-base shrink-0 hover:opacity-75 transition-opacity"
+            />
+
+            <div className="flex flex-col justify-center min-w-0">
+              {isEditingName ? (
+                <Input
+                  size="small"
+                  value={tempRouteName}
+                  onChange={(e) => setTempRouteName(e.target.value)}
+                  onBlur={handleNameSave}
+                  onKeyDown={handleNameKeyDown}
+                  autoFocus
+                  disabled={isSavingName}
+                  maxLength={50}
+                  className="w-full max-w-56 text-sm font-semibold rounded-none"
+                />
+              ) : (
+                <div className="flex items-center gap-2 min-w-0">
+                  <div
+                    className="flex items-center gap-2 cursor-pointer group min-w-0"
+                    onClick={handleNameClick}
+                    title="Click to edit route name"
+                  >
+                    <Title
+                      level={5}
+                      className="!m-0 group-hover:text-primary transition-colors truncate font-bold text-gray-900 leading-tight"
+                      style={{ margin: 0 }}
+                    >
+                      {route.route_name}
+                    </Title>
+                    <EditOutlined className="text-gray-400 group-hover:text-primary transition-colors text-xs shrink-0" />
+                  </div>
+                </div>
+              )}
+
+              {/* Stats below Route Name (Sample UI style) */}
+              <div className="flex flex-wrap items-center gap-y-1 text-xs text-gray-500 font-normal leading-tight mt-0.5 select-none">
+                {formattedRouteDate && <span>{formattedRouteDate}</span>}
+                {formattedRouteDate && <span className="mx-1 text-gray-400">·</span>}
+                <span title={totalVehicles !== usedTrips.length ? `${totalVehicles - usedTrips.length} empty trips not counted` : undefined}>
+                  {usedTrips.length} {usedTrips.length === 1 ? "trip" : "trips"}
+                </span>
+                {route.result && (
+                  <>
+                    <span className="mx-1 text-gray-400">·</span>
+                    <button type="button" onClick={togglePlanSummary} aria-expanded={showPlanSummary} aria-controls="plan-figures"
+                      className="inline-flex items-center gap-0.5 border-0 bg-transparent p-0 text-xs text-[#0B5D3B] hover:underline cursor-pointer">
+                      {showPlanSummary ? "Hide summary" : "Summary"}
+                      {showPlanSummary ? <ChevronUp size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />}
+                    </button>
+                  </>
+                )}
+                {isIssueMinimized && (
+                  <>
+                    <span className="mx-1 text-gray-400">·</span>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-red-700 font-medium hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-red-600 cursor-pointer"
+                      aria-label="Show optimization issue details"
+                      aria-expanded={false}
+                      onClick={() => setMinimizedIssue(null)}
+                    >
+                      <CircleX size={12} aria-hidden="true" />
+                      Optimization Issue
+                      <ChevronDown size={12} aria-hidden="true" />
+                    </button>
+                  </>
+                )}
+                {hasPendingOptimization ? (
+                  <>
+                    <span className="mx-1 text-gray-400">·</span>
+                    <PendingOptimizationIndicator drivers={pendingDrivers}
+                      disabled={isOptimizing || route.status === "processing" || route.status === "queued"}
+                      onOptimize={handleReOptimize} onOptimizeAll={handleReOptimizeAll} />
+                  </>
+                ) : isRouteOptimized ? (
+                  <>
+                    <span className="mx-1 text-gray-400">·</span>
+                    <span className="inline-flex items-center gap-1 font-medium text-[#172B4D]">
+                      <CheckCircle size={14} weight="fill" color="#1F845A" aria-hidden="true" />
+                      Optimized
+                    </span>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Sharing state and actions */}
+          <div className="route-header-controls">
+            <div className="route-sharing-state flex flex-col items-end justify-self-end gap-0.5 min-w-0 text-[11px]" aria-live="polite">
+              {checkingShareStatus ? (
+                <span className="text-slate-500">Checking share status…</span>
+              ) : shareStatusError ? (
+                <span className="text-slate-500">Share status unavailable</span>
+              ) : (
+                <span
+                  className="inline-flex items-center gap-1 text-xs font-medium text-[#172B4D]"
+                >
+                  {sharingState?.sharing_status === "shared"
+                    ? <CheckCircle size={14} weight="fill" color="#1F845A" aria-hidden="true" />
+                    : <Circle size={14} weight="regular" color="#B38600" aria-hidden="true" />}
+                  {sharingState?.sharing_status === "shared" ? "Shared"
+                    : (sharingState?.last_shared_at || route.last_shared_at) ? "Changes not shared" : "Not shared yet"}
+                </span>
+              )}
+              {(sharingState?.last_shared_at || route.last_shared_at) ? (
+                <time
+                  className="text-slate-500"
+                  dateTime={sharingState?.last_shared_at || route.last_shared_at || undefined}
+                  title={dayjs(sharingState?.last_shared_at || route.last_shared_at).format("D MMM YYYY, h:mm:ss A Z")}
+                >
+                  Last shared {dayjs(sharingState?.last_shared_at || route.last_shared_at).format("D MMM, h:mm A")}
+                </time>
+              ) : null}
+            </div>
+            {!isCompactHeader && <div className="route-actions flex flex-wrap items-center justify-end gap-1 min-w-0">
+              {/* Undo Button */}
+              {undoStep && (
+                <Button
+                  size="small"
+                  onClick={handleUndo}
+                  aria-label={`Undo ${undoStep.label}`}
+                  title={`Undo`}
+                  className="border-slate-300 text-slate-700 bg-white font-semibold flex shrink-0 items-center gap-2"
+                  loading={isUndoing}
+                  disabled={isUndoing || isRemovingJob || (route.status !== "completed" && route.status !== "failed")}
+                  icon={
+                    <Icon component={() => (
+                      <svg width="1em" height="1em" fill="currentColor" viewBox="0 0 1024 1024">
+                        <path d="M793 242H366v-74c0-6.7-7.7-10.4-12.9-6.3l-142 112a8 8 0 0 0 0 12.6l142 112c5.2 4.1 12.9.4 12.9-6.3v-74h415v470H175c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h618c35.3 0 64-28.7 64-64V306c0-35.3-28.7-64-64-64z"/>
+                      </svg>
+                    )} />
+                  }
+                >
+                  <span className="route-action-label">Undo</span>
+                </Button>
+              )}
+
+              {/* Reoptimize All Routes button — highlighted when job edits are pending */}
+              {route.status === "completed" && (
+                <Tooltip title="Reoptimize All Routes">
+                  <Button
+                    size="small"
+                    ghost={true}
+                    aria-label="Reoptimize All Routes"
+                    icon={<ReloadOutlined />}
+                    onClick={handleReOptimizeAll}
+                    className={hasPendingOptimization
+                      ? "border-amber-400 text-amber-700 bg-amber-50 font-semibold"
+                      : ""}
+                  />
+                </Tooltip>
+              )}
+              <RouteShareButton showWhatsApp={Boolean(isWorkerShuttle && messagingEnabled)} isSharing={isSharing}
+                shareDisabled={isOptimizing || isMovingTrip || route.status === "processing" || route.status === "queued"}
+                shareLabel={shareButtonLabel} onShare={() => setShareDialogOpen(true)}
+                onWhatsApp={() => setMessageSelection({ planId: route.id })} />
+            </div>}
+            <div className="shrink-0">
+              <Dropdown
+                trigger={["click"]}
+                placement="bottomRight"
+                classNames={{ root: "route-actions-menu" }}
+                menu={{ items: isCompactHeader ? compactRouteMenuItems : routeMenuItems }}
+              >
+                <Button size="small" icon={<MenuOutlined />} aria-label="Route actions" aria-haspopup="menu" aria-busy={isSharing} title="Route actions" />
+              </Dropdown>
+            </div>
+          </div>
+        </div>
+
+      </nav>
+
+      {/* Plan figures in one line, the way dispatch tools show them: a number, then what it counts.
+          Every figure comes from the optimizer's own result; nothing is estimated here. */}
+      {route.result && showPlanSummary && (() => {
+        const unassigned = route.result.unassigned_jobs?.length || 0;
+        const jobs = planJobIds.length;
+        const km = Math.round(Number(route.result.total_distance_meters || 0) / 1000);
+        const minutes = Math.round(Number(route.result.total_duration_seconds || 0) / 60);
+        const h = Math.floor(minutes / 60), m = minutes % 60;
+        const figures: { value: string; of?: string; label: string; alert?: boolean }[] = [
+          { value: String(usedTrips.length), label: usedTrips.length === 1 ? "Trip" : "Trips" },
+          { value: String(usedPeople), label: usedPeople === 1 ? "Driver" : "Drivers" },
+          { value: String(usedVehicles), label: usedVehicles === 1 ? "Vehicle" : "Vehicles" },
+          ...(jobs > 0 ? [{ value: String(jobs - unassigned), of: String(jobs), label: "Jobs assigned" }] : []),
+          ...(km > 0 ? [{ value: String(km), label: "km" }] : []),
+          ...(minutes > 0 ? [{ value: h > 0 ? (m > 0 ? `${h} h ${m} min` : `${h} h`) : `${m} min`, label: "Trip time, all trips" }] : []),
+          { value: String(unassigned), label: "Unassigned", alert: unassigned > 0 },
+        ];
+        return (
+          <div id="plan-figures" aria-label="Plan figures" className="flex shrink-0 items-center gap-5 overflow-x-auto border-b border-[#DCDFE4] bg-white px-4 py-1.5">
+            {figures.map((figure, index) => (
+              <div key={figure.label} className={`flex shrink-0 items-baseline gap-1.5 ${index > 0 ? "border-l border-[#EBECF0] pl-5" : ""}`}>
+                <span className="text-[15px] font-semibold tabular-nums leading-none" style={{ color: figure.alert ? "#C9372C" : "#172B4D" }}>{figure.value}</span>
+                {figure.of && <span className="text-[11px] tabular-nums text-[#626F86]">/ {figure.of}</span>}
+                <span className="text-[11px] text-[#626F86]">{figure.label}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* Trip merge diagnostics banner disabled for now; keep for future use.
+      {isWorkerShuttle && route.result?.consolidation &&
+        (route.result.consolidation.status === "timed_out" || !!route.result.consolidation.skipped_candidates?.length) && (
+        <details className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-950">
+          <summary className="cursor-pointer font-semibold">
+            {route.result.consolidation.status === "timed_out"
+              ? "Trip merge search reached its time limit"
+              : "Some possible trip merges were skipped"}
+          </summary>
+          {route.result.consolidation.status === "timed_out" &&
+            <p className="mt-2">Some trips may not have been checked. Review the routes or reoptimize again.</p>}
+          {!!route.result.consolidation.skipped_candidates?.length && (
+            <ul className="mt-2 max-h-32 list-disc space-y-1 overflow-y-auto pl-5">
+              {route.result.consolidation.skipped_candidates.map((candidate, index) => {
+                const reasons: Record<string, string> = {
+                  protected_trip: "The trip is protected by a manual, shared or in-progress change.",
+                  trip_data_unavailable: "The trip is incomplete, outside the planning period, or its saved data cannot be verified.",
+                  break_or_idle: "A recorded break or idle block needs to be preserved.",
+                  locked_vehicle: "The later trip has a different locked vehicle.",
+                  driver_or_vehicle_unavailable: "The driver or first vehicle is unavailable or incompatible.",
+                  capacity_or_booking_constraints: "The first vehicle or booking constraints do not permit this merge.",
+                  road_data_unavailable: "Road travel could not be verified.",
+                  constraints_or_conflict: "The combined schedule could not be verified.",
+                };
+                return <li key={`${candidate.driver_id}-${candidate.last_dropoff}-${candidate.next_pickup}-${index}`}>
+                  {candidate.driver_name || `Driver #${candidate.driver_id}`}: {dayjs(candidate.last_dropoff).format("D MMM h:mm A")}
+                  {" → "}{dayjs(candidate.next_pickup).format("D MMM h:mm A")}. {candidate.detail || reasons[candidate.reason] || "The merge could not be verified."}
+                </li>;
+              })}
+            </ul>
+          )}
+        </details>
+      )}
+      */}
+
+      {/* Error Banner */}
+      {error && !isIssueMinimized && (
+        <OptimizationIssueBanner error={error} onMinimize={() => setMinimizedIssue(issueKey)} />
+      )}
+
+      {/* Main Content Area */}
+      <div className="flex-1 min-h-0 relative">
+        <PanelGroup key={panelLayout} direction={panelLayout === "side" ? "horizontal" : "vertical"} onLayout={handlePanelLayout}>
+          {panelLayout === "side" ? (
+            <>
+              {timelinePanelNode}
+              <ResizeHandle direction="vertical" />
+              {mapPanelNode}
+            </>
+          ) : (
+            <>
+              {mapPanelNode}
+              <ResizeHandle />
+              {timelinePanelNode}
+            </>
+          )}
         </PanelGroup>
 
         {/* Upper-styled Floating Job Details Card Overlay (Over Map AND Timeline View!) */}
@@ -2834,6 +2889,8 @@ const OptimizationView = ({
             leg={selectedDrawerJob.leg}
             isUnassigned={selectedDrawerJob.isUnassigned}
             isFullscreen={mapViewState === "fullscreen"}
+            runDayActionsReady={Boolean(sharingState?.last_shared_at || route.last_shared_at)}
+            runDayActionsReason="This plan has not been shared with drivers yet."
             vehicleName={selectedDrawerJob.routeIndex !== undefined ? route.result?.routes?.[selectedDrawerJob.routeIndex]?.vehicle_name : undefined}
             onEditVehicle={isWorkerShuttle && (route.status === "completed" || route.status === "failed")
               && selectedDrawerJob.routeIndex !== undefined && !selectedDrawerJob.isUnassigned
@@ -3038,10 +3095,10 @@ const OptimizationView = ({
       {/* Edit Job Drawer */}
       <Drawer
         title={<EditJobTitle job={editJobData} />}
-        width={720}
+        size={720}
         onClose={() => setEditJobData(null)}
         open={Boolean(editJobData)}
-        destroyOnClose
+        destroyOnHidden
       >
         <JobForm
           initialData={editJobData}
@@ -3141,70 +3198,144 @@ const OptimizationView = ({
         )}
       </Modal>
 
+      {(() => {
+        const target = reoptimizeTarget ? route.result?.routes?.[reoptimizeTarget.routeIndex] : undefined;
+        const stops = (target?.stops ?? []).filter((stop: any) => stop.job_id != null);
+        const jobCount = new Set(stops.map((stop: any) => stop.job_id)).size;
+        // Stops already worked on the day (done, in transit, no-show, skipped). Re-optimizing a trip like this
+        // can move or re-time them, so the dispatcher is told before, not after.
+        const jobStatusById = new Map(jobs.map(job => [String(job.id), String(job.status || "").toLowerCase()]));
+        const startedStops = stops.filter((stop: any) => {
+          const own = String(stop.status || "").toLowerCase();
+          const jobStatus = jobStatusById.get(String(stop.job_id)) ?? "";
+          return (own && own !== "pending") || ["in_transit", "in_progress", "completed", "failed", "skipped"].includes(jobStatus);
+        }).length;
+        const times = (target?.stops ?? []).map((stop: any) => stop.arrival_time).filter(Boolean).sort();
+        const first = times[0] ? dayjs(times[0]) : null, last = times.length ? dayjs(times[times.length - 1]) : null;
+        const removals = reoptimizeTarget ? pendingDeletedJobIds.size : 0;
+        return <Modal open={reoptimizeTarget !== null} width={520} centered rootClassName="lang" destroyOnHidden
+          onCancel={() => { if (!reoptimizeRunning) setReoptimizeTarget(null); }}
+          title={<div>
+            <div className="text-[16px] font-medium text-[#12211A]">Re-optimize {target?.team_member_name ? `${target.team_member_name}'s trip` : "this trip"}</div>
+            <div className="mt-0.5 text-[12px] font-normal text-[#4A5750] tabular-nums">
+              {[jobCount ? `${jobCount} ${jobCount === 1 ? "job" : "jobs"}` : null, first ? first.format("ddd, MMM D") : null,
+                first && last ? `${first.format("h:mm A")} – ${last.format("h:mm A")}${last.isAfter(first, "day") ? " next day" : ""}` : null,
+                target?.vehicle_name || null].filter(Boolean).join(" · ")}
+            </div>
+          </div>}
+          footer={<div className="flex items-center justify-end gap-2">
+            <Button onClick={() => setReoptimizeTarget(null)} disabled={reoptimizeRunning}>Cancel</Button>
+            <Button type="primary" loading={reoptimizeRunning} onClick={async () => {
+              if (!reoptimizeTarget) return;
+              setReoptimizeRunning(true);
+              const { routeIndex, keepOrder } = reoptimizeTarget;
+              setProgressInfo({ title: keepOrder ? `Recalculating ${target?.team_member_name ?? "the trip"}'s times` : `Re-optimizing ${target?.team_member_name ?? "the trip"}'s trip`,
+                context: `${jobCount} jobs · ${keepOrder ? "keeping your stop order" : "finding the best order"}`, activities: planActivities(routeIndex, keepOrder) });
+              setReoptimizeTarget(null);
+              try { await runReOptimize(routeIndex, keepOrder); } finally { setReoptimizeRunning(false); }
+            }}>{reoptimizeTarget?.keepOrder ? "Recalculate times" : "Re-optimize trip"}</Button>
+          </div>}>
+          <div className="flex flex-col gap-3 pt-1">
+            <p className="m-0 text-[13px] text-[#4A5750]">Works out this trip again with current travel times and its rules (hours, seats, shifts). Other trips are not touched.</p>
+            <div role="radiogroup" aria-label="How to re-optimize" className="flex flex-col gap-2">
+              {([
+                [false, "Find the best order", "Stops may be put in a new order, and times change to match."],
+                [true, "Keep my stop order", "Stops stay exactly in this order; only the times are worked out again. If that order cannot work, nothing is changed."],
+              ] as const).map(([keep, title, hint]) => {
+                const on = reoptimizeTarget?.keepOrder === keep;
+                return <button key={String(keep)} type="button" role="radio" aria-checked={on}
+                  onClick={() => setReoptimizeTarget(current => current ? { ...current, keepOrder: keep } : current)}
+                  className={`flex items-start gap-2.5 border px-3 py-2.5 text-left cursor-pointer ${on ? "border-[#003220] bg-[#F1F8F4] shadow-[inset_3px_0_0_#003220]" : "border-[#D5DCD8] bg-white hover:border-[#9AA59F]"}`}>
+                  <span aria-hidden="true" className={`mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${on ? "border-[#003220]" : "border-[#9AA59F]"}`}>
+                    {on && <span className="h-1.5 w-1.5 rounded-full bg-[#003220]" />}
+                  </span>
+                  <span>
+                    <span className="block text-[13px] font-medium text-[#12211A]">{title}</span>
+                    <span className="block text-[12px] text-[#4A5750]">{hint}</span>
+                  </span>
+                </button>;
+              })}
+            </div>
+            {startedStops > 0 && <p className="m-0 border-l-2 border-[#0B5D3B] bg-[#F1F8F4] px-3 py-2 text-[12px] text-[#12211A]">
+              {/* Server behaviour (route_operations re_optimize): jobs in transit, completed or failed are kept as a fixed
+                  start of the trip, in their current order; only the open jobs are planned again after them. */}
+              {startedStops} {startedStops === 1 ? "stop on this trip is" : "stops on this trip are"} already worked. Jobs on board, done or failed stay at the start of the trip in their current order; only the open jobs are planned again.
+            </p>}
+            {removals > 0 && <p className="m-0 border-l-2 border-[#B38600] bg-[#FFF8E6] px-3 py-2 text-[12px] text-[#4A5750]">
+              {removals} {removals === 1 ? "job you removed is" : "jobs you removed are"} taken off the plan first.
+            </p>}
+            <p className="m-0 text-[12px] text-[#626E67]">Drivers see the new times only after you share the plan again.</p>
+          </div>
+        </Modal>;
+      })()}
+      <ShareDriversModal open={shareDialogOpen} drivers={shareDrivers} lastSharedAt={sharingState?.last_shared_at}
+        sharing={isSharing} onCancel={() => setShareDialogOpen(false)}
+        onShare={(ids, everyone) => void handleShareSelected(ids, everyone)} />
       <Modal
         open={shareResult !== null}
         onCancel={() => setShareResult(null)}
         onOk={() => setShareResult(null)}
-        title={
-          <span className="flex items-center gap-2">
-            <ShareAltOutlined className="text-green-500" />
-            {shareResult?.skipped_drivers?.length ? "Routes partially shared" : "Routes shared"}
-          </span>
-        }
+        rootClassName="lang"
+        width={480}
+        title={shareResult && (() => {
+          const skipped = shareResult.skipped_drivers?.length ?? 0;
+          const shared = shareResult.shared_count;
+          return <span className="flex items-center gap-2">
+            {shared > 0 && !skipped
+              ? <CheckCircle size={20} weight="fill" color="#1F845A" aria-hidden="true" />
+              : <CircleX size={20} color={shared > 0 ? "#B38600" : "#C9372C"} aria-hidden="true" />}
+            {shared === 0 ? "Nothing was shared"
+              : skipped ? `Shared with ${shared} of ${shared + skipped} ${shared + skipped === 1 ? "person" : "people"}`
+              : `Shared with ${shared} ${shared === 1 ? "person" : "people"}`}
+          </span>;
+        })()}
         okText="Done"
         cancelButtonProps={{ style: { display: "none" } }}
         centered
       >
-        {shareResult && (
-          <div className="space-y-4 py-2">
-            {!!shareResult.skipped_drivers?.length && <Alert type="warning" showIcon
-              title={`${shareResult.skipped_drivers.length} driver${shareResult.skipped_drivers.length === 1 ? " was" : "s were"} not shared`}
-              description={<div className="space-y-2">
-                <p>Their previously shared routes remain unchanged.</p>
-                {shareResult.skipped_drivers.map(driver => <div key={driver.driver_id}>
-                  <strong>{driver.driver_name}</strong><div>{driver.reason}</div>
-                </div>)}
-              </div>} />}
-            {shareResult.notifications_pending && <Alert type="warning" showIcon
-              title="Shared successfully; some live notifications are delayed"
-              description="The shared version is saved. Drivers will receive it when their app refreshes or reconnects. You can share again to retry live delivery." />}
-            <div className="flex items-center justify-between p-4 rounded-lg bg-green-50 border border-green-100">
-              <span className="text-green-700 font-medium">
-                Drivers included
-              </span>
-              <span className="text-2xl font-bold text-green-600">
-                {shareResult.shared_count}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-lg bg-blue-50 border border-blue-100 text-center">
-                <div className="text-2xl font-bold text-blue-600">
-                  {shareResult.online_drivers.length}
-                </div>
-                <div className="text-xs text-blue-500 mt-1">
-                  Live delivery confirmed
-                </div>
-              </div>
-              <div className="p-3 rounded-lg bg-gray-50 border border-gray-200 text-center">
-                <div className="text-2xl font-bold text-gray-500">
-                  {shareResult.shared_count - shareResult.online_drivers.length}
-                </div>
-                <div className="text-xs text-gray-400 mt-1">
-                  Available on refresh
-                </div>
-              </div>
-            </div>
-
-            {shareResult.shared_count === 0 && (
-              <Alert
-                type="warning"
-                showIcon
-                message="No drivers with assigned routes found. Make sure routes have drivers assigned before sharing."
-              />
+        {shareResult && (() => {
+          const nameOf = (id: number) => shareDrivers.find(driver => driver.id === id)?.name
+            ?? (route.result?.routes ?? []).find(trip => trip.team_member_id === id)?.team_member_name ?? `Team member #${id}`;
+          const online = new Set(shareResult.online_drivers);
+          const people = [...new Set(shareResult.driver_ids ?? [])];
+          const live = people.filter(id => online.has(id)).length;
+          return <div className="flex flex-col gap-4 pt-1">
+            <p className="m-0 text-[13px] text-[#4A5750]">
+              {shareResult.last_shared_at ? `Sent ${dayjs(shareResult.last_shared_at).format("ddd, MMM D [at] h:mm A")}. ` : ""}
+              {people.length > 0 && (live === people.length ? "It was sent live to everyone's driver app."
+                : live === 0 ? "Each person gets it the next time their driver app opens or reconnects."
+                : `Sent live to ${live}; the rest get it when their app opens.`)}
+            </p>
+            {people.length > 0 && <ul className="m-0 list-none border-t border-[#E3E8E5] p-0" aria-label="People the plan was shared with">
+              {people.map(id => {
+                const isLive = online.has(id);
+                return <li key={id} className="flex items-center justify-between gap-3 border-b border-[#E3E8E5] py-2.5">
+                  <span className="min-w-0 truncate text-[13px] text-[#12211A]">{nameOf(id)}</span>
+                  <span className={`inline-flex shrink-0 items-center gap-1.5 text-[12px] ${isLive ? "text-[#1F845A]" : "text-[#4A5750]"}`}>
+                    {isLive ? <CheckCircle size={14} weight="fill" aria-hidden="true" /> : <Circle size={14} aria-hidden="true" />}
+                    {isLive ? "Sent live to their app" : "Arrives when their app opens"}
+                  </span>
+                </li>;
+              })}
+            </ul>}
+            {!!shareResult.skipped_drivers?.length && <section aria-label="Not shared" className="flex flex-col gap-2">
+              <h3 className="m-0 text-[11px] font-medium uppercase tracking-wide text-[#C9372C]">Not shared</h3>
+              <ul className="m-0 list-none border-t border-[#E3E8E5] p-0">
+                {shareResult.skipped_drivers.map(driver => <li key={driver.driver_id} className="border-b border-[#E3E8E5] py-2.5">
+                  <div className="text-[13px] text-[#12211A]">{driver.driver_name}</div>
+                  <div className="mt-0.5 text-[12px] text-[#C9372C]">{driver.reason}</div>
+                </li>)}
+              </ul>
+              <p className="m-0 text-[12px] text-[#626E67]">Their phones keep the version they had before. Fix the reason, then share again.</p>
+            </section>}
+            {shareResult.notifications_pending && <p className="m-0 border-l-2 border-[#B38600] bg-[#FFF8E6] px-3 py-2 text-[12px] text-[#4A5750]">
+              The plan is saved, but some live alerts are delayed. Drivers still get it when their app refreshes; share again to retry the alert.
+            </p>}
+            {shareResult.shared_count === 0 && !shareResult.skipped_drivers?.length && (
+              <p className="m-0 text-[13px] text-[#4A5750]">No trips in this plan have a driver yet. Assign drivers, then share.</p>
             )}
-          </div>
-        )}
+          </div>;
+        })()}
       </Modal>
     </div>
   );

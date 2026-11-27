@@ -162,7 +162,7 @@ export const generateTimeMarkers = (
       markers.push({
         time: currentTime,
         position: currentTime.diff(startTime, "minute", true) * pixelsPerMinute,
-        label: currentTime.format("hh:mm A"),
+        label: currentTime.format("h:mm A"),
         isNewDay,
         dateLabel,
       });

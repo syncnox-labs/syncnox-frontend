@@ -61,178 +61,171 @@ export const CustomFieldFormModal: React.FC<CustomFieldFormModalProps> = ({
   setSurfacesState,
 }) => {
   const isEditing = Boolean(editingField || editingBaseFieldKey);
+  const entityWord = { job: "jobs", vehicle: "vehicles", team_member: "team members", depot: "depots" }[selectedEntity];
+
+  const labelClass = "mb-1 block text-xs font-medium text-[#12211A]";
+  const hintClass = "m-0 mt-1 text-xs leading-4 text-[#626E67]";
+  const inputClass =
+    "h-9 w-full rounded-none border border-transparent bg-[#F3F6F4] px-3 text-[13px] text-[#12211A] outline-none placeholder:text-[#626E67] focus:border-[#0B5D3B] focus:bg-white disabled:text-[#626E67]";
+
+  // Who can see the field. One line each, with what that place is, so the three letters never need decoding.
+  const audiences: { key: keyof FieldSurfaces; title: string; hint: string }[] = [
+    { key: "disp", title: "Dispatcher", hint: "In this web app: the job form and the jobs table." },
+    { key: "driver", title: "Driver app", hint: "On the driver's phone." },
+    { key: "track", title: "Customer", hint: "On the tracking page sent to the customer." },
+  ];
 
   return (
     <Modal
+      rootClassName="lang"
       title={
-        <div className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2">
-          {isEditing ? `Edit Field: ${label}` : `Add Custom Field (${selectedEntity.replace("_", " ").toUpperCase()})`}
+        <div>
+          <p className="m-0 text-[11px] font-medium uppercase tracking-[0.09em] text-[#626E67]">{isEditing ? "Edit field" : `New field for ${entityWord}`}</p>
+          <p className="m-0 mt-1 text-lg font-medium leading-6 text-[#12211A]">{isEditing ? label || "Field" : "Add field"}</p>
         </div>
       }
       open={open}
       onOk={onSave}
       onCancel={onClose}
-      okText={isEditing ? "Update Field" : "Add Field"}
-      okButtonProps={{
-        style: {
-          backgroundColor: "#003220",
-          borderColor: "#003220",
-          borderRadius: 0,
-          fontSize: "12px",
-          height: "32px",
-        },
-      }}
-      cancelButtonProps={{
-        style: { borderRadius: 0, fontSize: "12px", height: "32px" },
-      }}
+      okText={isEditing ? "Save changes" : "Add field"}
       centered
-      width={540}
+      width={520}
     >
-      <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-3.5 py-2 font-sans text-xs custom-scrollbar">
-        {selectedEntity === "job" && (
-          <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Section Group</label>
-            <Select
-              value={groupSection}
-              onChange={setGroupSection}
-              className="w-full text-xs"
-              options={[
-                ...(editingField?.group === "optimization" ? [{ value: "optimization", label: "Optimization Fields" }] : []),
-                { value: "additional", label: "Additional Fields (Display)" },
-                { value: "pod", label: "Proof of Delivery (POD)" },
-              ]}
-            />
-          </div>
-        )}
-
+      <div className="custom-scrollbar max-h-[70vh] space-y-4 overflow-y-auto py-2 pr-1 font-sans">
         <div>
-          <label className="block text-xs font-semibold text-gray-700 mb-1">
-            Field Label <span className="text-red-500">*</span>
+          <label htmlFor="cf-label" className={labelClass}>
+            Label <span className="text-[#C9372C]">*</span>
           </label>
           <input
+            id="cf-label"
             type="text"
             value={label}
             onChange={(e) => onLabelChange(e.target.value)}
-            placeholder="e.g. Gate pass number or Delivery photo"
-            className="w-full text-xs border border-gray-200 rounded-none px-3 py-2 outline-none focus:border-[#003220]"
+            placeholder="For example: Gate pass number"
+            className={inputClass}
           />
+          <p className={hintClass}>The name people see on forms and tables.</p>
         </div>
 
-        <div>
-          <label className="block text-xs font-semibold text-gray-700 mb-1">
-            Field Key (Database identifier) <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            value={fieldKey}
-            disabled={isEditing}
-            onChange={(e) => setFieldKey(e.target.value)}
-            placeholder="e.g. gate_pass_number"
-            className="w-full text-xs border border-gray-200 rounded-none px-3 py-2 outline-none font-mono focus:border-[#003220] disabled:bg-gray-100 disabled:text-gray-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-gray-700 mb-1">Data Type</label>
-          <Select
-            value={dataType}
-            onChange={setDataType}
-            className="w-full text-xs"
-            disabled={Boolean(editingBaseFieldKey)}
-            options={[
-              { value: "string", label: "Text (String)" },
-              { value: "number", label: "Number" },
-              { value: "boolean", label: "Boolean (Yes / No)" },
-              { value: "select", label: "Dropdown (Select)" },
-              { value: "date", label: "Date" },
-              { value: "geo", label: "Coordinates (Latitude, Longitude)" },
-            ]}
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-gray-700 mb-1">Default Value</label>
-          <input
-            type="text"
-            value={defaultValue}
-            onChange={(e) => setDefaultValue(e.target.value)}
-            placeholder="Optional default value"
-            className="w-full text-xs border border-gray-200 rounded-none px-3 py-2 outline-none focus:border-[#003220]"
-          />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="cf-type" className={labelClass}>Type</label>
+            <Select
+              id="cf-type"
+              value={dataType}
+              onChange={setDataType}
+              className="w-full"
+              disabled={Boolean(editingBaseFieldKey)}
+              options={[
+                { value: "string", label: "Text" },
+                { value: "number", label: "Number" },
+                { value: "boolean", label: "Yes / No" },
+                { value: "select", label: "Dropdown" },
+                { value: "date", label: "Date" },
+                { value: "geo", label: "Coordinates" },
+              ]}
+            />
+          </div>
+          {selectedEntity === "job" && (
+            <div>
+              <label htmlFor="cf-group" className={labelClass}>Section</label>
+              <Select
+                id="cf-group"
+                value={groupSection}
+                onChange={setGroupSection}
+                className="w-full"
+                options={[
+                  ...(editingField?.group === "optimization" ? [{ value: "optimization", label: "Routing fields" }] : []),
+                  { value: "additional", label: "Additional fields" },
+                  { value: "pod", label: "Proof of delivery" },
+                ]}
+              />
+            </div>
+          )}
         </div>
 
         {dataType === "select" && (
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Options (comma-separated)</label>
+            <label htmlFor="cf-options" className={labelClass}>Choices</label>
             <input
+              id="cf-options"
               type="text"
               value={optionsStr}
               onChange={(e) => setOptionsStr(e.target.value)}
               placeholder="Option 1, Option 2, Option 3"
-              className="w-full text-xs border border-gray-200 rounded-none px-3 py-2 outline-none focus:border-[#003220]"
+              className={inputClass}
             />
+            <p className={hintClass}>Separate the choices with commas.</p>
           </div>
         )}
 
         <div>
-          <label className="block text-xs font-semibold text-gray-700 mb-1">Description / Help Text</label>
+          <label htmlFor="cf-default" className={labelClass}>Default value</label>
           <input
+            id="cf-default"
             type="text"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Optional help text for inputs"
-            className="w-full text-xs border border-gray-200 rounded-none px-3 py-2 outline-none focus:border-[#003220]"
+            value={defaultValue}
+            onChange={(e) => setDefaultValue(e.target.value)}
+            placeholder="Optional"
+            className={inputClass}
           />
         </div>
 
-        {/* Visibility Surfaces Configurator */}
-        <div className="pt-3 border-t border-gray-100">
-          <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider mb-2">
-            Visibility Across Apps
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-            <div className="flex items-center space-x-2 border border-gray-200 px-2.5 py-1.5 bg-white">
-              <Checkbox
-                checked={Boolean(surfacesState.disp)}
-                onChange={(e) =>
-                  setSurfacesState({ ...surfacesState, disp: e.target.checked })
-                }
-              >
-                <span className="text-xs text-gray-800 font-medium">Dispatch Manager (D)</span>
-              </Checkbox>
-            </div>
-
-            <div className="flex items-center space-x-2 border border-gray-200 px-2.5 py-1.5 bg-white">
-              <Checkbox
-                checked={Boolean(surfacesState.driver)}
-                onChange={(e) =>
-                  setSurfacesState({ ...surfacesState, driver: e.target.checked })
-                }
-              >
-                <span className="text-xs text-gray-800 font-medium">Driver App (V)</span>
-              </Checkbox>
-            </div>
-
-            <div className="flex items-center space-x-2 border border-gray-200 px-2.5 py-1.5 bg-white">
-              <Checkbox
-                checked={Boolean(surfacesState.track)}
-                onChange={(e) =>
-                  setSurfacesState({ ...surfacesState, track: e.target.checked })
-                }
-              >
-                <span className="text-xs text-gray-800 font-medium">Customer Tracking (C)</span>
-              </Checkbox>
-            </div>
-          </div>
+        <div>
+          <label htmlFor="cf-help" className={labelClass}>Help text</label>
+          <input
+            id="cf-help"
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Optional. Shown under the field to explain what to enter."
+            className={inputClass}
+          />
         </div>
 
-        <div className="pt-3 border-t border-gray-100">
-          <Checkbox
-            checked={isRequired}
-            onChange={(e) => setIsRequired(e.target.checked)}
-          >
-            <span className="text-xs text-gray-700 font-semibold">Field is Required</span>
+        <fieldset className="m-0 border-0 border-t border-solid border-[#E3E8E5] p-0 pt-4">
+          <legend className="sr-only">Who sees this field</legend>
+          <p className="m-0 mb-2 text-[11px] font-medium uppercase tracking-[0.09em] text-[#626E67]">Who sees it</p>
+          <div className="flex flex-col gap-3 pb-1">
+            {audiences.map((a) => (
+              <Checkbox
+                key={a.key}
+                checked={Boolean(surfacesState[a.key])}
+                onChange={(e) => setSurfacesState({ ...surfacesState, [a.key]: e.target.checked })}
+                className="!flex items-start"
+              >
+                <span className="block text-[13px] font-medium leading-5 text-[#12211A]">{a.title}</span>
+                <span className="block text-xs leading-4 text-[#626E67]">{a.hint}</span>
+              </Checkbox>
+            ))}
+          </div>
+        </fieldset>
+
+        <div className="border-0 border-t border-solid border-[#E3E8E5] pt-4">
+          <Checkbox checked={isRequired} onChange={(e) => setIsRequired(e.target.checked)} className="!flex items-start">
+            <span className="block text-[13px] font-medium leading-5 text-[#12211A]">Required</span>
+            <span className="block text-xs leading-4 text-[#626E67]">A record cannot be saved while this field is empty.</span>
           </Checkbox>
+        </div>
+
+        <div className="border-0 border-t border-solid border-[#E3E8E5] pt-4">
+          <label htmlFor="cf-key" className={labelClass}>
+            Key <span className="text-[#C9372C]">*</span>
+          </label>
+          <input
+            id="cf-key"
+            type="text"
+            value={fieldKey}
+            disabled={isEditing}
+            onChange={(e) => setFieldKey(e.target.value)}
+            placeholder="gate_pass_number"
+            className={`${inputClass} font-mono`}
+          />
+          <p className={hintClass}>
+            {isEditing
+              ? "The name used in imports and by other systems. It cannot be changed after the field is created."
+              : "Filled in from the label. Used as the column name in imports and by other systems. It cannot be changed later."}
+          </p>
         </div>
       </div>
     </Modal>

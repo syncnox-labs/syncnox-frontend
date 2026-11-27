@@ -145,6 +145,28 @@ export const generateMapMarkers = (
         group.rawStops.some((s: any) => s.time_edited || s.is_edited)
       );
 
+      // The pin shows the visit's own progress, the same rule as the timeline: a pickup is done once its
+      // job is in transit, the stop's own status wins over the job's, and a shared stop with some
+      // passengers done and some open is "partly_done".
+      const states = isDepot ? [] : group.rawStops.filter((s: any) => s.job_id != null).map((s: any) => {
+        const own = String(s.status || "").toLowerCase();
+        const jobRecord = jobsMap.get(Number(s.job_id));
+        const trustJob = !own || ["one_way", "return_only", "go_only"].includes(String(jobRecord?.job_type || "").toLowerCase());
+        const jobStatus = trustJob ? String(jobRecord?.status || "").toLowerCase() : "";
+        const type = String(s.stop_type || "").toLowerCase();
+        if (own === "completed" || jobStatus === "completed" || ((type === "pickup" || type === "pick_up") && jobStatus === "in_transit")) return "done";
+        if (own === "failed" || jobStatus === "failed") return "failed";
+        if (own === "skipped" || jobStatus === "skipped" || jobStatus === "cancelled") return "skipped";
+        return "open";
+      });
+      const doneCount = states.filter((state: string) => state === "done").length;
+      const openCount = states.filter((state: string) => state === "open").length;
+      const stopStatus = states.length === 0 ? undefined
+        : doneCount === states.length ? "completed"
+          : doneCount > 0 && openCount > 0 ? "partly_done"
+            : openCount === 0 ? (states.includes("failed") ? "failed" : "skipped")
+              : undefined;
+
       const labelText = count > 1 ? `${displayIndex} (×${count})` : displayIndex.toString();
 
       return {
@@ -186,6 +208,7 @@ export const generateMapMarkers = (
         routeIndex: index,
         isNew: isNew,
         isTimeEdited: isTimeEdited,
+        stopStatus,
       };
     });
   });

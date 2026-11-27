@@ -1,59 +1,100 @@
 "use client";
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Spin, DatePicker, Typography, Flex } from "antd";
-import { Dayjs } from "dayjs";
+import { DatePicker, Drawer, Input, Spin, Tooltip, Typography } from "antd";
+import dayjs, { Dayjs } from "dayjs";
 import {
-  FileTextOutlined,
-  CarOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  FileAddOutlined,
-  RocketOutlined,
-  TeamOutlined,
-  EnvironmentOutlined,
-  UserOutlined,
-  CalendarOutlined,
-  ThunderboltOutlined,
-  DashboardOutlined,
-  FieldTimeOutlined,
-} from "@ant-design/icons";
+  ArrowDown, ArrowUp, CalendarBlank, CaretDown, ArrowsInLineHorizontal, ArrowsOutLineHorizontal, ArrowCounterClockwise, Check, DotsSixVertical,
+  MagnifyingGlass, Plus, SlidersHorizontal, SquaresFour, X,
+} from "@phosphor-icons/react/ssr";
 import { useIndexStore } from "@/store/index.store";
 import { useDashboardStore, defaultDashboard } from "@/store/dashboard.store";
-import { RecentRoute } from "@/types/dashboard.type";
 import { fetchRoutes } from "@/apis/routes.api";
+import { fetchJobs } from "@/apis/jobs.api";
+import { fetchTeams } from "@/apis/team.api";
+import { fetchVehicles } from "@/apis/vehicle.api";
 import { AllRoutes } from "@/types/routes.type";
-import AddJobsModal from "@/app/plan/AddJobsModal";
-import { useJobsStore } from "@/store/jobs.store";
+import { AboutContext, ActionButton, PageHeader, ink } from "@/components/ui/kit";
+import { DEFAULT_LAYOUT, WIDGETS, type LayoutItem, type Need, type WidgetContext } from "./widgets";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
-const routeProgress = (route: RecentRoute) => route.stops > 0
-  ? Math.min(100, Math.round((route.completed / route.stops) * 100)) : 0;
+// The arrangement is kept in this browser. Keeping it per account needs a small back-end addition.
+const STORAGE_KEY = "syncnox.dashboard.layout.v1";
+const PERIOD_KEY = "syncnox.dashboard.period.v2";
+const PRESETS = [7, 14, 30];
+const MAX_DAYS = 92; // one comparison needs twice the range; three months keeps the chart readable
+// What is remembered: a preset ("the last 14 days", which moves with today) or two fixed dates
+type SavedPeriod = { days: number } | { start: string; end: string };
+const known = (items: unknown): LayoutItem[] | null => {
+  if (!Array.isArray(items)) return null;
+  const seen = new Set<string>();
+  const clean = items.filter((item): item is LayoutItem =>
+    !!item && typeof item.id === "string" && WIDGETS.some((w) => w.id === item.id) && !seen.has(item.id) && !!seen.add(item.id))
+    .map((item) => ({ id: item.id, size: item.size === "full" ? "full" as const : "half" as const }));
+  return clean;
+};
 
 export default function DashboardView() {
   const router = useRouter();
   const { setCurrentTab } = useIndexStore();
-  const { dashboardData, isLoading, error, fetchDashboard } =
-    useDashboardStore();
+  const { dashboardData, isLoading, error, fetchDashboard } = useDashboardStore();
   const [selectedDate, setSelectedDate] = useState<Dayjs | null>(null);
   const [selectedDateRoutes, setSelectedDateRoutes] = useState<AllRoutes[]>([]);
   const [isLoadingRoutes, setIsLoadingRoutes] = useState(false);
-  const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
-  const { fetchAllJobs } = useJobsStore();
 
+  const [layout, setLayout] = useState<LayoutItem[]>(DEFAULT_LAYOUT);
+  const [editing, setEditing] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteSearch, setPaletteSearch] = useState("");
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+
+  const [extras, setExtras] = useState<WidgetContext["extras"]>({});
+  const requested = useRef(new Set<Need>());
+  const [savedPeriod, setSavedPeriod] = useState<SavedPeriod>({ days: 14 });
+  const [periodOpen, setPeriodOpen] = useState(false);
+
+  useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
+
+  // Lists that other screens already load (routes, today's jobs, team, vehicles) are fetched here only when a widget on the dashboard needs them, once each
   useEffect(() => {
-    fetchDashboard();
-  }, [fetchDashboard]);
+    const loaders: Record<Need, () => Promise<unknown>> = {
+      routes: () => fetchRoutes(),
+      jobsToday: () => fetchJobs({ date: dayjs().format("YYYY-MM-DD") }),
+      team: () => fetchTeams(),
+      vehicles: () => fetchVehicles(),
+    };
+    const needs = new Set(layout.flatMap((item) => WIDGETS.find((w) => w.id === item.id)?.needs ?? []));
+    needs.forEach((need) => {
+      if (requested.current.has(need)) return;
+      requested.current.add(need);
+      loaders[need]()
+        .then((value) => setExtras((current) => ({ ...current, [need]: Array.isArray(value) ? value : [] })))
+        .catch((reason) => { console.error(`Dashboard could not load ${need}`, reason); setExtras((current) => ({ ...current, [need]: null })); });
+    });
+  }, [layout]);
+
+  // Read the saved arrangement after the first paint, so the server and the browser render the same first page
+  useEffect(() => {
+    try { const saved = known(JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "null")); if (saved) setLayout(saved); } catch { /* keep the default */ }
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(PERIOD_KEY) || "null");
+      if (saved && PRESETS.includes(saved.days)) setSavedPeriod({ days: saved.days });
+      else if (saved && dayjs(saved.start).isValid() && dayjs(saved.end).isValid() && !dayjs(saved.end).isBefore(saved.start)) setSavedPeriod({ start: saved.start, end: saved.end });
+    } catch { /* keep the last 14 days */ }
+  }, []);
+  const save = (next: LayoutItem[]) => {
+    setLayout(next);
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* private window: the change still applies for this visit */ }
+  };
 
   const handleDateChange = async (date: Dayjs | null) => {
     setSelectedDate(date);
     if (date) {
       setIsLoadingRoutes(true);
       try {
-        const formattedDate = date.format("YYYY-MM-DD");
-        const routes = await fetchRoutes(undefined, formattedDate);
+        const routes = await fetchRoutes(undefined, date.format("YYYY-MM-DD"));
         setSelectedDateRoutes(routes);
       } catch (error) {
         console.error("Failed to fetch routes for date:", error);
@@ -65,554 +106,169 @@ export default function DashboardView() {
     }
   };
 
-  const data = dashboardData ?? defaultDashboard;
-  const { kpi, optimization_impact, recent_routes, top_drivers, upcoming } =
-    data;
-
-  const quickActions = [
-    {
-      icon: <FileAddOutlined />,
-      label: "Add Job",
-      onClick: () => setIsAddJobModalOpen(true),
-    },
-    {
-      icon: <RocketOutlined />,
-      label: "Plan Route",
-      onClick: () => {
-        router.push("/plan");
-        setCurrentTab("jobs");
-      },
-    },
-    {
-      icon: <TeamOutlined />,
-      label: "All Members",
-      onClick: () => {
-        router.push("/team");
-        setCurrentTab("team");
-      },
-    },
-    {
-      icon: <EnvironmentOutlined />,
-      label: "All Routes",
-      onClick: () => {
-        router.push("/plan");
-        setCurrentTab("routes");
-      },
-    },
-    {
-      icon: <FileTextOutlined />,
-      label: "All Jobs",
-      onClick: () => {
-        router.push("/plan");
-        setCurrentTab("jobs");
-      },
-    },
-    {
-      icon: <CalendarOutlined />,
-      label: "Schedule",
-      onClick: () => {
-        router.push("/plan");
-        setCurrentTab("schedule");
-      },
-    },
-  ];
-
-  const getStatusStrokeColor = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "#22c55e";
-      case "in_transit":
-        return "#3b82f6";
-      default:
-        return "#d1d5db";
-    }
+  const today = dayjs().startOf("day");
+  const range: [Dayjs, Dayjs] = "days" in savedPeriod
+    ? [today.subtract(savedPeriod.days - 1, "day"), today]
+    : [dayjs(savedPeriod.start).startOf("day"), dayjs(savedPeriod.end).startOf("day")];
+  const period = Math.min(MAX_DAYS, range[1].diff(range[0], "day") + 1);
+  const periodLabel = "days" in savedPeriod ? `last ${savedPeriod.days} days`
+    : range[0].isSame(range[1], "day") ? range[1].format("MMM D")
+    : range[0].isSame(range[1], "month") ? `${range[0].format("MMM D")} to ${range[1].format("D")}`   // "Nov 5 to 14"
+    : `${range[0].format("MMM D")} to ${range[1].format("MMM D")}`;
+  const choosePeriod = (next: SavedPeriod) => {
+    setSavedPeriod(next);
+    try { window.localStorage.setItem(PERIOD_KEY, JSON.stringify(next)); } catch { /* applies for this visit */ }
   };
 
-  const kpiCards = [
-    {
-      label: "Active Routes",
-      value: kpi.active_routes,
-      icon: <CarOutlined />,
-      bg: "#f0fdf4",
-      color: "#16a34a",
-      badge: "Live",
-      badgeColor: "#dcfce7",
-      badgeText: "#15803d",
-    },
-    {
-      label: "Total Jobs",
-      value: kpi.total_jobs.toLocaleString(),
-      icon: <FileTextOutlined />,
-      bg: "#eff6ff",
-      color: "#2563eb",
-      badge: "All time",
-      badgeColor: "#dbeafe",
-      badgeText: "#1d4ed8",
-    },
-    {
-      label: "Completed",
-      value: kpi.completed_jobs,
-      icon: <CheckCircleOutlined />,
-      bg: "#f0fdf4",
-      color: "#16a34a",
-      badge: `${kpi.total_jobs > 0 ? ((kpi.completed_jobs / kpi.total_jobs) * 100).toFixed(1) : 0}%`,
-      badgeColor: "#dcfce7",
-      badgeText: "#15803d",
-    },
-    {
-      label: "Scheduled",
-      value: kpi.scheduled_jobs,
-      icon: <ClockCircleOutlined />,
-      bg: "#fef3c7",
-      color: "#b45309",
-      badge: "Pending",
-      badgeColor: "#fef3c7",
-      badgeText: "#b45309",
-    },
-    {
-      label: "Drivers",
-      value: kpi.total_drivers,
-      icon: <TeamOutlined />,
-      bg: "#f3f4f6",
-      color: "#374151",
-      badge: "Active",
-      badgeColor: "#f3f4f6",
-      badgeText: "#374151",
-    },
-    {
-      label: "Depots",
-      value: kpi.total_depots,
-      icon: <EnvironmentOutlined />,
-      bg: "#f3f4f6",
-      color: "#374151",
-      badge: "Locations",
-      badgeColor: "#f3f4f6",
-      badgeText: "#374151",
-    },
-  ];
-
-  const statusStyleMap: Record<string, { bg: string; color: string }> = {
-    completed: { bg: "#dcfce7", color: "#15803d" },
-    in_transit: { bg: "#dbeafe", color: "#1d4ed8" },
-    scheduled: { bg: "#f3f4f6", color: "#374151" },
+  const go = (path: string, tab?: string) => () => { router.push(path); if (tab) setCurrentTab(tab as Parameters<typeof setCurrentTab>[0]); };
+  const context: WidgetContext = {
+    data: dashboardData ?? defaultDashboard, go, selectedDate, onDateChange: handleDateChange, dateRoutes: selectedDateRoutes, loadingDateRoutes: isLoadingRoutes, extras, period, periodEnd: range[1], periodLabel,
   };
+
+  const move = (id: string, by: number) => {
+    const from = layout.findIndex((item) => item.id === id), to = from + by;
+    if (from < 0 || to < 0 || to >= layout.length) return;
+    const next = [...layout]; const [item] = next.splice(from, 1); next.splice(to, 0, item); save(next);
+  };
+  const dropOn = (targetId: string) => {
+    if (!dragId || dragId === targetId) return;
+    const next = layout.filter((item) => item.id !== dragId);
+    const dragged = layout.find((item) => item.id === dragId);
+    if (dragged) { next.splice(next.findIndex((item) => item.id === targetId), 0, dragged); save(next); }
+  };
+  const resize = (id: string) => save(layout.map((item) => (item.id === id ? { ...item, size: item.size === "full" ? "half" : "full" } : item)));
+  const remove = (id: string) => save(layout.filter((item) => item.id !== id));
+  const add = (id: string) => { const widget = WIDGETS.find((w) => w.id === id); if (widget && !layout.some((item) => item.id === id)) save([...layout, { id, size: widget.size }]); };
+
+  const paletteItems = useMemo(() => {
+    const query = paletteSearch.trim().toLowerCase();
+    return WIDGETS.filter((w) => !query || `${w.title} ${w.description}`.toLowerCase().includes(query));
+  }, [paletteSearch]);
+  const tool = "inline-flex h-7 w-7 cursor-pointer items-center justify-center border-0 bg-transparent text-[#44546F] hover:bg-[#DCDFE4] hover:text-[#172B4D] disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#2A8361]";
 
   return (
-    <div className="relative flex min-h-full min-w-0 flex-col gap-4 pb-2">
-      {/* Loading overlay */}
+    <div className="lang kit-fluid kit-gap-lg relative mx-auto flex min-h-full w-full min-w-0 max-w-[1840px] flex-col pb-8">
       {isLoading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60">
           <Spin size="large" />
         </div>
       )}
 
-      {/* Title row */}
-      <Flex justify="space-between" align="center" wrap gap="small">
-        <Title className="!m-0 !text-lg !font-bold sm:!text-xl" level={4}>
-          Dashboard
-        </Title>
-        {error && <Text role="alert" className="min-w-0 break-words" type="danger">{error}</Text>}
-      </Flex>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-6">
-        {kpiCards.map((k) => (
-          <div
-            key={k.label}
-            className="flex min-w-0 flex-col items-center border-[1.5px] border-gray-100 bg-white p-3 text-center sm:p-4"
-          >
-            <div
-              className="w-7 h-7 flex items-center justify-center mb-1.5 text-sm"
-              style={{ background: k.bg, color: k.color, borderRadius: 7 }}
-            >
-              {k.icon}
-            </div>
-            <span className="text-[11px] text-gray-500 font-bold">
-              {k.label}
-            </span>
-            <span className="mt-0.5 max-w-full break-all text-xl font-semibold leading-tight text-gray-900 tabular-nums sm:text-2xl">
-              {k.value}
-            </span>
-            <span
-              className="text-[10px] font-semibold px-1.5 py-0.5 mt-1"
-              style={{
-                background: k.badgeColor,
-                color: k.badgeText,
-                borderRadius: 4,
-              }}
-            >
-              {k.badge}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* Middle Row */}
-      <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.9fr)]">
-        {/* Quick Actions */}
-        <div className="min-w-0 border-[1.5px] border-gray-100 bg-white p-4">
-          <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3">
-            <ThunderboltOutlined /> Quick Actions
-          </div>
-          <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            {quickActions.map((action) => (
-              <button
-                key={action.label}
-                onClick={action.onClick}
-                type="button"
-                className="flex min-h-20 min-w-0 cursor-pointer flex-col items-center justify-center gap-2 border-[1.5px] border-gray-200 bg-white px-2 py-3 font-[inherit] transition-all duration-150 hover:-translate-y-px hover:border-green-300 hover:bg-green-50 focus-visible:outline-2 focus-visible:outline-primary sm:p-3"
-              >
-                <span className="text-gray-800 text-lg">{action.icon}</span>
-                <span className="text-center text-xs font-bold text-gray-600">
-                  {action.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Optimization Impact */}
-        <div className="flex min-w-0 flex-col border-[1.5px] border-gray-100 bg-white p-4">
-          <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3 flex-shrink-0">
-            <DashboardOutlined /> Optimization Impact
-          </div>
-          <div className="grid flex-1 grid-cols-3 gap-2 sm:gap-3">
-            {[
-              {
-                icon: (
-                  <DashboardOutlined
-                    style={{ fontSize: 20, color: "#4ade80" }}
-                  />
-                ),
-                value:
-                  optimization_impact.total_distance_saved_km.toLocaleString(),
-                unit: "KM SAVED",
-                sub: "Distance reduction",
-              },
-              {
-                icon: (
-                  <FieldTimeOutlined
-                    style={{ fontSize: 20, color: "#4ade80" }}
-                  />
-                ),
-                value: optimization_impact.total_time_saved_hours,
-                unit: "HRS SAVED",
-                sub: "Time reduction",
-              },
-              {
-                icon: (
-                  <CarOutlined style={{ fontSize: 20, color: "#4ade80" }} />
-                ),
-                value: optimization_impact.vehicles_saved,
-                unit: "VEHICLES SAVED",
-                sub: "Fleet efficiency",
-              },
-            ].map((item) => (
-              <div
-                key={item.unit}
-                className="flex min-w-0 flex-col items-center justify-center border-[1.5px] border-gray-100 bg-white px-2 py-4 text-center sm:p-3"
-              >
-                <div className="mb-1">{item.icon}</div>
-                <div className="max-w-full break-all text-lg font-semibold text-gray-900 tabular-nums sm:text-xl">
-                  {item.value}
-                </div>
-                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
-                  {item.unit}
-                </div>
-                <div className="text-[10px] text-gray-400">{item.sub}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Upcoming */}
-        <div className="flex min-w-0 flex-col border-[1.5px] border-gray-100 bg-white p-4 md:col-span-2 xl:col-span-1">
-          <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wide text-gray-500">
-            <span className="flex items-center gap-1.5">
-              <CalendarOutlined /> Upcoming
-            </span>
-              <DatePicker
-                size="small"
-                onChange={handleDateChange}
-                value={selectedDate}
-                placeholder="Select Date"
-                aria-label="Filter upcoming routes by date"
-                className="!w-[132px] shrink-0 font-normal [&_input]:!text-xs"
-                allowClear
-              />
-          </div>
-          <div className="custom-scrollbar max-h-64 overflow-y-auto">
-            {selectedDate ? (
-              isLoadingRoutes ? (
-                <div className="flex justify-center py-4">
-                  <Spin size="small" />
-                </div>
-              ) : selectedDateRoutes.length === 0 ? (
-                <span className="text-xs text-gray-400">
-                  No routes for {selectedDate.format("MMM D")}
-                </span>
-              ) : (
-                selectedDateRoutes.map((route: AllRoutes) => (
-                  <div
-                    key={route.id}
-                    className="flex items-center justify-between gap-3 border-b border-gray-100 py-2 last:border-0"
-                  >
-                    <div className="min-w-0">
-                      <Link
-                        className="inline-flex min-h-11 items-center break-words text-sm font-medium text-blue-700 sm:text-xs"
-                        href={`/route/${route.optimization_id}`}
-                      >
-                        {route.name}
-                      </Link>
-                      <div className="text-[10px] text-gray-400 mt-0.5">
-                        {route.total_stops} stops
-                      </div>
-                    </div>
-                    <span className="shrink-0 bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">
-                      {route.status.replace("_", " ")}
-                    </span>
-                  </div>
-                ))
-              )
-            ) : upcoming.length === 0 ? (
-              <span className="text-xs text-gray-400">
-                No upcoming schedule
+      <PageHeader
+        kicker={<span suppressHydrationWarning>{dayjs().format("dddd, MMMM D")}</span>}
+        title={editing ? "Arrange your dashboard" : "Dashboard"}
+        description={editing ? "Drag a widget by its bar to move it, change its width, or remove it. Changes save as you go." : undefined}
+        actions={editing ? (
+          <>
+            <ActionButton variant="quiet" icon={<ArrowCounterClockwise size={16} weight="light" />} onClick={() => save(DEFAULT_LAYOUT)}>Reset to default</ActionButton>
+            <ActionButton icon={<Plus size={16} weight="light" />} onClick={() => setPaletteOpen(true)}>Add widget</ActionButton>
+            <ActionButton variant="primary" icon={<Check size={16} weight="bold" />} onClick={() => { setEditing(false); setPaletteOpen(false); }}>Done</ActionButton>
+          </>
+        ) : (
+          <>
+            {error && <Text role="alert" className="min-w-0 break-words" type="danger">{error}</Text>}
+            {layout.some((item) => WIDGETS.find((w) => w.id === item.id)?.usesPeriod) && (
+              // A short button names the period ("Last 14 days"); the calendar opens from it. The date fields themselves are not shown.
+              <span className="relative inline-flex">
+                <button type="button" aria-haspopup="dialog" aria-expanded={periodOpen} aria-label={`Period: ${periodLabel}. Change period`}
+                  onClick={() => setPeriodOpen((open) => !open)}
+                  className="inline-flex h-8 cursor-pointer items-center gap-2 border-0 bg-[#F3F6F4] px-3 text-[13px] font-medium text-[#12211A] hover:bg-[#EAEFEC] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0B5D3B]">
+                  <CalendarBlank size={16} weight="light" aria-hidden="true" />
+                  {periodLabel.charAt(0).toUpperCase() + periodLabel.slice(1)}
+                  <CaretDown size={11} weight="bold" aria-hidden="true" className="text-[#626E67]" />
+                </button>
+                <DatePicker.RangePicker aria-hidden tabIndex={-1} open={periodOpen} onOpenChange={setPeriodOpen} allowClear={false} value={range} placement="bottomRight"
+                  className="!pointer-events-none !absolute !inset-0 !h-8 !w-full !opacity-0" disabledDate={(day) => day.isAfter(today, "day")}
+                  presets={PRESETS.map((days) => ({ label: `Last ${days} days`, value: [today.subtract(days - 1, "day"), today] as [Dayjs, Dayjs] }))}
+                  onChange={(dates) => {
+                    if (!dates || !dates[0] || !dates[1]) return;
+                    const start = dates[0].startOf("day"), end = dates[1].startOf("day"), length = end.diff(start, "day") + 1;
+                    // Picking a range that ends today with a preset length keeps it rolling ("last 14 days"); anything else is kept as fixed dates
+                    if (end.isSame(today, "day") && PRESETS.includes(length)) choosePeriod({ days: length });
+                    else choosePeriod({ start: (length > MAX_DAYS ? end.subtract(MAX_DAYS - 1, "day") : start).format("YYYY-MM-DD"), end: end.format("YYYY-MM-DD") });
+                  }} />
               </span>
-            ) : (
-              upcoming.map((item, index) => (
-                <div
-                  key={index}
-                  className="flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0"
-                >
-                  <div>
-                    <div className="text-xs font-semibold text-gray-800">
-                      {item.date}
-                    </div>
-                    <div className="text-[10px] text-gray-400 mt-0.5">
-                      {item.jobs} jobs · {item.routes} routes
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full">
-                    {item.jobs}
-                  </span>
-                </div>
-              ))
             )}
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Row */}
-      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-        {/* Recent Routes */}
-        <div className="flex min-w-0 flex-col border-[1.5px] border-gray-100 bg-white p-4">
-          <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3 flex-shrink-0">
-            <CarOutlined /> Recent Routes
-          </div>
-          <div className="divide-y divide-gray-100 sm:hidden">
-            {recent_routes.length === 0 ? <p className="py-4 text-xs text-gray-400">No routes yet</p>
-              : recent_routes.map(route => {
-                const pct = routeProgress(route);
-                const statusStyle = statusStyleMap[route.status] ?? statusStyleMap.scheduled;
-                return <article key={route.key} className="min-w-0 py-3 first:pt-0 last:pb-0">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <Link href={`/route/${route.key}`} className="flex min-h-11 items-center break-words text-sm font-medium text-blue-700">
-                        {route.name}
-                      </Link>
-                      <p className="break-words text-xs text-gray-500">{route.driver}</p>
-                    </div>
-                    <span className="mt-2 shrink-0 px-1.5 py-1 text-[10px] font-semibold" style={{ background: statusStyle.bg, color: statusStyle.color }}>
-                      {route.status.replaceAll("_", " ")}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex items-center gap-3">
-                    <div role="progressbar" aria-label={`${route.name} progress`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}
-                      className="h-1.5 min-w-0 flex-1 overflow-hidden bg-gray-200">
-                      <div className="h-full" style={{ background: getStatusStrokeColor(route.status), width: `${pct}%` }} />
-                    </div>
-                    <span className="shrink-0 text-xs text-gray-500">{route.completed}/{route.stops} stops</span>
-                  </div>
-                </article>;
-              })}
-          </div>
-          <div className="custom-scrollbar hidden overflow-x-auto sm:block">
-            <table className="w-full min-w-[480px] border-collapse text-xs">
-              <caption className="sr-only">Recent routes, drivers, progress and status</caption>
-              <thead>
-                <tr>
-                  {["Route", "Driver", "Progress", "Status"].map((h) => (
-                    <th
-                      key={h}
-                      className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wide px-2 py-1.5 border-b border-gray-200 bg-gray-50 sticky top-0"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {recent_routes.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-2 py-4 text-xs text-gray-400">
-                      No routes yet
-                    </td>
-                  </tr>
-                ) : (
-                  recent_routes.map((route: RecentRoute) => {
-                    const pct = routeProgress(route);
-                    const statusStyle =
-                      statusStyleMap[route.status] ?? statusStyleMap.scheduled;
-                    return (
-                      <tr
-                        key={route.key}
-                        className="transition-colors duration-100 hover:bg-gray-100"
-                      >
-                        <td className="px-2 py-2 border-b border-gray-100">
-                          <Link
-                            className="inline-flex min-h-11 items-center text-xs font-medium text-blue-700"
-                            href={`/route/${route.key}`}
-                          >
-                            {route.name}
-                          </Link>
-                        </td>
-                        <td className="px-2 py-2 border-b border-gray-100 text-gray-500 text-xs">
-                          {route.driver}
-                        </td>
-                        <td className="px-2 py-2 border-b border-gray-100">
-                          <div className="flex items-center gap-1.5">
-                            <div className="bg-gray-200 h-1 w-14 overflow-hidden">
-                              <div
-                                className="h-full"
-                                style={{
-                                  background: getStatusStrokeColor(
-                                    route.status,
-                                  ),
-                                  width: `${pct}%`,
-                                }}
-                              />
-                            </div>
-                            <span className="text-[10px] text-gray-400">
-                              {route.completed}/{route.stops}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 border-b border-gray-100">
-                          <span
-                            className="text-[10px] font-semibold px-1.5 py-0.5"
-                            style={{
-                              background: statusStyle.bg,
-                              color: statusStyle.color,
-                            }}
-                          >
-                            {route.status.replace("_", " ")}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Top Drivers */}
-        <div className="flex min-w-0 flex-col border-[1.5px] border-gray-100 bg-white p-4">
-          <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3 flex-shrink-0">
-            <UserOutlined /> Top Drivers
-          </div>
-          <div className="custom-scrollbar max-h-80 overflow-y-auto">
-            {top_drivers.length === 0 ? (
-              <span className="text-xs text-gray-400">No driver data yet</span>
-            ) : (
-              top_drivers.map((driver, index) => {
-                const avatarColors = [
-                  { bg: "#1a1a2e", color: "#4ade80" },
-                  { bg: "#374151", color: "#d1fae5" },
-                  { bg: "#6b7280", color: "#f9fafb" },
-                ];
-                const av = avatarColors[index] ?? avatarColors[2];
-                const initials = driver.name
-                  .split(" ")
-                  .map((n: string) => n[0])
-                  .join("")
-                  .toUpperCase()
-                  .slice(0, 2);
-                return (
-                  <div
-                    key={index}
-                    className={`flex items-center gap-2.5 py-2.5 ${index < top_drivers.length - 1 ? "border-b border-gray-100" : ""}`}
-                  >
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
-                      style={{ background: av.bg, color: av.color }}
-                    >
-                      {initials}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-gray-800 truncate">
-                        {driver.name}
-                      </div>
-                      <div className="text-[10px] text-gray-400 mt-0.5">
-                        {driver.completion_rate}% completion
-                      </div>
-                      <div className="bg-gray-200 h-0.5 w-full overflow-hidden mt-1.5">
-                        <div
-                          className="h-full bg-green-400"
-                          style={{
-                            width: `${Math.min(100, driver.completion_rate)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                    {/* On-time ring */}
-                    <div className="relative w-9 h-9 flex-shrink-0">
-                      <svg
-                        width="36"
-                        height="36"
-                        viewBox="0 0 36 36"
-                        className="-rotate-90"
-                      >
-                        <circle
-                          cx="18"
-                          cy="18"
-                          r="14"
-                          fill="none"
-                          stroke="#e5e7eb"
-                          strokeWidth="3"
-                        />
-                        <circle
-                          cx="18"
-                          cy="18"
-                          r="14"
-                          fill="none"
-                          stroke="#4ade80"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeDasharray={`${(driver.on_time_rate / 100) * 87.96} 87.96`}
-                        />
-                      </svg>
-                      <div className="absolute inset-0 flex items-center justify-center text-[8px] font-semibold text-gray-600">
-                        {driver.on_time_rate}%
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      </div>
-
-      <AddJobsModal
-        open={isAddJobModalOpen}
-        setOpen={setIsAddJobModalOpen}
-        onJobCreated={() => {
-          fetchDashboard();
-          fetchAllJobs();
-        }}
+            <Tooltip title="Customize dashboard">
+              <button type="button" aria-label="Customize dashboard" onClick={() => setEditing(true)}
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center border-0 bg-transparent text-[#4A5750] hover:bg-[#F3F6F4] hover:text-[#12211A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0B5D3B]">
+                <SlidersHorizontal size={18} weight="light" />
+              </button>
+            </Tooltip>
+          </>
+        )}
       />
+
+      {layout.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 border border-dashed px-6 py-16 text-center" style={{ borderColor: "#B3B9C4" }}>
+          <SquaresFour size={32} weight="light" color={ink.muted} aria-hidden="true" />
+          <div>
+            <p className="m-0 text-base font-medium" style={{ color: ink.text }}>Your dashboard is empty</p>
+            <p className="m-0 mt-1 text-sm" style={{ color: ink.subtle }}>Add the widgets you want to see when you open Syncnox.</p>
+          </div>
+          <ActionButton variant="primary" icon={<Plus size={16} weight="bold" />} onClick={() => { setEditing(true); setPaletteOpen(true); }}>Add widget</ActionButton>
+        </div>
+      ) : (
+        <div className="kit-gap grid min-w-0 grid-cols-1 xl:grid-cols-2">
+          {layout.map((item, index) => {
+            const widget = WIDGETS.find((w) => w.id === item.id);
+            if (!widget) return null;
+            return (
+              <div key={item.id} data-widget={item.id}
+                className={`flex min-w-0 flex-col ${item.size === "full" ? "xl:col-span-2" : ""} ${editing && overId === item.id && dragId !== item.id ? "outline outline-2 outline-offset-2 outline-[#2A8361]" : ""} ${dragId === item.id ? "opacity-40" : ""}`}
+                onDragOver={editing ? (event) => { if (dragId) { event.preventDefault(); setOverId(item.id); } } : undefined}
+                onDrop={editing ? (event) => { event.preventDefault(); dropOn(item.id); setDragId(null); setOverId(null); } : undefined}>
+                {editing && (
+                  <div draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", item.id); setDragId(item.id); }}
+                    onDragEnd={() => { setDragId(null); setOverId(null); }}
+                    className="flex h-9 cursor-grab items-center gap-1 border border-b-0 bg-[#F1F2F4] pl-2 pr-1 active:cursor-grabbing" style={{ borderColor: "#B3B9C4" }}>
+                    <DotsSixVertical size={16} weight="bold" color={ink.muted} aria-hidden="true" />
+                    <span className="min-w-0 flex-1 truncate text-xs font-medium" style={{ color: ink.subtle }}>{widget.title}</span>
+                    <button type="button" className={tool} disabled={index === 0} onClick={() => move(item.id, -1)} aria-label={`Move ${widget.title} earlier`} title="Move earlier"><ArrowUp size={16} weight="light" /></button>
+                    <button type="button" className={tool} disabled={index === layout.length - 1} onClick={() => move(item.id, 1)} aria-label={`Move ${widget.title} later`} title="Move later"><ArrowDown size={16} weight="light" /></button>
+                    <button type="button" className={`${tool} hidden xl:inline-flex`} onClick={() => resize(item.id)}
+                      aria-label={item.size === "full" ? `Make ${widget.title} half width` : `Make ${widget.title} full width`} title={item.size === "full" ? "Half width" : "Full width"}>
+                      {item.size === "full" ? <ArrowsInLineHorizontal size={16} weight="light" /> : <ArrowsOutLineHorizontal size={16} weight="light" />}
+                    </button>
+                    <button type="button" className={tool} onClick={() => remove(item.id)} aria-label={`Remove ${widget.title}`} title="Remove"><X size={16} weight="light" /></button>
+                  </div>
+                )}
+                <div className={`flex min-w-0 flex-1 flex-col [&>section]:flex-1 ${editing ? "pointer-events-none select-none outline outline-1 outline-[#B7C2BC]" : ""}`} aria-hidden={editing || undefined}>
+                  <AboutContext.Provider value={editing ? null : widget.about ?? null}>{widget.render(context)}</AboutContext.Provider>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <Drawer title="Add widget" open={paletteOpen} onClose={() => setPaletteOpen(false)} size={400} mask={false}>
+        <Input allowClear aria-label="Search widgets" placeholder="Search widgets" prefix={<MagnifyingGlass size={14} color={ink.muted} />}
+          value={paletteSearch} onChange={(event) => setPaletteSearch(event.target.value)} />
+        <div className="mt-4 flex flex-col">
+          {paletteItems.length === 0 ? (
+            <div className="py-8 text-center">
+              <p className="m-0 text-sm" style={{ color: ink.subtle }}>No widget matches "{paletteSearch}".</p>
+              <button type="button" onClick={() => setPaletteSearch("")} className="mt-2 cursor-pointer border-0 bg-transparent p-0 text-sm font-medium hover:underline" style={{ color: ink.accent }}>Clear search</button>
+            </div>
+          ) : paletteItems.map((widget) => {
+            const added = layout.some((item) => item.id === widget.id);
+            return (
+              <div key={widget.id} className="flex items-start gap-3 border-b py-3.5 last:border-0" style={{ borderColor: ink.hairline }}>
+                <div className="min-w-0 flex-1">
+                  <p className="m-0 text-sm font-medium" style={{ color: ink.text }}>{widget.title}</p>
+                  <p className="m-0 mt-0.5 text-[13px] leading-[18px]" style={{ color: ink.subtle }}>{widget.description}</p>
+                </div>
+                {added
+                  ? <span className="inline-flex h-[34px] shrink-0 items-center gap-1.5 text-[13px] font-medium" style={{ color: ink.success }}><Check size={14} weight="bold" aria-hidden="true" /> Added</span>
+                  : <ActionButton onClick={() => add(widget.id)} icon={<Plus size={14} weight="bold" />} aria-label={`Add ${widget.title}`}>Add</ActionButton>}
+              </div>
+            );
+          })}
+        </div>
+        <p className="m-0 mt-5 text-xs leading-[18px]" style={{ color: ink.muted }}>Your arrangement is saved in this browser on this device.</p>
+      </Drawer>
+
     </div>
   );
 }
