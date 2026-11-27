@@ -17,7 +17,7 @@ import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
 import type { MarkerData } from "@/components/GoogleMaps";
 
-import { MapPin, Building2, X } from "lucide-react";
+import { MapPin, X, Flag, Warehouse, UserRound, Truck, Timer, Package } from "lucide-react";
 import { LOCATION_TYPE_OPTIONS } from "@/apis/location-mapping.api";
 import { getLocationTypeColor } from "@/utils/customMapMarker";
 import { stopKindOf, stopStatusConfirm } from "./stopStatusConfirm";
@@ -45,86 +45,78 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
   const showButtons = status === "completed" || status === "failed";
 
   if (marker.isDepot) {
-    // Route depots carry the address as title and "End Time: …" as description; plain depots carry a name.
+    // Route depots carry the address as title; plain depots carry a name in jobData.
     const info = marker.depotInfo;
-    const rawName = marker.jobData?.name || "";
-    const depotName = rawName.replace(/\s*\((Depot|Operational Base|Start|End)\)/gi, "").trim();
+    const depotName = String(marker.jobData?.name || "").replace(/\s*\((Depot|Operational Base|Start|End)\)/gi, "").trim();
     const address = (info ? title : description || marker.jobData?.address || title) || "";
     const kind = marker.depotKind === "start" ? "start" : marker.depotKind === "end" ? "end" : "depot";
-    const when = info?.time && dayjs(info.time).isValid() ? dayjs(info.time) : null;
-    const start = info?.tripStart && dayjs(info.tripStart).isValid() ? dayjs(info.tripStart) : null;
-    const end = info?.tripEnd && dayjs(info.tripEnd).isValid() ? dayjs(info.tripEnd) : null;
-    const minutes = start && end ? end.diff(start, "minute") : null;
-    const length = minutes != null && minutes > 0
-      ? `${Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)} h ` : ""}${minutes % 60 ? `${minutes % 60} min` : ""}`.trim()
-      : null;
-    const crossesDay = Boolean(start && end && !end.isSame(start, "day"));
-    const kicker = kind === "start" ? "Trip starts here" : kind === "end" ? "Trip ends here" : "Depot";
+    const valid = (v?: string) => (v && dayjs(v).isValid() ? dayjs(v) : null);
+    const when = valid(info?.time), start = valid(info?.tripStart), end = valid(info?.tripEnd);
+    const minutes = start && end ? end.diff(start, "minute") : 0;
+    const length = minutes > 0 ? [Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)} h` : "", minutes % 60 ? `${minutes % 60} min` : ""].filter(Boolean).join(" ") : null;
+    const nextDay = kind === "end" && start && end && !end.isSame(start, "day");
+    const tint = info && marker.color ? marker.color : "#12211A";
     const coords = `${marker.position.lat.toFixed(5)}, ${marker.position.lng.toFixed(5)}`;
-    const copy = async (text: string, what: string) => {
+    const heading = kind === "start" ? "Start of trip" : kind === "end" ? "End of trip" : depotName || "Depot";
+    const HeadIcon = kind === "depot" ? Warehouse : Flag;
+    const facts = [
+      info?.driverName && { icon: UserRound, text: info.driverName, label: "Driver" },
+      info?.vehicleName && { icon: Truck, text: info.vehicleName, label: "Vehicle" },
+      length && { icon: Timer, text: length, label: "Trip length" },
+      info?.jobCount ? { icon: Package, text: `${info.jobCount} ${info.jobCount === 1 ? "job" : "jobs"}`, label: "Jobs on this trip" } : null,
+    ].filter(Boolean) as { icon: typeof Timer; text: string; label: string }[];
+    const copyAddress = async () => {
       try {
         if (!navigator.clipboard) throw new Error("Clipboard unavailable");
-        await navigator.clipboard.writeText(text);
-        message.success(`${what} copied`);
-      } catch { message.error(`Could not copy the ${what.toLowerCase()}`); }
+        await navigator.clipboard.writeText(`${address}\n${coords}`);
+        message.success("Address copied");
+      } catch { message.error("Could not copy the address"); }
     };
 
     return (
-      <div className="lang w-[264px] font-sans text-[#12211A]" role="dialog" aria-label={`${kicker}${when ? `, ${when.format("h:mm A")}` : ""}`}>
-        {/* Kicker in the route's colour, so the card reads as part of that driver's line on the map */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2 pt-0.5">
-            <span aria-hidden="true" className="h-3 w-3 shrink-0" style={{ backgroundColor: info && marker.color ? marker.color : "#12211A" }} />
-            <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#4A5750]">{kicker}</span>
-          </div>
+      <div className="lang w-[248px] font-sans text-[#12211A]">
+        <div className="flex items-center gap-2">
+          <HeadIcon size={18} color={tint} aria-hidden="true" className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{heading}</span>
           {onClose && (
             <button type="button" onClick={onClose} aria-label="Close"
-              className="-mr-1.5 -mt-1 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent text-[#626E67] hover:bg-[#F3F6F4] hover:text-[#12211A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0B5D3B]">
-              <X size={15} />
+              className="-mr-1.5 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent text-[#626E67] hover:bg-[#F3F6F4] hover:text-[#12211A]">
+              <X size={14} aria-hidden="true" />
             </button>
           )}
         </div>
 
-        {when ? (
-          <div className="mt-1.5">
-            <div className="flex items-baseline gap-2">
-              <span className="text-[22px] font-medium leading-none tracking-[-0.02em] tabular-nums">{when.format("h:mm A")}</span>
-              <span className="text-[13px] text-[#4A5750]">{when.format("ddd, MMM D")}</span>
-            </div>
-            {(info?.driverName || info?.vehicleName) && (
-              <div className="mt-1.5 text-[13px] leading-snug text-[#12211A] break-words">
-                {[info?.driverName, info?.vehicleName].filter(Boolean).join(" · ")}
-              </div>
-            )}
-            {start && end && kind !== "depot" && (
-              <div className="mt-1 text-[12px] leading-[18px] text-[#626E67] tabular-nums">
-                <div>Trip {start.format("h:mm A")} to {end.format("h:mm A")}{crossesDay ? " next day" : ""}</div>
-                {(length || info?.jobCount) ? <div>{[length, info?.jobCount ? `${info.jobCount} ${info.jobCount === 1 ? "job" : "jobs"}` : null].filter(Boolean).join(" · ")}</div> : null}
-              </div>
-            )}
+        {when && (
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-[24px] font-medium leading-none tracking-[-0.02em] tabular-nums">{when.format("h:mm A")}</span>
+            <span className={`text-[12px] ${nextDay ? "font-medium text-[#8A5A00]" : "text-[#626E67]"}`} title={when.format("dddd, MMM D, YYYY")}>
+              {nextDay ? "next day" : when.format("ddd, MMM D")}
+            </span>
           </div>
-        ) : depotName ? (
-          <div className="mt-1.5 text-[15px] font-medium leading-snug break-words">{depotName}</div>
-        ) : null}
+        )}
 
-        <div className="mt-3 border-t border-[#E3E8E5] pt-2.5">
-          <div className="flex items-start gap-2">
-            <Building2 size={15} aria-hidden="true" className="mt-0.5 shrink-0 text-[#626E67]" />
-            <div className="min-w-0 flex-1">
-              {when && depotName && <div className="text-[13px] font-medium leading-snug break-words">{depotName}</div>}
-              <div className="text-[13px] leading-snug text-[#12211A] break-words select-text">{address || "Address not set"}</div>
-              <button type="button" onClick={() => void copy(coords, "Coordinates")} title="Copy coordinates"
-                className="mt-1 cursor-pointer border-0 bg-transparent p-0 text-[12px] text-[#626E67] tabular-nums hover:text-[#12211A] hover:underline">
-                {coords}
-              </button>
-            </div>
-            {address && (
-              <button type="button" aria-label="Copy address" title="Copy address" onClick={() => void copy(address, "Address")}
-                className="-mr-1 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent text-[#626E67] hover:bg-[#F3F6F4] hover:text-[#12211A]">
-                <CopyOutlined />
-              </button>
-            )}
+        {facts.length > 0 && (
+          <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12.5px]">
+            {facts.map(({ icon: Icon, text, label }) => (
+              <div key={label} className="flex min-w-0 items-center gap-1.5" title={label}>
+                <Icon size={15} aria-hidden="true" className="shrink-0 text-[#626E67]" />
+                <span className="truncate" aria-label={`${label}: ${text}`}>{text}</span>
+              </div>
+            ))}
           </div>
+        )}
+
+        <div className="mt-2.5 flex items-start gap-1.5 border-t border-[#E3E8E5] pt-2">
+          <MapPin size={15} aria-hidden="true" className="mt-px shrink-0 text-[#626E67]" />
+          <span className="min-w-0 flex-1 text-[12px] leading-[17px] text-[#4A5750] line-clamp-2 select-text" title={`${address}\n${coords}`}>
+            {address || "Address not set"}
+          </span>
+          {address && (
+            <button type="button" aria-label="Copy address and coordinates" title="Copy address and coordinates" onClick={() => void copyAddress()}
+              className="-mr-1 -mt-1 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent text-[#626E67] hover:bg-[#F3F6F4] hover:text-[#12211A]">
+              <CopyOutlined aria-hidden="true" />
+            </button>
+          )}
         </div>
       </div>
     );
