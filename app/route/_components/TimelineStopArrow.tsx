@@ -13,6 +13,8 @@ interface StopArrowSvgProps {
   isPickup: boolean;
   isMixed?: boolean;
   displayIndex: number | string;
+  /** Jobs handled at this one visit. 2 or more draws a second outline behind (a stack) and a count badge. */
+  jobCount?: number;
   fill: string;
   stroke: string;
   textColor: string;
@@ -24,6 +26,7 @@ export const StopArrowSvg: React.FC<StopArrowSvgProps> = ({
   isPickup,
   isMixed = false,
   displayIndex,
+  jobCount = 1,
   fill,
   stroke,
   textColor,
@@ -46,6 +49,8 @@ export const StopArrowSvg: React.FC<StopArrowSvgProps> = ({
       viewBox="0 0 32 38"
       className="overflow-visible pointer-events-none"
     >
+      {/* Several jobs at one visit: the same outline again, offset behind, like a small stack of cards. */}
+      {jobCount > 1 && <path d={path} transform="translate(3.5,-3)" fill="#ffffff" stroke={stroke} strokeWidth={1.25} strokeOpacity={0.55} strokeLinejoin="miter" />}
       <path
         d={path}
         fill={fill}
@@ -92,6 +97,8 @@ export interface TimelineStopArrowProps {
   isPickup: boolean;
   /** One physical visit containing both drop-offs and pickups. */
   isMixed?: boolean;
+  /** Jobs handled at this one visit (stack + count badge when 2 or more). */
+  jobCount?: number;
   /** Stop number displayed inside the arrow body (e.g. 1, 2, 6) */
   displayIndex: number | string;
   /**
@@ -142,6 +149,7 @@ export const TimelineStopArrow = React.forwardRef<
     isPickup,
     isMixed = false,
     displayIndex,
+    jobCount = 1,
     routeColor,
     isStopDone = false,
     isStopPartlyDone = false,
@@ -263,12 +271,21 @@ export const TimelineStopArrow = React.forwardRef<
         isPickup={isPickup}
         isMixed={isMixed}
         displayIndex={displayIndex}
+        jobCount={jobCount}
         fill={arrowFill}
         stroke={arrowStroke}
         textColor={arrowTextColor}
         strokeWidth={arrowStrokeWidth}
         strokeDasharray={arrowStrokeDasharray}
       />
+
+      {/* Count of jobs at this visit, top right (selected tick is top left, edited mark bottom right). */}
+      {jobCount > 1 && (
+        <span aria-hidden="true" className="absolute -top-2.5 -right-2 z-20 flex h-[18px] min-w-[18px] items-center justify-center px-1 text-[11px] font-semibold leading-none text-white tabular-nums pointer-events-none"
+          style={{ backgroundColor: "#12211A", boxShadow: "0 0 0 1.5px #ffffff" }}>
+          {jobCount}
+        </span>
+      )}
 
       {/* Edited: one small mark in the corner; the stop keeps its route colour. */}
       {isStopEdited && !isStopNew && (

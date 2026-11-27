@@ -164,7 +164,9 @@ test("a search for another passenger in a shared stop targets the existing group
   assert.equal(result.stop, selectedRoute.stops[2]);
   const marker = generateMapMarkers({ result: { routes: [selectedRoute] } }, []).find(marker => marker.id === result.markerId);
   assert.equal(marker.sequenceNumber, 1);
-  assert.equal(marker.label.text, "1 (×2)");
+  // The pin keeps the stop number; the two jobs sharing it are shown as a stack with a count.
+  assert.equal(marker.label.text, "1");
+  assert.equal(marker.jobCount, 2);
 });
 
 test("missing map coordinates never renumber later visible stops", () => {

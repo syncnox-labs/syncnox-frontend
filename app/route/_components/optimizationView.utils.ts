@@ -167,7 +167,8 @@ export const generateMapMarkers = (
             : openCount === 0 ? (states.includes("failed") ? "failed" : "skipped")
               : undefined;
 
-      const labelText = count > 1 ? `${displayIndex} (×${count})` : displayIndex.toString();
+      // The number stays the stop number; how many jobs share the stop is drawn as a stack and a count badge.
+      const labelText = displayIndex.toString();
 
       return {
         id: `${index}-${group.firstRawIndex}`,
@@ -217,6 +218,7 @@ export const generateMapMarkers = (
         isNew: isNew,
         isTimeEdited: isTimeEdited,
         stopStatus,
+        jobCount: count > 1 ? count : undefined,
       };
     });
   });

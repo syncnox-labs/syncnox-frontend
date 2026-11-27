@@ -1897,6 +1897,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                 { label: "Pickup", node: <StopArrowSvg isPickup displayIndex="" fill="#fff" stroke="#0B5D3B" textColor="#0B5D3B" /> },
                 { label: "Drop-off", node: <StopArrowSvg isPickup={false} displayIndex="" fill="#fff" stroke="#0B5D3B" textColor="#0B5D3B" /> },
                 { label: "Pickup and drop-off at one visit", node: <StopArrowSvg isPickup isMixed displayIndex="" fill="#fff" stroke="#0B5D3B" textColor="#0B5D3B" /> },
+                { label: "Several jobs at one stop (count on the corner)", node: <span className="relative inline-flex"><StopArrowSvg isPickup displayIndex="" jobCount={3} fill="#fff" stroke="#0B5D3B" textColor="#0B5D3B" /><span className="absolute -top-3 -right-3 flex h-[18px] min-w-[18px] items-center justify-center bg-[#12211A] px-1 text-[11px] font-semibold text-white">3</span></span> },
               ].map(item => (
                 <div key={item.label} className="flex items-center gap-3">
                   <span className="inline-flex w-8 justify-center scale-[0.7] origin-center">{item.node}</span>{item.label}
@@ -3528,8 +3529,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                                         <TimelineStopArrow
                                           isPickup={isPickup}
                                           isMixed={isMixed}
-                                          aria-label={`Stop ${displayIndex}: ${isMixed ? "Drop-off and pickup" : stopTypeLabel}`}
+                                          aria-label={`Stop ${displayIndex}: ${isMixed ? "Drop-off and pickup" : stopTypeLabel}${count > 1 ? `, ${count} jobs` : ""}`}
                                           displayIndex={displayIndex}
+                                          jobCount={count}
                                           routeColor={routeColor}
                                           isStopDone={isStopDone}
                                           isStopPartlyDone={isStopPartlyDone}

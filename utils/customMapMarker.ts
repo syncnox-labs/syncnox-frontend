@@ -82,7 +82,8 @@ export const createCustomMarkerIcon = (
   isNew: boolean = false,
   isTimeEdited: boolean = false,
   isAdditionalLocation: boolean = false,
-  locationType?: string
+  locationType?: string,
+  jobCount: number = 1
 ): google.maps.Icon => {
   const scale = isSelected ? 1.3 : 1;
 
@@ -128,12 +129,20 @@ export const createCustomMarkerIcon = (
   const edited = isTimeEdited ? `<circle cx="5" cy="5" r="6" fill="#12211A" stroke="#ffffff" stroke-width="1.5"/>
       <g transform="translate(1.4,1.4) scale(0.3)" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></g>` : "";
 
+  // Several jobs at one stop: a second pin outline behind (a stack, lower right) and a dark count tag at the lower left.
+  const many = jobCount > 1;
+  const pinPath = "M16 1C9.9 1 5 5.9 5 12c0 7.4 11 23 11 23s11-15.6 11-23C27 5.9 22.1 1 16 1z";
+  const stack = many ? `<path d="${pinPath}" transform="translate(3,3)" fill="#ffffff" stroke="${color}" stroke-opacity="0.6" stroke-width="1.5"/>` : "";
+  const countLabel = jobCount > 99 ? "99+" : String(jobCount);
+  const countWidth = 8 + countLabel.length * 5.5;
+  const count = many ? `<rect x="${7.5 - countWidth / 2}" y="23" width="${countWidth}" height="12" fill="#12211A" stroke="#ffffff" stroke-width="1.5"/>
+      <text x="7.5" y="29.3" font-family="Inter, Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle" dominant-baseline="central">${countLabel}</text>` : "";
   const width = 36 * scale;
   const height = 44 * scale;
   const svg = `<svg width="${width}" height="${height}" viewBox="-2 -2 36 44" xmlns="http://www.w3.org/2000/svg"><defs>${SHADOW}</defs>
-    <path d="M16 1C9.9 1 5 5.9 5 12c0 7.4 11 23 11 23s11-15.6 11-23C27 5.9 22.1 1 16 1z" fill="${fill}" stroke="${ring}" stroke-width="${isNew ? 3 : 2}" filter="url(#s)"/>
+    ${stack}<path d="${pinPath}" fill="${fill}" stroke="${ring}" stroke-width="${isNew ? 3 : 2}" filter="url(#s)"/>
     <text x="16" y="12.5" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="${ink}" text-anchor="middle" dominant-baseline="central">${number}</text>
-    ${badge}${edited}</svg>`;
+    ${badge}${edited}${count}</svg>`;
   // Anchor at the pin's tip.
   return toIcon(svg, width, height, width * (18 / 36), height * (37 / 44));
 };

@@ -72,6 +72,8 @@ export interface MarkerData {
   stopType?: string;
   /** The visit's own progress (completed, partly_done, failed, skipped); wins over the job's status. */
   stopStatus?: string;
+  /** Jobs handled at this one visit; 2 or more draws the stacked pin with a count. */
+  jobCount?: number;
   draggable?: boolean;
   /** Index of the route this marker belongs to, used for route focus filtering. */
   routeIndex?: number;
@@ -534,6 +536,7 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
           (marker as any).isTimeEdited,
           marker.isAdditionalLocation,
           marker.locationType,
+          marker.jobCount,
         );
 
         return (
