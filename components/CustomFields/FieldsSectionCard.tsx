@@ -7,12 +7,16 @@ import { BaseFieldDefinition } from "./custom-fields.constants";
 import { FieldsTable } from "./FieldsTable";
 
 interface FieldsSectionCardProps {
+  /** Kept for callers that still pass it; the number is no longer drawn. */
   badgeNumber?: string | number;
   title: string;
+  /** Small uppercase line above the title saying what this group of fields is for. */
   categoryTag?: string;
   description: string;
   showAddButton?: boolean;
   onAddField?: () => void;
+  emptyText?: string;
+  markAdded?: boolean;
   baseItems: BaseFieldDefinition[];
   customItems: CustomFieldDefinition[];
   hiddenBaseFields: string[];
@@ -26,73 +30,46 @@ interface FieldsSectionCardProps {
   onToggleBaseVisibility: (key: string) => void;
 }
 
+/** One group of fields: what the group is for, how many fields it has, then the fields. */
 export const FieldsSectionCard: React.FC<FieldsSectionCardProps> = ({
-  badgeNumber,
   title,
   categoryTag,
   description,
   showAddButton = false,
   onAddField,
+  emptyText,
+  markAdded,
   baseItems,
   customItems,
-  hiddenBaseFields,
-  baseFieldOverrides,
-  onToggleBaseRequired,
-  onToggleCustomRequired,
-  onOpenEditBaseModal,
-  onOpenEditCustomModal,
-  onDeleteBaseField,
-  onDeleteCustomField,
-  onToggleBaseVisibility,
+  ...tableProps
 }) => {
+  const count = baseItems.length + customItems.length;
   return (
-    <div className="border border-gray-200 rounded-none overflow-hidden bg-white font-sans">
-      <div className="responsive-toolbar px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {badgeNumber && (
-            <div className="w-5 h-5 bg-[#003220] text-white font-bold text-[11px] flex items-center justify-center rounded-none shrink-0">
-              {badgeNumber}
-            </div>
+    <section className="min-w-0">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 pb-3">
+        <div className="min-w-0">
+          {categoryTag && (
+            <p className="m-0 mb-1 text-[11px] font-medium uppercase leading-4 tracking-[0.09em] text-[#626E67]">{categoryTag}</p>
           )}
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-xs text-gray-900">{title}</span>
-              {categoryTag && (
-                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">
-                  {categoryTag}
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-gray-500 m-0">{description}</p>
-          </div>
+          <h2 className="m-0 flex items-baseline gap-2 text-[15px] font-medium leading-6 text-[#12211A]">
+            {title}
+            <span className="text-xs font-normal tabular-nums text-[#626E67]">{count} field{count !== 1 ? "s" : ""}</span>
+          </h2>
+          <p className="m-0 mt-0.5 max-w-[640px] text-xs leading-5 text-[#626E67]">{description}</p>
         </div>
 
         {showAddButton && (
           <button
+            type="button"
             onClick={onAddField}
-            className="inline-flex items-center gap-1 border border-gray-300 hover:bg-gray-100 text-gray-800 text-[11px] font-semibold px-2.5 py-1 rounded-none bg-white cursor-pointer transition-colors"
+            className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-[13px] font-medium text-[#0B5D3B] outline-none hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0B5D3B]"
           >
-            <Plus size={12} />
-            <span>Add field</span>
+            <Plus size={14} aria-hidden="true" /> Add field
           </button>
         )}
       </div>
 
-      <div className="overflow-x-auto">
-      <FieldsTable
-        baseItems={baseItems}
-        customItems={customItems}
-        hiddenBaseFields={hiddenBaseFields}
-        baseFieldOverrides={baseFieldOverrides}
-        onToggleBaseRequired={onToggleBaseRequired}
-        onToggleCustomRequired={onToggleCustomRequired}
-        onOpenEditBaseModal={onOpenEditBaseModal}
-        onOpenEditCustomModal={onOpenEditCustomModal}
-        onDeleteBaseField={onDeleteBaseField}
-        onDeleteCustomField={onDeleteCustomField}
-        onToggleBaseVisibility={onToggleBaseVisibility}
-      />
-      </div>
-    </div>
+      <FieldsTable baseItems={baseItems} customItems={customItems} emptyText={emptyText} markAdded={markAdded} {...tableProps} />
+    </section>
   );
 };

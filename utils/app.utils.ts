@@ -25,7 +25,7 @@ export const formatTime12h = (
     if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
       const period = hours >= 12 ? "PM" : "AM";
       const h12 = hours % 12 === 0 ? 12 : hours % 12;
-      const hStr = String(h12).padStart(2, "0");
+      const hStr = String(h12);
       const mStr = String(minutes).padStart(2, "0");
       return `${hStr}:${mStr} ${period}`;
     }
@@ -34,7 +34,7 @@ export const formatTime12h = (
   // 3. Fallback to dayjs for full date-time / ISO strings
   const d = dayjs(str);
   if (d.isValid()) {
-    return d.format("hh:mm A");
+    return d.format("h:mm A");
   }
 
   return str;
@@ -51,3 +51,16 @@ export const formatTimeWindow = (
   return `${timeWindow1} - ${timeWindow2}`;
 };
 
+
+/**
+ * One date format for tables: "Mon, Nov 30", with the year only when it is not this year.
+ * A plain "YYYY-MM-DD" is read as a calendar day (no time zone shift); anything else is returned as is.
+ */
+export const formatPlanDate = (value?: string | null, fallback: string = "-"): string => {
+  if (!value) return fallback;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return String(value);
+  const d = dayjs(`${match[1]}-${match[2]}-${match[3]}`);
+  if (!d.isValid()) return String(value);
+  return d.year() === dayjs().year() ? d.format("ddd, MMM D") : d.format("ddd, MMM D, YYYY");
+};

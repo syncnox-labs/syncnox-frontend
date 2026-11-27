@@ -19,6 +19,7 @@ function displayedJobIds(store) {
     "@/store/team.store": { useTeamStore: () => ({ getTeamsMap: () => ({}) }) },
     "@/store/index.store": { useIndexStore: () => ({ activeJobTemplate: "worker_shuttle" }) },
     "@/utils/jobs.utils": { createJobTableColumns: () => [], STANDARD_JOB_FIELD_KEYS: new Set() },
+    "@/utils/app.utils": { formatPlanDate: (value) => String(value ?? "") },
     "@/components/Table/ActionsColumn": { createActionsColumn: () => ({}) },
     "@/components/Table/BaseTable": { __esModule: true, default: ({ rowData }) => { rows = rowData; return null; } },
     antd: { Button: Null, Drawer: Null, Modal: Null, Dropdown: Null, Typography: { Title: Null },

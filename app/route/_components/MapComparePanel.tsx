@@ -19,14 +19,23 @@ export default function MapComparePanel({ items, selected, onToggle, onClear, on
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "assigned" | "unassigned">("all");
   const [visibleCount, setVisibleCount] = useState(60);
+  // "" = every person. Kept after the other state so its order never shifts.
+  const [person, setPerson] = useState<string | undefined>("");
+  const personFilter = person ?? "";
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => { headingRef.current?.focus({ preventScroll: true }); }, []);
   const selectedKeys = useMemo(() => new Set(selected.map(item => item.key)), [selected]);
+  const people = useMemo(() => [...new Set(items.flatMap(item => {
+    const name = (item.marker as { comparison?: { driverName?: string } } | null)?.comparison?.driverName;
+    return !item.unassigned && name ? [name] : [];
+  }))].sort((a, b) => a.localeCompare(b)), [items]);
   const matches = useMemo(() => {
     const terms = query.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().split(/\s+/).filter(Boolean);
     return items.filter(item => (filter === "all" || (filter === "unassigned") === item.unassigned) &&
+      (!personFilter || (!item.unassigned && (item.marker as { comparison?: { driverName?: string } } | null)?.comparison?.driverName === personFilter)) &&
       terms.every(term => item.searchText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(term)));
-  }, [items, query, filter]);
+  }, [items, query, filter, personFilter]);
+  const addable = matches.filter(item => item.marker && !selectedKeys.has(item.key));
 
   return <section aria-label="Compare map stops" onKeyDown={event => event.stopPropagation()}
     className="flex max-h-full w-[360px] max-w-[calc(100vw-32px)] flex-col overflow-hidden border border-slate-200 bg-white shadow-lg">
@@ -77,6 +86,23 @@ export default function MapComparePanel({ items, selected, onToggle, onClear, on
           <button key={value} type="button" aria-pressed={filter === value} onClick={() => { setFilter(value); setVisibleCount(60); }}
             className={`cursor-pointer border px-2.5 py-1 text-xs font-medium focus-visible:outline-2 focus-visible:outline-emerald-700 ${filter === value ? "border-emerald-800 bg-emerald-50 text-emerald-900" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{label}</button>)}
       </div>
+      {people.length > 0 && <div className="flex items-center gap-2">
+        <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-slate-600">
+          <span className="shrink-0">Team member</span>
+          <select value={personFilter} onChange={event => { setPerson(event.target.value); setVisibleCount(60); if (event.target.value && filter === "unassigned") setFilter("all"); }}
+            aria-label="Show stops of one team member"
+            className="h-8 min-w-0 flex-1 border border-slate-300 bg-white px-2 text-xs text-slate-900 outline-none focus:border-emerald-700">
+            <option value="">Everyone</option>
+            {people.map(name => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>
+        <button type="button" disabled={!addable.length || addable.length > 60}
+          title={addable.length > 60 ? "Narrow the list to 60 stops or fewer to add them all" : undefined}
+          onClick={() => addable.forEach(item => onToggle(item.key))}
+          className="shrink-0 cursor-pointer whitespace-nowrap text-xs font-medium text-emerald-800 hover:underline disabled:cursor-default disabled:text-slate-400 disabled:no-underline">
+          Add all shown{addable.length ? ` (${addable.length})` : ""}
+        </button>
+      </div>}
       {error && <p role="alert" className="m-0 text-xs text-red-700">Job details could not be loaded. Refresh the plan to see all unassigned jobs.</p>}
       {loading && <p role="status" className="m-0 text-xs text-slate-500">Loading job details…</p>}
     </div>

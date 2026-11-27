@@ -26,6 +26,8 @@ import { isTextInput } from "@/utils/form.utils";
 import { CustomFieldDefinition, getCustomFields } from "@/apis/custom-fields.api";
 import { DynamicCustomFieldsForm } from "@/components/DynamicCustomFieldsForm";
 import { AutoSaveSource, useQueuedAutoSave } from "@/hooks/useQueuedAutoSave";
+import FormSection from "@/components/Settings/FormSection";
+import { Package, ShieldCheck, Tag, Truck as TruckIcon } from "lucide-react";
 
 const { Text } = Typography;
 
@@ -264,7 +266,7 @@ const VehicleForm = ({
   ];
 
   return (
-    <Flex className="responsive-entity-form" style={{ height: isInline ? "auto" : "100%", overflow: isInline ? "visible" : "hidden" }}>
+    <Flex vertical className="responsive-entity-form" style={{ height: isInline ? "auto" : "100%", overflow: isInline ? "visible" : "hidden" }}>
       {contextHolder}
 
       {/* Left Sidebar Menu */}
@@ -276,22 +278,15 @@ const VehicleForm = ({
       </label>
       <div
         className="entity-form-nav"
-        style={{
-          width: "200px",
-          borderRight: "1px solid #f0f0f0",
-          paddingRight: "8px",
-          paddingTop: "12px",
-        }}
+        style={{ boxShadow: "inset 0 -2px 0 #DCDFE4", marginBottom: 16, flexShrink: 0 }}
       >
         <Menu
-          mode="inline"
+          mode="horizontal"
+          disabledOverflow
           selectedKeys={[activeSection]}
           onClick={({ key }) => setActiveSection(key as SectionKey)}
           items={menuItems}
-          style={{
-            border: "none",
-            fontSize: "14px",
-          }}
+          style={{ border: "none", fontSize: "14px", background: "transparent", lineHeight: "34px" }}
         />
       </div>
 
@@ -302,7 +297,8 @@ const VehicleForm = ({
         style={{
           flex: 1,
           overflow: isInline ? "visible" : "hidden",
-          paddingLeft: "12px",
+          paddingLeft: 0,
+          minHeight: 0,
         }}
       >
         {/* Scrollable Form Area */}
@@ -329,140 +325,80 @@ const VehicleForm = ({
             {/* Section 1: Basic Information */}
             <div style={{ display: activeSection === "basic" ? "block" : "none" }}>
               {/* Row 1: Name, License Plate */}
-              <Row gutter={16}>
-                <Col xs={24} sm={12}>
-                  <Form.Item
-                    label="Name"
-                    name="name"
-                    rules={[
-                      { required: true, message: "Please enter vehicle name" },
-                    ]}
-                  >
-                    <Input placeholder="Enter vehicle name" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={12}>
-                  <Form.Item label="License Plate" name="license_plate">
-                    <Input placeholder="Enter license plate" />
-                  </Form.Item>
-                </Col>
-              </Row>
+              <FormSection icon={Tag} title="Identity" description="How this vehicle is named in plans and on the road.">
+                <Form.Item label="Name" name="name" rules={[{ required: true, message: "Please enter vehicle name" }]}>
+                  <Input />
+                </Form.Item>
+                <Form.Item label="License plate" name="license_plate">
+                  <Input style={{ maxWidth: 250 }} />
+                </Form.Item>
+              </FormSection>
 
-              {/* Row 2: Make, Model */}
-              <Row gutter={16}>
-                <Col xs={24} sm={12}>
+              <FormSection icon={TruckIcon} title="Vehicle" description="What kind of vehicle it is.">
+                <Form.Item label="Type" name="type">
+                  <Select
+                    showSearch
+                    placeholder="Select vehicle type"
+                    options={VEHICLE_TYPES}
+                    allowClear
+                    style={{ maxWidth: 250 }}
+                    getPopupContainer={() => document.body}
+                  />
+                </Form.Item>
+                <div className="grid grid-cols-2 gap-3">
                   <Form.Item label="Make" name="make">
-                    <Input placeholder="Enter vehicle make" />
+                    <Input />
                   </Form.Item>
-                </Col>
-                <Col xs={24} sm={12}>
                   <Form.Item label="Model" name="model">
-                    <Input placeholder="Enter vehicle model" />
+                    <Input />
                   </Form.Item>
-                </Col>
-              </Row>
-
-              {/* Row 3: Type */}
-              <Row gutter={16}>
-                <Col span={24}>
-                  <Form.Item label="Type" name="type">
-                    <Select
-                      showSearch
-                      placeholder="Select vehicle type"
-                      options={VEHICLE_TYPES}
-                      allowClear
-                      getPopupContainer={() => document.body}
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
+                </div>
+              </FormSection>
             </div>
 
             {/* Section 2: Skills & Constraints */}
             <div style={{ display: activeSection === "skillsAndConstraints" ? "block" : "none" }}>
-              {/* Required Skills & Skill Relation */}
-              <Text
-                strong
-                style={{
-                  display: "block",
-                  letterSpacing: "0.08em",
-                  fontSize: 11,
-                  color: "#8c8c8c",
-                  marginBottom: 4,
-                }}
-              >
-                REQUIRED SKILLS (OPTIONAL)
-              </Text>
-              <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 12 }}>
-                Drivers assigned to this vehicle must possess the matching required skills.
-              </Text>
+              {/* Required skills and how they are matched */}
+              <FormSection icon={ShieldCheck} title="Required skills" description="Optional. Only drivers who have these skills can be given this vehicle.">
+                <Form.Item label="Skills" name="required_skills" extra="Type a skill and press Enter. For example: Heavy license, Refrigerated.">
+                  <Select
+                    mode="tags"
+                    style={{ width: "100%" }}
+                    placeholder="Add a skill"
+                    aria-label="Required skills"
+                    options={[]}
+                    tokenSeparators={[","]}
+                    getPopupContainer={() => document.body}
+                  />
+                </Form.Item>
+                <Form.Item label="A driver needs" name="relation" extra="This only matters when you list two or more skills.">
+                  <Radio.Group buttonStyle="solid">
+                    <Radio.Button value="and">All of these skills</Radio.Button>
+                    <Radio.Button value="or">Any one of them</Radio.Button>
+                  </Radio.Group>
+                </Form.Item>
+              </FormSection>
 
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-semibold text-gray-700">Required Skills</span>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-gray-500 font-medium">Match Logic:</span>
-                  <Form.Item name="relation" noStyle>
-                    <Radio.Group size="small" buttonStyle="solid" className="shrink-0">
-                      <Radio.Button value="and">All (AND)</Radio.Button>
-                      <Radio.Button value="or">Any (OR)</Radio.Button>
-                    </Radio.Group>
-                  </Form.Item>
-                </div>
-              </div>
+              {/* Load constraints */}
+              <FormSection icon={Package} title="Load constraints" description="The most this vehicle can carry. A job that goes over any one of these is not assigned to it.">
+                <Form.List name="load_constraints">
+                  {(fields, { add, remove }) => (
+                    <>
+                      {fields.length === 0 && (
+                        <p className="m-0 mb-3 text-[13px] leading-5 text-[#626E67]">No constraints set for this vehicle.</p>
+                      )}
 
-              <Form.Item name="required_skills" style={{ marginBottom: 16 }}>
-                <Select
-                  mode="tags"
-                  style={{ width: "100%" }}
-                  placeholder="Type a skill and press Enter (e.g., Heavy License, Refrigerated)"
-                  options={[]}
-                  tokenSeparators={[","]}
-                  getPopupContainer={() => document.body}
-                />
-              </Form.Item>
+                      {fields.length > 0 && (
+                        <div className="constraint-header constraint-grid mb-1 text-[11px] font-medium uppercase tracking-[0.06em] text-[#626E67]">
+                          <span>Type</span>
+                          <span>Maximum</span>
+                          <span>Unit</span>
+                          <span />
+                        </div>
+                      )}
 
-              <Divider style={{ marginTop: 8, marginBottom: 16 }} />
-
-              {/* Dynamic Load Constraints */}
-              <Text
-                strong
-                style={{
-                  display: "block",
-                  letterSpacing: "0.08em",
-                  fontSize: 11,
-                  color: "#8c8c8c",
-                  marginBottom: 4,
-                }}
-              >
-                LOAD CONSTRAINTS
-              </Text>
-              <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 12 }}>
-                Add one or more constraints. Orders exceeding any constraint will not be assigned to this vehicle.
-              </Text>
-
-              <Form.List name="load_constraints">
-                {(fields, { add, remove }) => (
-                  <>
-                    {/* Table header */}
-                    {fields.length > 0 && (
-                      <Row className="constraint-header" gutter={8} style={{ marginBottom: 4 }}>
-                        <Col flex="160px">
-                          <Text type="secondary" style={{ fontSize: 12 }}>Constraint type</Text>
-                        </Col>
-                        <Col flex="1">
-                          <Text type="secondary" style={{ fontSize: 12 }}>Max value</Text>
-                        </Col>
-                        <Col flex="100px">
-                          <Text type="secondary" style={{ fontSize: 12 }}>Unit</Text>
-                        </Col>
-                        <Col flex="32px" />
-                      </Row>
-                    )}
-
-                    {fields.map(({ key, name, ...restField }) => (
-                      <Row className="constraint-row" key={key} gutter={8} align="middle" style={{ marginBottom: 8 }}>
-                        {/* Constraint type */}
-                        <Col flex="160px">
+                      {fields.map(({ key, name, ...restField }) => (
+                        <div className="constraint-grid mb-2" key={key}>
                           <Form.Item
                             {...restField}
                             name={[name, "constraint_type"]}
@@ -471,7 +407,7 @@ const VehicleForm = ({
                           >
                             <Select
                               options={CONSTRAINT_TYPES}
-                              placeholder="Constraint type" aria-label="Constraint type"
+                              placeholder="Type" aria-label="Constraint type"
                               getPopupContainer={() => document.body}
                               onChange={(val: ConstraintType) => {
                                 // Reset unit to the first option for the new type
@@ -482,10 +418,7 @@ const VehicleForm = ({
                               }}
                             />
                           </Form.Item>
-                        </Col>
 
-                        {/* Max value */}
-                        <Col flex="1">
                           <Form.Item
                             {...restField}
                             name={[name, "max_value"]}
@@ -498,10 +431,7 @@ const VehicleForm = ({
                               style={{ width: "100%" }}
                             />
                           </Form.Item>
-                        </Col>
 
-                        {/* Unit */}
-                        <Col flex="100px">
                           <Form.Item
                             noStyle
                             shouldUpdate={(prev, cur) =>
@@ -528,40 +458,36 @@ const VehicleForm = ({
                               );
                             }}
                           </Form.Item>
-                        </Col>
 
-                        {/* Delete button */}
-                        <Col flex="32px">
-                          <Button
-                            type="text"
-                            danger
-                            icon={<DeleteOutlined />}
+                          <button
+                            type="button"
+                            aria-label="Remove this constraint"
+                            data-tip="Remove"
+                            className="tip inline-flex h-8 w-8 cursor-pointer items-center justify-center border-0 bg-transparent text-[#626E67] outline-none hover:bg-[#EAEFEC] hover:text-[#C9372C] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0B5D3B]"
                             onClick={() => {
                               remove(name);
                               triggerAutoSave();
                             }}
-                            style={{ padding: 0, width: 32 }}
-                          />
-                        </Col>
-                      </Row>
-                    ))}
+                          >
+                            <DeleteOutlined />
+                          </button>
+                        </div>
+                      ))}
 
-                    {/* Add constraint row */}
-                    <Button
-                      type="dashed"
-                      onClick={() => {
-                        add({ constraint_type: "weight", max_value: 0, unit: "kg" });
-                        triggerAutoSave();
-                      }}
-                      icon={<PlusOutlined />}
-                      block
-                      style={{ marginTop: 4 }}
-                    >
-                      Add constraint
-                    </Button>
-                  </>
-                )}
-              </Form.List>
+                      <button
+                        type="button"
+                        className="mt-1 inline-flex h-8 cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-[13px] font-medium text-[#0B5D3B] outline-none hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0B5D3B]"
+                        onClick={() => {
+                          add({ constraint_type: "weight", max_value: 0, unit: "kg" });
+                          triggerAutoSave();
+                        }}
+                      >
+                        <PlusOutlined /> Add constraint
+                      </button>
+                    </>
+                  )}
+                </Form.List>
+              </FormSection>
 
               <DynamicCustomFieldsForm
                 customFields={customFieldDefs}

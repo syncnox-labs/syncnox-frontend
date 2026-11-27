@@ -33,8 +33,9 @@ import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
 import { useDepotStore } from "@/store/depots.store";
 import { useLocationMappingStore } from "@/store/location-mapping.store";
-import { getJobJourneyStops, getJobStopEstimates, getStopProgress, type JobTimingStop } from "./jobStopEstimates.utils";
+import { getJobJourneyStops, getJobStopEstimates, getStopProgress, reconcileStopProgress, type JobTimingStop } from "./jobStopEstimates.utils";
 import { buildJobEditPatch } from "./jobEditPatch.utils";
+import { stopStatusConfirm } from "./stopStatusConfirm";
 
 interface JobDetailsCardProps {
   stopData: any | null;
@@ -54,6 +55,10 @@ interface JobDetailsCardProps {
   onMergeAdjacentRoute?: () => void;
   vehicleName?: string | null;
   isFullscreen?: boolean;
+  /** False before the plan is shared or before its day: completing or skipping a stop cannot have happened yet. */
+  runDayActionsReady?: boolean;
+  /** Why the run-day actions are off, in one sentence. */
+  runDayActionsReason?: string;
 }
 
 /** Pickup / drop-off / depot / break badge shown in the card header. */
@@ -114,28 +119,41 @@ const Field: React.FC<{
 );
 
 const DetailSection = ({ title, badge, children, compact = false }: { title: string; badge?: React.ReactNode; children: React.ReactNode; compact?: boolean }) => (
-  <section className={`${compact ? "space-y-2 pb-3" : "space-y-3 pb-4"} border-b border-gray-100 last:border-0 last:pb-0`} aria-label={title}>
-    <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">{title}{badge}</h3>
+  <section className={`${compact ? "space-y-2 pb-4" : "space-y-3 pb-4"} border-b border-[#E3E8E5] last:border-0 last:pb-0`} aria-label={title}>
+    <h3 className="m-0 flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-[#626E67]">{title}{badge}</h3>
     {children}
   </section>
+);
+
+/** Label above value, the way every record screen shows fields. */
+const KeyValue = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <div className="min-w-0">
+    <div className="text-[11px] text-[#626E67]">{label}</div>
+    <div className="mt-0.5 text-[13px] text-[#12211A] break-words">{children}</div>
+  </div>
 );
 
 const EstimatedTime = ({ value }: { value?: string }) => (
   <span className="inline-flex items-center gap-1.5 flex-wrap">
     <span>{value ? formatTime12h(value) : "Not scheduled"}</span>
     {value && dayjs(value).isValid() && (
-      <time dateTime={value} className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+      <time dateTime={value} className="text-[11px] font-normal text-[#626E67]">
         {dayjs(value).format("ddd, MMM D")}
       </time>
     )}
   </span>
 );
 
+const minutesText = (minutes: number) => {
+  const h = Math.floor(minutes / 60), m = minutes % 60;
+  return h ? (m ? `${h} h ${m} min` : `${h} h`) : `${m} min`;
+};
+
 const ProgressBadge = ({ progress }: { progress: ReturnType<typeof getStopProgress> }) => (
-  <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
-    progress.status === "completed" ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-      : progress.status === "failed" ? "border-rose-200 bg-rose-50 text-rose-800"
-        : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+  <span className={`inline-flex items-center gap-1 text-[11px] font-normal ${
+    progress.status === "completed" ? "text-[#0B5D3B]" : progress.status === "failed" ? "text-[#C9372C]" : "text-[#626E67]"}`}>
+    <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${
+      progress.status === "completed" ? "bg-[#0B5D3B]" : progress.status === "failed" ? "bg-[#C9372C]" : "bg-[#9AA59F]"}`} />
     {progress.label}
   </span>
 );
@@ -144,7 +162,7 @@ const ActualTime = ({ value, timezone }: { value?: string; timezone?: string }) 
   if (!value || Number.isNaN(new Date(value).getTime())) return <span>Not recorded</span>;
   const date = new Date(value);
   return <time dateTime={value} className="inline-flex flex-wrap items-center gap-1.5">
-    <span>{new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hour12: true, timeZoneName: "short" }).format(date)}</span>
+    <span>{new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", minute: "2-digit", hour12: true, timeZoneName: "short" }).format(date)}</span>
     <span className="text-[10px] font-semibold text-slate-500">
       {new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short", month: "short", day: "numeric" }).format(date)}
     </span>
@@ -169,6 +187,8 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   onMergeAdjacentRoute,
   vehicleName,
   isFullscreen = false,
+  runDayActionsReady = true,
+  runDayActionsReason,
 }) => {
   const { patchJobLocally, updateJobAction, jobs } = useJobsStore();
   const job = jobs.find(item => item.id === (selectedJob?.id ?? stopData?.job_id)) ?? selectedJob;
@@ -207,7 +227,8 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     return opts;
   }, [depots, locationMappings]);
 
-  if (!stopData && !job) return null;
+  // Nothing to show is decided after every hook has run, so hook order never changes between renders.
+  const isEmpty = !stopData && !job;
 
   const jobId = job?.id || stopData?.job_id;
   const status = job?.status || stopData?.status || "assigned";
@@ -287,10 +308,22 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
   const jobLeg = getJobLeg(job, stopData?.leg || stopData?.extra?.leg, leg);
   const estimates = getJobStopEstimates(job, stopData, routeStops, isUnassigned);
   const journeyStops = getJobJourneyStops(job, stopData, routeStops, isUnassigned);
-  const selectedProgress = getStopProgress(
+  // Run-day actions follow this stop's own day, not the plan's: a plan's trips can start the day before.
+  const stopMoment = (isDropoffStop ? estimates.dropoff : isPickupStop ? estimates.pickup : undefined) || stopData?.arrival_time;
+  const stopDayNotStarted = Boolean(stopMoment && dayjs(stopMoment).isValid() && dayjs(stopMoment).isAfter(dayjs(), "day"));
+  const actionsReady = runDayActionsReady && !stopDayNotStarted;
+  const actionsReason = !runDayActionsReady
+    ? runDayActionsReason || "This stop's day has not started yet."
+    : `This stop is on ${dayjs(stopMoment).format("ddd, MMM D")}, which has not started.`;
+  const selectedKind = isDropoffStop ? "dropoff" : isPickupStop ? "pickup" : "arrival";
+  // A job's status speaks for its stops only when the job is one direction (one pickup, one drop-off).
+  // Legacy combined bookings carry both legs under one job, so there the stops keep their own status.
+  const singleLegJob = ["one_way", "return_only", "go_only"].includes(String(job?.job_type || "").toLowerCase());
+  const jobStatusForStops = singleLegJob ? job?.status : undefined;
+  const selectedProgress = reconcileStopProgress(getStopProgress(
     (isDropoffStop ? journeyStops.dropoff : journeyStops.pickup) ?? stopData,
-    isDropoffStop ? "dropoff" : isPickupStop ? "pickup" : "arrival", isShuttle,
-  );
+    selectedKind, isShuttle,
+  ), jobStatusForStops, selectedKind, isShuttle);
   const startHour = formatTime12h(shuttleValue("start_hour"));
   const endHour = formatTime12h(shuttleValue("end_hour"));
   const pickupType = getJobPickupType(job);
@@ -379,55 +412,35 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     }
   }, [job, isEditing]);
 
-  const handleUpdateStatus = async (newStatus: string) => {
+  const handleUpdateStatus = async (newStatus: "completed" | "failed") => {
     if (!jobId) return;
-
-    let targetStatus = newStatus;
-    if (newStatus === "completed" && isPickupStop) {
-      targetStatus = "in_transit";
-    }
-
-    const isCompleteAction = newStatus === "completed";
-    const title = isPickupStop
-      ? "Mark Pickup as Done?"
-      : isCompleteAction
-        ? "Mark Job as Completed?"
-        : "Skip this Job?";
-
-    const content = isPickupStop
-      ? `Are you sure you want to mark Pickup for Job #${jobId} as done?`
-      : isCompleteAction
-        ? `Are you sure you want to mark Job #${jobId} as completed?`
-        : `Are you sure you want to skip Job #${jobId}?`;
-
-    const okText = isPickupStop
-      ? "Mark Pickup Done"
-      : isCompleteAction
-        ? "Mark Completed"
-        : "Skip Job";
-
+    const kind = isPickupStop ? "pickup" : isDropoffStop ? "dropoff" : "stop";
+    const when = kind === "pickup" ? estimates.pickup : kind === "dropoff" ? estimates.dropoff : stopData?.arrival_time;
+    const confirm = stopStatusConfirm({
+      action: newStatus, kind, jobId,
+      who: (isShuttle ? candidateName : undefined) || (customerName !== "-" ? customerName : undefined),
+      whenText: when && dayjs(when).isValid() ? `${dayjs(when).format("h:mm A")} · ${dayjs(when).format("ddd, MMM D")}` : null,
+      address: address && address !== "Address not specified" ? address : null,
+      note: [
+        actionsReady ? null : actionsReason,
+        // Completing a drop-off closes the whole job, so a pickup not yet recorded is closed with it.
+        newStatus === "completed" && kind === "dropoff"
+          && reconcileStopProgress(getStopProgress(journeyStops.pickup, "pickup"), jobStatusForStops, "pickup").status === "pending"
+          ? "The pickup is not recorded yet. Completing the drop-off also closes the pickup." : null,
+      ].filter(Boolean).join(" ") || null,
+    });
     modal.confirm({
-      title,
-      content,
-      okText,
-      okType: isCompleteAction ? "primary" : "danger",
-      okButtonProps: isCompleteAction ? { style: { backgroundColor: "#003220", borderColor: "#003220" } } : undefined,
+      ...confirm.modal,
       onOk: async () => {
         try {
           setIsUpdating(true);
-          const updated = await updateJobStatus(jobId, targetStatus);
+          const updated = await updateJobStatus(jobId, confirm.targetStatus);
           patchJobLocally(updated);
           await fetchRoutes(selectedStatus);
-          message.success(
-            isPickupStop
-              ? "Pickup marked as done (In Transit)"
-              : isCompleteAction
-                ? "Job marked as completed"
-                : "Job skipped",
-          );
+          message.success(confirm.successText);
           onClose();
-        } catch (err) {
-          message.error("Failed to update job status");
+        } catch {
+          message.error(confirm.errorText);
         } finally {
           setIsUpdating(false);
         }
@@ -464,8 +477,41 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     }
   };
 
+  const rideMinutes = estimates.pickup && estimates.dropoff
+    && dayjs(estimates.pickup).isValid() && dayjs(estimates.dropoff).isValid()
+    ? Math.round(dayjs(estimates.dropoff).diff(dayjs(estimates.pickup), "minute", true)) : null;
+  const shiftVerdict = (() => {
+    const clock = (value?: string) => {
+      const m = String(value ?? "").match(/^(\d{1,2}):(\d{2})/);
+      return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+    };
+    // Outbound: drop-off against the shift start. Return: pickup against the shift end.
+    const isReturn = String(jobLeg ?? "").toUpperCase() === "RETURN";
+    const at = isReturn ? estimates.pickup : estimates.dropoff;
+    const target = clock(shuttleValue(isReturn ? "end_hour" : "start_hour"));
+    if (!at || target === null || !dayjs(at).isValid()) return null;
+    // Compare whole minutes, the same precision the times are shown in.
+    const when = dayjs(at).startOf("minute");
+    let goal = when.startOf("day").add(target, "minute");
+    if (goal.diff(when, "minute") > 720) goal = goal.subtract(1, "day");
+    if (when.diff(goal, "minute") > 720) goal = goal.add(1, "day");
+    const gap = goal.diff(when, "minute");
+    const shiftClock = goal.format("h:mm A");
+    if (isReturn) {
+      if (gap === 0) return { tone: "ok" as const, text: `Picked up as the shift ends at ${shiftClock}` };
+      return gap < 0
+        ? { tone: "ok" as const, text: `Picked up ${minutesText(-gap)} after the shift ends at ${shiftClock}` }
+        : { tone: "bad" as const, text: `Picked up ${minutesText(gap)} before the shift ends at ${shiftClock}` };
+    }
+    const needed = Number(reachBeforeMinutes);
+    const hasRule = Number.isFinite(needed) && needed > 0;
+    if (gap < 0) return { tone: "bad" as const, text: `Arrives ${minutesText(-gap)} after the shift starts at ${shiftClock}` };
+    if (hasRule && gap < needed) return { tone: "bad" as const, text: `Arrives ${minutesText(gap)} before the ${shiftClock} shift; ${needed} min are needed` };
+    return { tone: "ok" as const, text: `Arrives ${minutesText(gap)} before the ${shiftClock} shift${hasRule ? ` (${needed} min needed)` : ""}` };
+  })();
+
   const legBadge = jobLeg ? (
-    <span aria-label={`Leg ${jobLeg}`} className="inline-flex border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[10px] font-extrabold text-slate-800">
+    <span aria-label={`Leg ${jobLeg}`} className="inline-flex bg-[#F3F6F4] px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal text-[#4A5750]">
       {jobLeg}
     </span>
   ) : null;
@@ -513,42 +559,48 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
     </div>
   );
 
+  if (isEmpty) return null;
+
   return (
     <div
       className={`fixed ${
         isFullscreen ? "top-3 right-3 z-50" : "top-16 right-3 z-50"
-      } w-[calc(100vw-24px)] sm:w-[400px] h-[calc(100dvh-76px)] max-h-[744px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col overflow-hidden text-xs transition-all animate-in fade-in slide-in-from-right-4 duration-200`}
+      } w-[calc(100vw-24px)] sm:w-[400px] h-[calc(100dvh-76px)] max-h-[744px] bg-white rounded-none shadow-[0_8px_24px_rgba(18,33,26,0.14)] border border-[#D5DCD8] flex flex-col overflow-hidden text-xs transition-all animate-in fade-in slide-in-from-right-4 duration-200`}
     >
-      {/* Header */}
-      <div className="p-3.5 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="font-bold text-gray-900 text-sm truncate">
-            {isDepotStop
-              ? "Depot Station"
-              : isUnassigned
-                ? `Unassigned Job #${jobId}`
-                : `Stop No - ${stopIndex} (${driverLabel})`}
+      {/* Header: kind of stop, then whose it is, then who drives it */}
+      <div className="lang px-4 pt-3.5 pb-3 border-b border-[#E3E8E5] flex items-start justify-between gap-3 bg-white shrink-0">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] font-medium uppercase tracking-wide text-[#626E67]">
+            {isDepotStop ? <span>Depot</span> : isUnassigned ? <span>Unassigned</span> : (
+              <>
+                {stopBadge && <span className={isPickupStop ? "text-[#0B5D3B]" : "text-[#12211A]"}>{stopBadge.label}</span>}
+                <span aria-hidden="true">·</span>
+                <span>Stop {stopIndex}</span>
+              </>
+            )}
+            {Boolean(stopData?.is_new || job?.is_new) && (
+              <span className="inline-flex items-center gap-1 normal-case tracking-normal text-[#0B5D3B]">
+                <Sparkles size={11} /> Newly added
+              </span>
+            )}
+            {Boolean(stopData?.time_edited || (job as any)?.time_edited || stopData?.is_edited || (job as any)?.is_edited) && (
+              <span className="inline-flex items-center gap-1 normal-case tracking-normal text-[#4A5750]">
+                <ClockCircleOutlined className="text-[10px]" /> Edited
+              </span>
+            )}
           </div>
-          {stopBadge && !isDepotStop && (
-            <span
-              className={`shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 border rounded-none ${stopBadge.className}`}
-            >
-              {stopBadge.label}
-            </span>
-          )}
-          {Boolean(stopData?.is_new || job?.is_new) && (
-            <span className="shrink-0 text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-400 flex items-center gap-1 animate-pulse">
-              <Sparkles size={11} className="text-emerald-700" />
-              Newly added
-            </span>
-          )}
-          {Boolean(stopData?.time_edited || (job as any)?.time_edited || stopData?.is_edited || (job as any)?.is_edited) && (
-            <span className="shrink-0 text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-300 flex items-center gap-0.5">
-              <ClockCircleOutlined className="text-[10px]" /> EDITED
-            </span>
+          <h2 className="m-0 mt-1 text-[15px] font-medium leading-snug text-[#12211A] break-words">
+            {isDepotStop ? (stopType === "depot_end" ? "Trip ends at the depot" : stopType === "depot_start" ? "Trip starts at the depot" : "Depot")
+              : isUnassigned ? `Unassigned Job #${jobId}`
+                : (isShuttle ? candidateName : undefined) || (customerName !== "-" ? customerName : undefined) || `Job #${jobId}`}
+          </h2>
+          {!isUnassigned && (
+            <div className="mt-0.5 text-[12px] text-[#4A5750] break-words">
+              {[!isDepotStop && jobId ? `Job #${jobId}` : null, driverName || null, vehicleName || null].filter(Boolean).join(" · ")}
+            </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-0.5 -mr-2 -mt-1">
           {/* Edit / Save / Cancel toggle — only for job stops, not depot */}
           {!isDepotStop && job && (
             isEditing ? (
@@ -585,26 +637,31 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                     setIsEditing(true);
                   }
                 }}
-                title="Edit job"
-                className="text-gray-400 hover:text-[#003220] transition-colors p-1 rounded hover:bg-gray-100 cursor-pointer"
+                title="Edit job" aria-label="Edit job"
+                className="inline-flex h-8 w-8 items-center justify-center border-0 bg-transparent text-[#626E67] hover:text-[#12211A] hover:bg-[#F3F6F4] cursor-pointer"
               >
                 <EditOutlined className="text-sm" />
               </button>
             )
           )}
-          {onRemoveJob && !isDepotStop && (
+          {onRemoveJob && !isDepotStop && (() => {
+            // A job already worked on the day (boarded, done, no-show) stays on its trip as the record of what happened.
+            const worked = selectedProgress.status !== "pending" || ["in_transit", "in_progress", "completed", "failed"].includes(String(status));
+            return (
             <button
-              onClick={onRemoveJob}
-              title="Remove from Route"
-              className="text-red-500 hover:text-red-700 transition-colors p-1 rounded hover:bg-red-50 cursor-pointer"
+              onClick={worked ? undefined : onRemoveJob}
+              disabled={worked}
+              title={worked ? "This job was already worked on the day, so it stays on the trip" : "Remove from route"} aria-label="Remove from route"
+              className="inline-flex h-8 w-8 items-center justify-center border-0 bg-transparent text-[#626E67] hover:text-[#C9372C] hover:bg-[#FDECEA] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[#626E67]"
             >
               <DeleteOutlined className="text-sm" />
             </button>
-          )}
+            );
+          })()}
           <button
             onClick={onClose}
-            title="Close"
-            className="text-gray-400 hover:text-gray-700 transition-colors p-1 rounded hover:bg-gray-100 cursor-pointer"
+            title="Close" aria-label="Close"
+            className="inline-flex h-8 w-8 items-center justify-center border-0 bg-transparent text-[#626E67] hover:text-[#12211A] hover:bg-[#F3F6F4] cursor-pointer"
           >
             <CloseOutlined className="text-sm" />
           </button>
@@ -1007,89 +1064,120 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
           </div>
         ) : isShuttle && !isDepotStop ? (
           <>
-            <DetailSection title="Passenger & assignment" compact>
-              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
-                <Field icon={<User size={13} className="text-gray-400" />} label="Candidate Name"
-                  valueClassName="text-sm font-semibold text-gray-900 pl-4.5 break-words">
-                  {dash(candidateName)}
-                </Field>
-                <Field icon={<Phone size={13} className="text-gray-400" />} label="Candidate Phone"
-                  valueClassName="text-xs text-gray-600 font-medium break-words pl-4.5">
-                  {candidatePhone ? <a href={`tel:${candidatePhone}`} className="hover:underline">{candidatePhone}</a> : "-"}
-                </Field>
-                <Field icon={<Building2 size={13} className="text-gray-400" />} label="Client Name"
-                  valueClassName="text-xs text-gray-700 break-words pl-4.5">{dash(passengerName)}</Field>
-                <Field icon={<User size={13} className="text-gray-400" />} label="Driver"
-                  valueClassName="text-xs text-gray-700 break-words pl-4.5">{dash(driverName)}</Field>
+            {(rideMinutes !== null || shiftVerdict) && (
+              <div className="-mt-1 pb-4 border-b border-[#E3E8E5]">
+                <div className="flex flex-wrap items-baseline gap-x-2 text-[15px] font-medium text-[#12211A] tabular-nums">
+                  {(estimates.pickup || estimates.dropoff) && dayjs(estimates.pickup || estimates.dropoff).isValid() && (
+                    <time dateTime={estimates.pickup || estimates.dropoff} className="text-[12px] font-normal text-[#4A5750]">
+                      {dayjs(estimates.pickup || estimates.dropoff).format("ddd, MMM D")}
+                    </time>
+                  )}
+                  <span>{estimates.pickup ? formatTime12h(estimates.pickup) : "--:--"}</span>
+                  <span aria-hidden="true" className="text-[#626E67]">→</span>
+                  <span>{estimates.dropoff ? formatTime12h(estimates.dropoff) : "--:--"}</span>
+                  {rideMinutes !== null && <span className="text-[12px] font-normal text-[#4A5750]">{rideMinutes} min ride</span>}
+                </div>
+                {shiftVerdict && (
+                  <div className={`mt-1 text-[12px] ${shiftVerdict.tone === "ok" ? "text-[#0B5D3B]" : "text-[#C9372C]"}`}>{shiftVerdict.text}</div>
+                )}
               </div>
-            </DetailSection>
+            )}
 
             <DetailSection title="Journey" badge={legBadge} compact>
+              <ol className="m-0 list-none p-0">
               {([
                 { key: "pickup", title: "Pickup", selected: isPickupStop, address: pickUpAddress,
-                  estimate: estimates.pickup, progress: getStopProgress(journeyStops.pickup, "pickup"), Icon: Navigation },
+                  estimate: estimates.pickup, progress: reconcileStopProgress(getStopProgress(journeyStops.pickup, "pickup"), jobStatusForStops, "pickup") },
                 { key: "dropoff", title: "Dropoff", selected: isDropoffStop, address: dropOffAddress,
-                  estimate: estimates.dropoff, progress: getStopProgress(journeyStops.dropoff, "dropoff"), Icon: Flag },
-              ] as const).map(({ key, title, selected, address: journeyAddress, estimate, progress, Icon }) => (
-                <div key={key} aria-current={selected ? "step" : undefined}
-                  className={`space-y-1.5 rounded-md border p-2.5 ${selected
-                    ? "border-emerald-200 bg-emerald-50/50" : "border-gray-200 bg-gray-50/40"}`}>
-                  <div className="flex items-center justify-between">
-                    <h4 className="flex flex-wrap items-center gap-1.5 font-semibold text-gray-900"><Icon size={14} />{title}<ProgressBadge progress={progress} /></h4>
-                    {selected && <span className="text-[10px] font-semibold text-emerald-800">Selected stop</span>}
+                  estimate: estimates.dropoff, progress: reconcileStopProgress(getStopProgress(journeyStops.dropoff, "dropoff"), jobStatusForStops, "dropoff") },
+              ] as const).map(({ key, title, selected, address: journeyAddress, estimate, progress }, index) => (
+                <li key={key} aria-current={selected ? "step" : undefined}
+                  className={`relative py-2.5 pl-7 pr-2 ${selected ? "bg-[#F1F8F4]" : ""}`}>
+                  {selected && <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-0.5 bg-[#003220]" />}
+                  <span aria-hidden="true" className={`absolute left-2.5 top-[15px] h-2 w-2 rounded-full border border-[#4A5750] ${key === "pickup" ? "bg-[#4A5750]" : "bg-white"}`} />
+                  {index === 0 && <span aria-hidden="true" className="absolute left-[13px] top-[25px] -bottom-[15px] w-px bg-[#C4CCC7]" />}
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="m-0 flex flex-wrap items-center gap-2 text-[13px] font-medium text-[#12211A]">{title}<ProgressBadge progress={progress} /></h4>
+                    {selected && <span className="text-[11px] text-[#0B5D3B]">This stop</span>}
                   </div>
-                  <Field icon={<MapPin size={13} className="text-gray-400" />} label={`${title} address`}
-                    valueClassName="text-xs text-gray-700 leading-snug break-words pl-4.5">
+                  <div className="mt-0.5 text-[12px] leading-snug text-[#4A5750] break-words">
                     {onShowLocation && journeyAddress ? (
                       <button type="button" onClick={() => onShowLocation(key)}
                         aria-label={`Show ${title.toLowerCase()} location on map`}
                         title={`Show ${title.toLowerCase()} on map`}
-                        className="text-left text-emerald-800 underline decoration-dotted underline-offset-2 hover:text-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 cursor-pointer">
-                        {journeyAddress}
+                        className="inline-flex items-start gap-1 border-0 bg-transparent p-0 text-left text-[12px] text-[#4A5750] cursor-pointer hover:text-[#0B5D3B] hover:underline">
+                        <MapPin size={12} className="mt-0.5 shrink-0" />{journeyAddress}
                       </button>
                     ) : dash(journeyAddress)}
-                  </Field>
-                  <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px]">
-                    <span className="flex items-center gap-1.5 font-bold text-gray-900">
-                      <Clock size={13} className="text-gray-400" />
-                      Estimated {key} time
-                    </span>
-                    <div className="text-xs font-semibold text-gray-900 pl-4.5">
-                      {onEditETA && estimate ? <button type="button" aria-label={`Edit estimated ${key} time`}
-                        onClick={() => onEditETA(key, estimate)} className="inline-flex items-center gap-1 text-emerald-800 underline decoration-dotted underline-offset-2">
-                        <EstimatedTime value={estimate} /><EditOutlined />
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[12px]">
+                    <span className="text-[#626E67]">Estimated {key} time</span>
+                    <span className="font-medium text-[#12211A] tabular-nums">
+                      {/* A stop already worked keeps its time: only open stops can be re-timed. */}{onEditETA && estimate && progress.status === "pending" ? <button type="button" aria-label={`Edit estimated ${key} time`}
+                        onClick={() => onEditETA(key, estimate)} title="Change this time"
+                        className="inline-flex items-center gap-1.5 border-0 bg-transparent p-0 text-[12px] font-medium text-[#12211A] cursor-pointer hover:text-[#0B5D3B]">
+                        <EstimatedTime value={estimate} /><EditOutlined className="text-[#626E67]" />
                       </button> : <EstimatedTime value={estimate} />}
-                    </div>
+                    </span>
                   </div>
                   {progress.status !== "pending" && (
-                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-gray-200/70 pt-1.5 text-[11px]">
-                      <span className="flex items-center gap-1.5 font-bold text-gray-900"><Clock size={13} className="text-gray-400" />
+                    <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[12px]">
+                      <span className="text-[#626E67]">
                         {progress.status === "failed" ? key === "pickup" ? "No-show recorded at" : "Failure recorded at"
                           : progress.status === "skipped" ? "Skipped at" : `Actual ${key} time`}
                       </span>
-                      <span className="text-xs font-semibold text-gray-900"><ActualTime value={progress.actualTime} timezone={progress.timezone} /></span>
+                      <span className="font-medium text-[#12211A]"><ActualTime value={progress.actualTime} timezone={progress.timezone} /></span>
                     </div>
                   )}
-                </div>
+                </li>
               ))}
+              </ol>
             </DetailSection>
 
-            <DetailSection title="Shift & schedule">
-              <div className="grid grid-cols-2 gap-x-3 gap-y-4">
-                <Field icon={<Calendar size={13} className="text-gray-400" />} label="Scheduled Date">{dash(scheduledDate)}</Field>
-                <Field icon={<Repeat size={13} className="text-gray-400" />} label="Pickup Type">
-                  {pickupType ? <span className="inline-flex border border-emerald-400 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-emerald-900">
-                    {formatPickupType(pickupType)}
-                  </span> : "-"}
-                </Field>
-                <Field icon={<Clock size={13} className="text-gray-400" />} label="Shift Start Time">{dash(startHour)}</Field>
-                <Field icon={<Clock size={13} className="text-gray-400" />} label="Shift End Time">{dash(endHour)}</Field>
+            <DetailSection title="Passenger" compact>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                <KeyValue label="Candidate Phone">
+                  {candidatePhone ? <a href={`tel:${candidatePhone}`} className="text-[#12211A] hover:text-[#0B5D3B] hover:underline">{candidatePhone}</a> : "-"}
+                </KeyValue>
+                <KeyValue label="Client Name">{dash(passengerName)}</KeyValue>
               </div>
             </DetailSection>
 
+            <DetailSection title="Shift & schedule">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                <KeyValue label="Scheduled Date">{scheduledDate && dayjs(scheduledDate).isValid() ? dayjs(scheduledDate).format("ddd, MMM D, YYYY") : dash(scheduledDate)}</KeyValue>
+                <KeyValue label="Pickup Type">{pickupType ? formatPickupType(pickupType) : "-"}</KeyValue>
+<KeyValue label="Shift starts">{startHour && startHour !== "-" ? startHour : "-"}</KeyValue>
+                <KeyValue label="Shift ends">
+                  {dash(endHour)}
+                  {(() => {
+                    const toMin = (v?: string) => { const m = String(v ?? "").match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+                    const sMin = toMin(shuttleValue("start_hour")), eMin = toMin(shuttleValue("end_hour"));
+                    return sMin !== null && eMin !== null && eMin <= sMin ? <span className="text-[#626E67]"> (next day)</span> : null;
+                  })()}
+                </KeyValue>
+              </div>
+            </DetailSection>
 
-            {notes !== "-" && <DetailSection title="Notes"><div className="text-xs leading-relaxed text-gray-700 whitespace-pre-wrap break-words">{notes}</div></DetailSection>}
+            {notes !== "-" && <DetailSection title="Notes"><div className="text-[13px] leading-relaxed text-[#12211A] whitespace-pre-wrap break-words">{notes}</div></DetailSection>}
           </>
+        ) : isDepotStop ? (
+          <div className="grid grid-cols-1 gap-3">
+            <KeyValue label="Address">
+              {/^previous .*trip end$/i.test(String(address).trim()) ? "Where the previous trip ended" : address}
+            </KeyValue>
+            <KeyValue label={stopType === "depot_end" ? "Arrives" : stopType === "depot_start" ? "Leaves" : "Time"}>
+              <span className="inline-flex items-center gap-1.5 tabular-nums">
+                {onEditETA && stopData?.arrival_time ? <button type="button" aria-label="Edit estimated arrival time"
+                  onClick={() => onEditETA("arrival", stopData.arrival_time)} title="Change this time"
+                  className="inline-flex items-center gap-1.5 border-0 bg-transparent p-0 text-[13px] text-[#12211A] cursor-pointer hover:text-[#0B5D3B]">
+                  {arrivalTime}<EditOutlined className="text-[#626E67]" /></button> : arrivalTime}
+                {stopData?.arrival_time && dayjs(stopData.arrival_time).isValid() && (
+                  <time dateTime={stopData.arrival_time} className="text-[12px] text-[#626E67]">{dayjs(stopData.arrival_time).format("ddd, MMM D")}</time>
+                )}
+              </span>
+            </KeyValue>
+          </div>
         ) : (
           <>
             {/* Contact */}
@@ -1194,7 +1282,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
 
       {/* Quick Action Footer */}
       {!isDepotStop && (
-        <div className="p-3 bg-gray-50 border-t border-gray-100 flex flex-col gap-2 shrink-0">
+        <div className="lang px-4 py-3 bg-white border-t border-[#E3E8E5] flex flex-col gap-2 shrink-0">
           {isEditing ? (
             <div className="flex gap-2">
               <Button
@@ -1217,7 +1305,10 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
               </Button>
             </div>
           ) : (
-            <div className="job-details-actions flex justify-end gap-2">
+            <div className="job-details-actions flex flex-wrap items-center justify-end gap-2">
+              {!actionsReady && (
+                <span className="w-full text-[12px] text-[#626E67]">{actionsReason} You can still record it after a confirmation.</span>
+              )}
               <Button
                 type="primary"
                 size="small"
@@ -1225,7 +1316,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                 loading={isUpdating}
                 disabled={selectedProgress.status !== "pending" || status === "completed"}
                 onClick={() => handleUpdateStatus("completed")}
-                className="w-auto px-3 bg-[#003220] hover:bg-[#002417] text-xs font-semibold h-8"
+                className="w-auto px-3 text-xs font-medium h-8"
               >
                 Mark Completed
               </Button>
@@ -1234,7 +1325,7 @@ const JobDetailsCard: React.FC<JobDetailsCardProps> = ({
                 size="small"
                 disabled={selectedProgress.status !== "pending" || status === "skipped" || status === "failed"}
                 onClick={() => handleUpdateStatus("failed")}
-                className="w-auto px-3 text-xs font-semibold h-8"
+                className="w-auto px-3 text-xs font-medium h-8"
               >
                 Skip Stop
               </Button>

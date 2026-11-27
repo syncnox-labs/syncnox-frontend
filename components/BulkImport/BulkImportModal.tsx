@@ -97,7 +97,7 @@ export default function BulkImportModal({
         header: { borderRadius: 0, paddingBottom: '16px' },
         mask: { backdropFilter: 'blur(4px)' }
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="py-1 flex flex-col flex-1 h-full min-h-0">
         {importedCount !== null ? (

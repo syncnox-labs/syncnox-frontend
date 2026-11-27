@@ -6,6 +6,7 @@ import timezone from "dayjs/plugin/timezone";
 import {
   ScheduleBlock as ScheduleBlockType,
   getBlockColor,
+  getBlockFill,
 } from "@/types/schedule.type";
 import { Tooltip } from "antd";
 
@@ -52,7 +53,7 @@ export default function ScheduleBlock({
   const backgroundColor = getBlockColor(block);
 
   const formatTime = (date: dayjs.Dayjs) => {
-    return date.format("hh:mm A");
+    return date.format("h:mm A");
   };
 
   const tooltipContent = (
@@ -91,14 +92,15 @@ export default function ScheduleBlock({
   const blockStyle: React.CSSProperties = {
     left: `${clampedLeft}%`,
     width: `${clampedWidth}%`,
-    backgroundColor,
+    backgroundColor: getBlockFill(block),
+    borderLeft: `3px solid ${backgroundColor}`,
     ...(isIdle && {
       backgroundImage: `repeating-linear-gradient(
         45deg,
         transparent,
         transparent 5px,
-        rgba(0,0,0,0.1) 5px,
-        rgba(0,0,0,0.1) 10px
+        rgba(0,0,0,0.06) 5px,
+        rgba(0,0,0,0.06) 10px
       )`,
     }),
   };
@@ -106,8 +108,8 @@ export default function ScheduleBlock({
   return (
     <Tooltip title={tooltipContent} placement="top">
       <div
-        className={`absolute top-1 bottom-1 rounded px-1.5 overflow-hidden whitespace-nowrap text-ellipsis text-xs font-medium cursor-pointer shadow-sm flex items-center min-w-[20px] ${
-          isIdle ? "text-gray-600" : "text-white"
+        className={`absolute top-1.5 bottom-1.5 rounded-none px-2 transition-shadow hover:shadow-[0_1px_1px_#091E4240,0_0_1px_#091E424F] overflow-hidden whitespace-nowrap text-ellipsis text-xs font-medium cursor-pointer flex items-center min-w-[20px] ${
+          isIdle ? "text-[#44546F]" : "text-[#172B4D]"
         }`}
         style={blockStyle}
       >

@@ -2,7 +2,7 @@ import { ColDef } from "ag-grid-community";
 import Link from "next/link";
 import { Job, JobStatus } from "@/types/job.type";
 import StatusBadge from "@/components/Jobs/StatusBanner";
-import { formatTime12h, formatTimeWindow } from "./app.utils";
+import { formatPlanDate, formatTime12h, formatTimeWindow } from "./app.utils";
 import { COUNTRY_CODES } from "@/constants/country";
 import { Popover, Checkbox } from "antd";
 import { useState } from "react";
@@ -60,19 +60,37 @@ export const jobTypeStyleMap: Record<string, string> = {
   default: "bg-gray-50 text-gray-700 border border-gray-200",
 };
 
+/**
+ * The direction of a trip, drawn as a thin arrow: out, back, or both ways. Deliveries point down (dropping off),
+ * pickups point up (collecting). Drawn here as plain SVG so this file needs no extra import.
+ */
+const JOB_TYPE_ARROWS: Record<string, string> = {
+  one_way: "M2.5 8h11M9.5 4l4 4-4 4",
+  return_only: "M13.5 8h-11M6.5 4l-4 4 4 4",
+  round_trip: "M2.5 5.5h11M10.5 2.5l3 3-3 3M13.5 10.5h-11M5.5 7.5l-3 3 3 3",
+  delivery: "M8 2.5v11M4 9.5l4 4 4-4",
+  pickup: "M8 13.5v-11M4 6.5l4-4 4 4",
+  default: "M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5",
+};
+
+/**
+ * Job type in a table cell: a direction arrow and the plain word, with no box and no color.
+ * The type is a kind of trip, not a state, so it carries no status color; the arrow is what the eye scans down the column.
+ */
 export const JobTypeBadge = ({ value }: { value?: string }) => {
-  if (!value) return <span className="text-gray-400">-</span>;
+  if (!value) return <span className="text-[#9AA8A0]">-</span>;
 
   const rawKey = String(value).toLowerCase().trim().replace(/-/g, "_");
   const label = formatJobTypeLabel(value);
-  const style = jobTypeStyleMap[rawKey] || jobTypeStyleMap.default;
+  const arrow = JOB_TYPE_ARROWS[rawKey] || JOB_TYPE_ARROWS.default;
 
   return (
-    <div className="flex text-center items-center justify-start h-full w-full">
-      <span className={`${style} px-2.5 py-0.5 text-xs font-semibold min-w-[85px] inline-block text-center`}>
-        {label}
-      </span>
-    </div>
+    <span className="inline-flex h-full items-center gap-2 whitespace-nowrap text-[#12211A]">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#4A5750]">
+        <path d={arrow} />
+      </svg>
+      {label}
+    </span>
   );
 };
 
@@ -294,7 +312,9 @@ export const createJobTableColumns = (options?: {
       },
       {
         field: "scheduled_date",
-        headerName: "Scheduled Date",
+        headerName: "Date",
+        headerTooltip: "Scheduled date",
+        valueFormatter: (params: any) => formatPlanDate(params.value),
         width: 140,
       },
       {
@@ -573,7 +593,9 @@ export const createJobTableColumns = (options?: {
     },
     {
       field: "scheduled_date",
-      headerName: "Scheduled Date",
+      headerName: "Date",
+      headerTooltip: "Scheduled date",
+      valueFormatter: (params: any) => formatPlanDate(params.value),
       width: 150,
     },
     {

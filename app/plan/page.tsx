@@ -21,7 +21,8 @@ const page = () => {
     }
   };
 
-  return <div className="relative h-full w-full">{renderTabContent()}</div>;
+  // "lang" opts this screen into the Syncnox interface language (fills, two weights, one accent); see app/globals.css
+  return <div className="lang relative h-full w-full">{renderTabContent()}</div>;
 };
 
 export default page;

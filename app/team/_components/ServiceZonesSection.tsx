@@ -61,7 +61,7 @@ const ServiceZonesSection: React.FC<ServiceZonesSectionProps> = ({
     <div className="px-1 flex flex-col gap-4">
       {/* Header */}
       <div>
-        <h3 className="m-0 mb-1 font-semibold text-gray-800 text-sm">
+        <h3 className="m-0 mb-1 font-medium text-gray-800 text-sm">
           Service Areas
         </h3>
         <p className="text-xs text-gray-500">
@@ -87,7 +87,7 @@ const ServiceZonesSection: React.FC<ServiceZonesSectionProps> = ({
       {zones.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-3 justify-between">
-            <span className="text-xs font-semibold text-gray-700">
+            <span className="text-xs font-medium text-gray-700">
               Defined zones:
             </span>
             <Button

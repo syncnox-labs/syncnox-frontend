@@ -11,15 +11,8 @@ import {
   resetCustomFields,
   notifyFieldChanges,
 } from "@/apis/custom-fields.api";
-import {
-  Plus,
-  RotateCcw,
-  LayoutTemplate,
-  FileText,
-  Truck,
-  Users,
-  Building,
-} from "lucide-react";
+import { Plus, RotateCcw, LayoutTemplate, Search } from "lucide-react";
+import { ActionButton } from "@/components/ui/kit";
 import { Modal, message, Spin } from "antd";
 import { TemplateGalleryModal } from "@/components/CustomFields/TemplateGalleryModal";
 import {
@@ -44,6 +37,8 @@ export default function CustomFieldsSettingsPage() {
     Record<string, { is_required?: boolean; surfaces?: FieldSurfaces | null }>
   >({});
   const [loading, setLoading] = useState<boolean>(false);
+  // Narrows the lists on this page by name or key. Nothing is saved; it only hides rows that do not match.
+  const [query, setQuery] = useState<string>("");
 
   useEffect(() => {
     if (storeActiveJobTemplate) {
@@ -79,7 +74,19 @@ export default function CustomFieldsSettingsPage() {
     selectedEntity === "job" || customFields.length > 0 ? baseItemsFromApi : fallbackBaseFields;
 
   const baseFieldKeys = new Set(currentBaseFields.map((f) => f.field_key));
-  const filteredCustomFields = customFields.filter((f) => !isBaseField(f) && !baseFieldKeys.has(f.field_key));
+  const allCustomFields = customFields.filter((f) => !isBaseField(f) && !baseFieldKeys.has(f.field_key));
+
+  const needle = query.trim().toLowerCase();
+  const matches = (f: { label: string; field_key: string }) =>
+    !needle || f.label.toLowerCase().includes(needle) || f.field_key.toLowerCase().includes(needle);
+  const shownBaseFields = currentBaseFields.filter(matches);
+  const filteredCustomFields = allCustomFields.filter(matches);
+  const totalFields = currentBaseFields.length + allCustomFields.length;
+  const shownFields = shownBaseFields.length + filteredCustomFields.length;
+  const emptyText = needle ? "No fields here match your search." : undefined;
+  // While searching, a section with no match is left out so the matches are not buried between empty boxes.
+  const inSection = (group: string) => (f: { group?: string }) => (group === "additional" ? !f.group || f.group === "additional" : f.group === group);
+  const sectionHasRows = (group: string) => !needle || shownBaseFields.some(inSection(group)) || filteredCustomFields.some(inSection(group));
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -147,7 +154,7 @@ export default function CustomFieldsSettingsPage() {
     setBaseFieldOverrides(updated);
     localStorage.setItem(`syncnox_base_field_overrides_${selectedEntity}`, JSON.stringify(updated));
     notifyFieldChanges(selectedEntity);
-    message.success(`Set '${fieldLabel}' to ${!currentRequired ? "Required" : "Optional"}`);
+    message.success(`Set '${fieldLabel}' to ${!currentRequired ? "Required" : "Optional"} on this browser only. Other people do not see this change yet.`);
   };
 
   const handleToggleCustomRequired = async (field: CustomFieldDefinition) => {
@@ -199,7 +206,7 @@ export default function CustomFieldsSettingsPage() {
         setBaseFieldOverrides(updated);
         localStorage.setItem(`syncnox_base_field_overrides_${selectedEntity}`, JSON.stringify(updated));
         notifyFieldChanges(selectedEntity);
-        message.success("Base field settings updated!");
+        message.success("Saved on this browser only. Other people do not see this change yet.");
       } else if (editingField) {
         await updateCustomField(editingField.id, {
           label: label.trim(),
@@ -326,7 +333,7 @@ export default function CustomFieldsSettingsPage() {
     setHiddenBaseFields(updated);
     localStorage.setItem(`syncnox_hidden_base_fields_${selectedEntity}`, JSON.stringify(updated));
     notifyFieldChanges(selectedEntity);
-    message.info(updated.includes(key) ? `Base field '${key}' removed from list` : `Base field '${key}' restored`);
+    message.info(`${updated.includes(key) ? "Hidden" : "Shown again"} on this browser only. Other people do not see this change yet.`);
   };
 
   const handleResetToDefault = () => {
@@ -373,108 +380,103 @@ export default function CustomFieldsSettingsPage() {
     setSurfacesState(DEFAULT_SURFACES);
   };
 
-  const tabs: { key: EntityTab; label: string; icon: React.ReactNode }[] = [
-    { key: "job", label: "Jobs", icon: <FileText className="w-4 h-4" /> },
-    { key: "vehicle", label: "Vehicles", icon: <Truck className="w-4 h-4" /> },
-    { key: "team_member", label: "Team Members", icon: <Users className="w-4 h-4" /> },
-    { key: "depot", label: "Depots", icon: <Building className="w-4 h-4" /> },
+  const tabs: { key: EntityTab; label: string }[] = [
+    { key: "job", label: "Jobs" },
+    { key: "vehicle", label: "Vehicles" },
+    { key: "team_member", label: "Team members" },
+    { key: "depot", label: "Depots" },
   ];
+  const entityLabel = tabs.find((t) => t.key === selectedEntity)?.label ?? "";
+  const entitySingular = { job: "Job", vehicle: "Vehicle", team_member: "Team member", depot: "Depot" }[selectedEntity];
 
 
   return (
-    <div className="responsive-settings flex flex-col h-full min-h-0 min-w-0 overflow-hidden font-sans">
-      {/* ── Page Header ─────────────────────────────────────────── */}
-      <div className="responsive-toolbar flex items-center justify-between pb-4 border-b border-gray-200 shrink-0">
+    <div className="lang kit-fluid responsive-settings flex flex-col h-full min-h-0 min-w-0 overflow-hidden font-sans">
+      {/* ── Page header: one main action, one secondary, and the rare destructive one kept quiet ── */}
+      <div className="responsive-toolbar flex items-end justify-between pb-3 shrink-0">
         <SettingsPageTitle
-          title="Custom Fields & Field Settings"
-          description="Configure dynamic custom fields, visibility across apps"
+          title="Custom fields"
+          description="Choose what each record asks for, which fields must be filled in, and who sees each one: the dispatcher, the driver app or the customer's tracking page."
         />
-        <div className="flex items-center gap-2">
-          {/* {selectedEntity === "job" && (
-            <Select
-              value={activeJobTemplate}
-              onChange={(val) => {
-                setActiveJobTemplate(val);
-                localStorage.setItem("syncnox_active_job_template", val);
-                if (typeof window !== "undefined") {
-                  window.dispatchEvent(new Event("syncnox_active_template_changed"));
-                }
-                message.success(`Active Job Schema set to ${val === "worker_shuttle" ? "Worker Shuttle" : "Pickup Delivery"}`);
-              }}
-              style={{ width: 190, height: 34 }}
-              options={[
-                { value: "pickup_delivery_job", label: "Pickup Delivery Job" },
-                { value: "worker_shuttle", label: "Worker Shuttle" },
-              ]}
-            />
-          )} */}
-
-          <button
-            onClick={() => setIsTemplateGalleryOpen(true)}
-            className="inline-flex items-center gap-1.5 border border-[#003220] text-[#003220] hover:bg-emerald-50 text-xs font-semibold px-3 py-2 rounded-none transition-colors cursor-pointer bg-white"
-          >
-            <LayoutTemplate size={14} className="text-[#003220]" />
-            <span>Browse Templates</span>
-          </button>
-
-          <button
-            onClick={handleResetToDefault}
-            className="inline-flex items-center gap-1.5 border border-red-300 text-red-600 hover:bg-red-50 text-xs font-semibold px-3 py-2 rounded-none transition-colors cursor-pointer bg-white"
-          >
-            <RotateCcw size={14} />
-            <span>Reset to Default</span>
-          </button>
-
-          <button
+        <div className="flex flex-wrap items-center gap-2">
+          <ActionButton variant="quiet" icon={<RotateCcw size={14} aria-hidden="true" />} onClick={handleResetToDefault}>
+            Reset to default
+          </ActionButton>
+          <ActionButton variant="secondary" icon={<LayoutTemplate size={14} aria-hidden="true" />} onClick={() => setIsTemplateGalleryOpen(true)}>
+            Browse templates
+          </ActionButton>
+          <ActionButton
+            variant="primary"
+            icon={<Plus size={15} aria-hidden="true" />}
             onClick={() => {
               resetForm("additional");
               setIsModalOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 bg-[#003220] hover:bg-[#002417] text-white text-xs font-semibold px-4 py-2 rounded-none transition-colors cursor-pointer border-none"
           >
-            <Plus size={15} />
-            <span>Add Custom Field</span>
-          </button>
+            Add field
+          </ActionButton>
         </div>
       </div>
 
-      {/* ── Tabs bar ────────────────────────────────────────────── */}
-      <div className="flex overflow-x-auto whitespace-nowrap border-b border-gray-200 mt-4 gap-6 shrink-0">
-        {tabs.map((tab) => {
-          const isActive = selectedEntity === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setSelectedEntity(tab.key)}
-              className={`pb-2.5 px-1 text-xs font-semibold flex items-center gap-2 transition-all border-b-2 cursor-pointer bg-transparent ${
-                isActive
-                  ? "border-[#003220] text-[#003220] font-bold"
-                  : "border-transparent text-gray-500 hover:text-gray-800"
-              }`}
-            >
-              <span className={isActive ? "text-[#003220]" : "text-gray-400"}>
-                {tab.icon}
-              </span>
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
+      {/* ── Which kind of record, and a search over its fields ── */}
+      <div className="flex shrink-0 flex-wrap items-end justify-between gap-x-6 gap-y-2 shadow-[inset_0_-1px_0_#D5DCD8]">
+        <div role="tablist" aria-label="Record type" className="flex max-w-full gap-5 overflow-x-auto whitespace-nowrap">
+          {tabs.map((tab) => {
+            const isActive = selectedEntity === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => {
+                  setSelectedEntity(tab.key);
+                  setQuery("");
+                }}
+                className={`inline-flex h-9 shrink-0 cursor-pointer items-center border-0 bg-transparent px-0 text-sm outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#0B5D3B] ${
+                  isActive ? "font-medium text-[#12211A] shadow-[inset_0_-2px_0_#0B5D3B]" : "text-[#4A5750] hover:text-[#12211A]"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="fields-search flex items-center gap-3 pb-1.5">
+          <span className="text-xs tabular-nums text-[#626E67]" aria-live="polite">
+            {needle ? `${shownFields} of ${totalFields} fields` : `${totalFields} fields`}
+          </span>
+          <label className="relative flex items-center">
+            <Search size={14} aria-hidden="true" className="pointer-events-none absolute left-2.5 text-[#626E67]" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search fields"
+              aria-label={`Search ${entityLabel} fields`}
+              className="h-8 w-[200px] rounded-none border border-transparent bg-[#F3F6F4] pl-8 pr-2.5 text-[13px] text-[#12211A] outline-none placeholder:text-[#626E67] focus:border-[#0B5D3B] focus:bg-white"
+            />
+          </label>
+        </div>
       </div>
 
-      {/* ── Content Sections ────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto mt-4 space-y-6 custom-scrollbar pr-1">
+      {/* ── The fields ── */}
+      <div className="flex-1 overflow-y-auto pt-6 pb-8 space-y-10 custom-scrollbar pr-1">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <Spin size="default" />
           </div>
+        ) : needle && shownFields === 0 ? (
+          <p className="m-0 bg-[#F3F6F4] px-4 py-5 text-[13px] text-[#626E67]">
+            No {entityLabel.toLowerCase()} field matches &ldquo;{query.trim()}&rdquo;. Search looks at the field name and its key.
+          </p>
         ) : selectedEntity === "job" ? (
           <>
-            <FieldsSectionCard
-              badgeNumber="1"
-              title="Required fields"
-              categoryTag="OPTIMIZATION"
-              description="Fields used by route optimization. Their saved labels, requirements and dispatch visibility also control the job form."
-              baseItems={currentBaseFields.filter((f) => f.group === "optimization")}
+            {sectionHasRows("optimization") && <FieldsSectionCard
+              title="Routing fields"
+              categoryTag="Used to build routes"
+              description="The optimizer reads these to plan routes. You can rename them, make them required and choose who sees them. They cannot be deleted."
+              baseItems={shownBaseFields.filter((f) => f.group === "optimization")}
               customItems={filteredCustomFields.filter((f) => f.group === "optimization")}
               hiddenBaseFields={hiddenBaseFields}
               baseFieldOverrides={baseFieldOverrides}
@@ -485,19 +487,19 @@ export default function CustomFieldsSettingsPage() {
               onDeleteBaseField={handleDeleteBaseField}
               onDeleteCustomField={handleDeleteCustomField}
               onToggleBaseVisibility={handleToggleBaseField}
-            />
+              emptyText={emptyText}
+            />}
 
-            <FieldsSectionCard
-              badgeNumber="2"
+            {sectionHasRows("additional") && <FieldsSectionCard
               title="Additional fields"
-              categoryTag="DISPLAY"
-              description="Display data shown to dispatchers, drivers and customers. Add your own."
+              categoryTag="Shown on the job"
+              description="Information for people, not for the optimizer: names, phone numbers, notes. Add your own here."
               showAddButton
               onAddField={() => {
                 resetForm("additional");
                 setIsModalOpen(true);
               }}
-              baseItems={currentBaseFields.filter((f) => !f.group || f.group === "additional")}
+              baseItems={shownBaseFields.filter((f) => !f.group || f.group === "additional")}
               customItems={filteredCustomFields.filter((f) => !f.group || f.group === "additional")}
               hiddenBaseFields={hiddenBaseFields}
               baseFieldOverrides={baseFieldOverrides}
@@ -508,19 +510,19 @@ export default function CustomFieldsSettingsPage() {
               onDeleteBaseField={handleDeleteBaseField}
               onDeleteCustomField={handleDeleteCustomField}
               onToggleBaseVisibility={handleToggleBaseField}
-            />
+              emptyText={emptyText}
+            />}
 
-            <FieldsSectionCard
-              badgeNumber="3"
+            {sectionHasRows("pod") && <FieldsSectionCard
               title="Proof of delivery"
-              categoryTag="POD"
-              description="Captured by the driver to complete the job — some visible to the customer."
+              categoryTag="Filled in by the driver"
+              description="What the driver records to complete a job. Some of it can be shown to the customer."
               showAddButton
               onAddField={() => {
                 resetForm("pod");
                 setIsModalOpen(true);
               }}
-              baseItems={currentBaseFields.filter((f) => f.group === "pod")}
+              baseItems={shownBaseFields.filter((f) => f.group === "pod")}
               customItems={filteredCustomFields.filter((f) => f.group === "pod")}
               hiddenBaseFields={hiddenBaseFields}
               baseFieldOverrides={baseFieldOverrides}
@@ -531,28 +533,31 @@ export default function CustomFieldsSettingsPage() {
               onDeleteBaseField={handleDeleteBaseField}
               onDeleteCustomField={handleDeleteCustomField}
               onToggleBaseVisibility={handleToggleBaseField}
-            />
+              emptyText={emptyText}
+            />}
           </>
         ) : (
           <FieldsSectionCard
-            title={`${tabs.find((t) => t.key === selectedEntity)?.label} Fields`}
-            description={`Manage standard base fields and add custom properties for ${tabs.find((t) => t.key === selectedEntity)?.label.toLowerCase()}.`}
+            title={`${entitySingular} fields`}
+            description="Built-in fields can be changed but not deleted. Add your own for anything else you need to record."
             showAddButton
             onAddField={() => {
               resetForm("additional");
               setIsModalOpen(true);
             }}
-            baseItems={currentBaseFields}
+            markAdded
+            baseItems={shownBaseFields}
             customItems={filteredCustomFields}
             hiddenBaseFields={hiddenBaseFields}
-            baseFieldOverrides={baseFieldOverrides}
-            onToggleBaseRequired={handleToggleBaseRequired}
-            onToggleCustomRequired={handleToggleCustomRequired}
-            onOpenEditBaseModal={handleOpenEditBaseModal}
-            onOpenEditCustomModal={handleOpenEditModal}
-            onDeleteBaseField={handleDeleteBaseField}
-            onDeleteCustomField={handleDeleteCustomField}
-            onToggleBaseVisibility={handleToggleBaseField}
+              baseFieldOverrides={baseFieldOverrides}
+              onToggleBaseRequired={handleToggleBaseRequired}
+              onToggleCustomRequired={handleToggleCustomRequired}
+              onOpenEditBaseModal={handleOpenEditBaseModal}
+              onOpenEditCustomModal={handleOpenEditModal}
+              onDeleteBaseField={handleDeleteBaseField}
+              onDeleteCustomField={handleDeleteCustomField}
+              onToggleBaseVisibility={handleToggleBaseField}
+              emptyText={emptyText}
           />
         )}
       </div>

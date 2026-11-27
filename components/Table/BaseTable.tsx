@@ -98,23 +98,29 @@ export default function BaseTable<TData = any>({
   // Default theme configuration based on the app's design system
   const defaultTheme = useMemo(() => {
     const baseTheme = themeQuartz.withParams({
-      borderColor: "#e5e7eb",
-      headerRowBorder: true,
+      // Atlassian dynamic table: white, a quiet gray header, light row lines, blue selection
+      borderColor: "#EBECF0",
+      headerRowBorder: false,
       rowBorder: { style: "solid", width: 1 },
-      columnBorder: { style: "solid", width: 1 },
+      columnBorder: false,
+      headerColumnBorder: false,
+      headerColumnResizeHandleColor: "transparent",
+      wrapperBorder: false,
       accentColor: "#003220",
       backgroundColor: "#ffffff",
-      foregroundColor: "#171717",
-      selectedRowBackgroundColor: "#ecfdf5",
-      rowHoverColor: "#ecfdf5",
+      foregroundColor: "#172B4D",
+      selectedRowBackgroundColor: "#E7F3ED",
+      rowHoverColor: "#F7F8F9",
       headerBackgroundColor: "#ffffff",
-      headerTextColor: "#171717",
-      headerFontSize: 14,
-      headerHeight: 35,
+      headerTextColor: "#626F86",
+      headerFontSize: 12,
+      headerFontWeight: 600,
+      fontSize: 13,
+      cellHorizontalPadding: 12,
+      headerHeight: 36,
       checkboxBorderRadius: 0,
       borderRadius: 0,
       wrapperBorderRadius: 0,
-      headerColumnBorderHeight: 35,
       ...themeParams, // Allow override of specific params
     });
 

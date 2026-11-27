@@ -18,6 +18,8 @@ export default function DraftJobsDatePicker({
   return (
     <DatePicker
       allowClear={false}
+      format="ddd, MMM D"
+      aria-label="Jobs date"
       value={selectedDate ? dayjs(selectedDate) : null}
       onChange={(date) => {
         if (date) {
@@ -33,7 +35,7 @@ export default function DraftJobsDatePicker({
           return (
             <div className="ant-picker-cell-inner relative!">
               {dayjs(current).date()}
-              <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-blue-500 rounded-full"></div>
+              <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-[#0B5D3B] rounded-full"></div>
             </div>
           );
         }

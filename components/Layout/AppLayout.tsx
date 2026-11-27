@@ -140,7 +140,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
         <Suspense fallback={null}>
           <NavBar />
         </Suspense>
-        <main className={`relative min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4 ${pathname === "/plan" ? "!pt-2" : ""}`}>{children}</main>
+        <main className={`relative min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 sm:px-6 sm:py-4 ${pathname === "/plan" ? "!pt-2" : ""}`}>{children}</main>
       </div>
       {/* Onboarding overlay — full-page, shown only after status API has loaded and if not completed */}
       {onboarding && !onboarding.is_completed && <OnboardingModal />}

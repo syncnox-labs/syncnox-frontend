@@ -87,7 +87,7 @@ const MobileAppSection = ({
 
   return (
     <div className="py-2 px-1 min-h-[350px]">
-      <h3 className="text-xl font-semibold text-gray-900 mb-8">Mobile app</h3>
+      <h3 className="text-xl font-medium text-gray-900 mb-8">Mobile app</h3>
 
       <Spin spinning={loading} tip="Processing...">
         <Flex
@@ -109,7 +109,7 @@ const MobileAppSection = ({
 
               <div className="text-lg font-medium text-gray-700 text-center">
                 Activation key:{" "}
-                <span className="font-mono text-2xl font-bold text-gray-900 ml-2 tracking-[0.5px]">
+                <span className="font-mono text-2xl font-medium text-gray-900 ml-2 tracking-[0.5px]">
                   {formatActivationCode(activationCode)}
                 </span>
               </div>

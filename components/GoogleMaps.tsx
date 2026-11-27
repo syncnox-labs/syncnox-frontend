@@ -8,7 +8,7 @@ import {
   Polygon,
   DrawingManager,
 } from "@react-google-maps/api";
-import { Button, Dropdown, Radio, Tooltip } from "antd";
+import { Button, Dropdown, Tooltip } from "antd";
 import { Layers, Maximize2, Minimize2, ChevronUp, ChevronDown } from "lucide-react";
 import { Job, JobType } from "@/types/job.type";
 import { createCustomMarkerIcon } from "@/utils/customMapMarker";
@@ -60,7 +60,20 @@ export interface MarkerData {
   isDepot?: boolean;
   /** "start" | "end" | "depot" — which route endpoint this depot marker is. */
   depotKind?: string;
+  /** Route depot markers only: whose trip this is and when it leaves or returns, for the map card. */
+  depotInfo?: {
+    time?: string;
+    driverName?: string | null;
+    vehicleName?: string | null;
+    tripStart?: string;
+    tripEnd?: string;
+    jobCount?: number;
+  };
   stopType?: string;
+  /** The visit's own progress (completed, partly_done, failed, skipped); wins over the job's status. */
+  stopStatus?: string;
+  /** Jobs handled at this one visit; 2 or more draws the stacked pin with a count. */
+  jobCount?: number;
   draggable?: boolean;
   /** Index of the route this marker belongs to, used for route focus filtering. */
   routeIndex?: number;
@@ -348,8 +361,8 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
             display: "flex",
             alignItems: "center",
             backgroundColor: "white",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            border: "1px solid #d9d9d9",
+            boxShadow: "none",
+            border: "1px solid #C4CCC7",
             borderRadius: "0px",
           }}
         >
@@ -367,8 +380,8 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
                 onClick={onToggleFullscreen}
                 aria-label="Toggle Fullscreen Map"
                 style={{
-                  height: "38px",
-                  width: "38px",
+                  height: "32px",
+                  width: "32px",
                   padding: 0,
                   borderRadius: 0,
                   display: "flex",
@@ -399,8 +412,8 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
                   onClick={onToggleCollapse}
                   aria-label="Toggle Collapse Map"
                   style={{
-                    height: "38px",
-                    width: "38px",
+                    height: "32px",
+                    width: "32px",
                     padding: 0,
                     borderRadius: 0,
                     display: "flex",
@@ -434,28 +447,26 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
                     className="custom-scrollbar"
                   >
                     {layersDropdownExtra && (
-                      <div className="px-3 pb-2 mb-2 border-b border-gray-100">
+                      <div className="px-3 pb-2 mb-2 border-b border-[#E3E8E5]">
                         {layersDropdownExtra}
                       </div>
                     )}
-                    <div className="px-3 py-1 text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                      Base Map
+                    <div className="px-3 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-[#626E67]">
+                      Base map
                     </div>
-                    <Radio.Group
-                      value={mapTypeId}
-                      onChange={(e) => handleMapTypeChange(e.target.value as MapType)}
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "8px",
-                        padding: "0 12px",
-                      }}
-                    >
-                      <Radio value="roadmap">Roadmap</Radio>
-                      <Radio value="satellite">Satellite</Radio>
-                      <Radio value="hybrid">Hybrid</Radio>
-                      <Radio value="terrain">Terrain</Radio>
-                    </Radio.Group>
+                    <div role="radiogroup" aria-label="Base map" className="mx-3 mb-1 grid grid-cols-4 border border-[#D5DCD8]">
+                      {(["roadmap", "satellite", "hybrid", "terrain"] as MapType[]).map((type, index) => {
+                        const active = mapTypeId === type;
+                        return (
+                          <button key={type} type="button" role="radio" aria-checked={active}
+                            onClick={() => handleMapTypeChange(type)}
+                            className={`h-10 sm:h-7 cursor-pointer border-0 px-1 text-[12px] ${index > 0 ? "border-l border-solid border-[#D5DCD8]" : ""} ${
+                              active ? "bg-[#003220] font-medium text-white" : "bg-white text-[#4A5750] hover:bg-[#F3F6F4] hover:text-[#12211A]"}`}>
+                            {type === "roadmap" ? "Map" : type.charAt(0).toUpperCase() + type.slice(1)}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
                 trigger={["click"]}
@@ -464,8 +475,8 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
                 <Button
                   type="text"
                   style={{
-                    height: "38px",
-                    width: "38px",
+                    height: "32px",
+                    width: "32px",
                     padding: 0,
                     borderRadius: 0,
                     display: "flex",
@@ -489,6 +500,7 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
           marker.iconLabel ?? marker.sequenceNumber ?? marker.jobData?.id ?? marker.id;
 
         const status =
+          marker.stopStatus ||
           (marker.jobData && "status" in marker.jobData
             ? marker.jobData.status
             : undefined) || "draft";
@@ -524,6 +536,7 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
           (marker as any).isTimeEdited,
           marker.isAdditionalLocation,
           marker.locationType,
+          marker.jobCount,
         );
 
         return (
@@ -539,9 +552,11 @@ const GoogleMaps: React.FC<GoogleMapsProps> = ({
                 ? 1000000
                 : marker.zIndex !== undefined
                   ? marker.zIndex
-                  : marker.isDepot || marker.isAdditionalLocation
-                    ? 99999
-                    : (marker.sequenceNumber ?? 1)
+                  : marker.isAdditionalLocation
+                    ? 0 // reference places sit under the work
+                    : marker.isDepot
+                      ? 99999
+                      : 100 + (marker.sequenceNumber ?? 1)
             }
             animation={
               isBouncing && typeof window !== "undefined" && window.google?.maps?.Animation

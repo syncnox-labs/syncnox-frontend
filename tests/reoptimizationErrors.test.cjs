@@ -7,13 +7,14 @@ const source = fs.readFileSync(`${__dirname}/../app/route/_components/Optimizati
 const tree = ts.createSourceFile("view.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const declarations = new Map();
 (function visit(node) {
-  if (ts.isVariableDeclaration(node) && ["handleReOptimize", "handleSaveAndReOptimize"].includes(node.name.getText(tree))) {
+  if (ts.isVariableDeclaration(node) && ["runReOptimize", "handleSaveAndReOptimize"].includes(node.name.getText(tree))) {
     declarations.set(node.name.getText(tree), node.parent.parent.getText(tree));
   }
   ts.forEachChild(node, visit);
 })(tree);
 
-for (const name of ["handleReOptimize", "handleSaveAndReOptimize"]) {
+// The trip dialog collects the choice; runReOptimize does the work with (routeIndex, keepOrder).
+for (const name of ["runReOptimize", "handleSaveAndReOptimize"]) {
   function setup({ error, enqueueError, status = "completed", currentId = 47 }) {
     let confirmation;
     const updates = [], notices = [], requests = [];
@@ -36,7 +37,7 @@ for (const name of ["handleReOptimize", "handleSaveAndReOptimize"]) {
     const compiled = ts.transpileModule(declarations.get(name), { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
     const fn = new Function(...Object.keys(context), compiled + `; return ${name};`)(...Object.values(context));
     return { updates, notices, requests, run: async (keepOrder = false) => {
-      await fn(0, [1]);
+      await fn(0, name === "runReOptimize" ? keepOrder : [1]);
       if (confirmation) {
         if (keepOrder) require("react").Children.toArray(confirmation.content.props.children)[1].props.onChange({ target: { checked: true } });
         await confirmation.onOk();
@@ -66,7 +67,7 @@ for (const name of ["handleReOptimize", "handleSaveAndReOptimize"]) {
     assert.equal(ctx.updates.filter(([status]) => status !== "processing").length, 0);
   });
 
-  if (name === "handleReOptimize") test("keep stop order is sent to the route optimizer", async () => {
+  if (name === "runReOptimize") test("keep stop order is sent to the route optimizer", async () => {
     const ctx = setup({ error: new Error("stop") });
     await ctx.run(true);
     assert.deepEqual(ctx.requests[0], [47, 0, true]);

@@ -145,7 +145,30 @@ export const generateMapMarkers = (
         group.rawStops.some((s: any) => s.time_edited || s.is_edited)
       );
 
-      const labelText = count > 1 ? `${displayIndex} (×${count})` : displayIndex.toString();
+      // The pin shows the visit's own progress, the same rule as the timeline: a pickup is done once its
+      // job is in transit, the stop's own status wins over the job's, and a shared stop with some
+      // passengers done and some open is "partly_done".
+      const states = isDepot ? [] : group.rawStops.filter((s: any) => s.job_id != null).map((s: any) => {
+        const own = String(s.status || "").toLowerCase();
+        const jobRecord = jobsMap.get(Number(s.job_id));
+        const trustJob = !own || ["one_way", "return_only", "go_only"].includes(String(jobRecord?.job_type || "").toLowerCase());
+        const jobStatus = trustJob ? String(jobRecord?.status || "").toLowerCase() : "";
+        const type = String(s.stop_type || "").toLowerCase();
+        if (own === "completed" || jobStatus === "completed" || ((type === "pickup" || type === "pick_up") && jobStatus === "in_transit")) return "done";
+        if (own === "failed" || jobStatus === "failed") return "failed";
+        if (own === "skipped" || jobStatus === "skipped" || jobStatus === "cancelled") return "skipped";
+        return "open";
+      });
+      const doneCount = states.filter((state: string) => state === "done").length;
+      const openCount = states.filter((state: string) => state === "open").length;
+      const stopStatus = states.length === 0 ? undefined
+        : doneCount === states.length ? "completed"
+          : doneCount > 0 && openCount > 0 ? "partly_done"
+            : openCount === 0 ? (states.includes("failed") ? "failed" : "skipped")
+              : undefined;
+
+      // The number stays the stop number; how many jobs share the stop is drawn as a stack and a count badge.
+      const labelText = displayIndex.toString();
 
       return {
         id: `${index}-${group.firstRawIndex}`,
@@ -181,11 +204,21 @@ export const generateMapMarkers = (
               ? "end"
               : "depot"
           : undefined,
+        depotInfo: isDepot ? {
+          time: stop.arrival_time,
+          driverName: routeItem.team_member_name || null,
+          vehicleName: routeItem.vehicle_name || null,
+          tripStart: routeItem.stops?.[0]?.arrival_time,
+          tripEnd: routeItem.stops?.[routeItem.stops.length - 1]?.arrival_time,
+          jobCount: new Set((routeItem.stops ?? []).map(s => s.job_id).filter(id => id != null)).size,
+        } : undefined,
         stopType: group.hasPickup && group.hasDropoff ? "pickup_dropoff" : stop.stop_type,
         color: color,
         routeIndex: index,
         isNew: isNew,
         isTimeEdited: isTimeEdited,
+        stopStatus,
+        jobCount: count > 1 ? count : undefined,
       };
     });
   });

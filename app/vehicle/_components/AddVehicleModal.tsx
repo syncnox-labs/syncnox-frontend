@@ -15,7 +15,7 @@ const AddVehicleModal = ({ open, setOpen }: AddVehicleModalProps) => {
       onCancel={() => setOpen(false)}
       width={600}
       centered
-      destroyOnClose
+      destroyOnHidden
     >
       <VehicleForm onSubmit={() => setOpen(false)} />
     </Modal>

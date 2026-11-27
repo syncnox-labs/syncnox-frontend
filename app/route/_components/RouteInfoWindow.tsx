@@ -17,9 +17,10 @@ import { useJobsStore } from "@/store/jobs.store";
 import { useRouteStore } from "@/store/routes.store";
 import type { MarkerData } from "@/components/GoogleMaps";
 
-import { MapPin, Building2, X } from "lucide-react";
+import { MapPin, X, Flag, Warehouse, UserRound, Truck, Timer, Package } from "lucide-react";
 import { LOCATION_TYPE_OPTIONS } from "@/apis/location-mapping.api";
 import { getLocationTypeColor } from "@/utils/customMapMarker";
+import { stopKindOf, stopStatusConfirm } from "./stopStatusConfirm";
 
 const { Text } = Typography;
 
@@ -44,202 +45,169 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
   const showButtons = status === "completed" || status === "failed";
 
   if (marker.isDepot) {
-    const rawName = marker.jobData?.name || title || "Depot";
-    const cleanDepotName =
-      rawName.replace(/\s*\((Depot|Operational Base|Start|End)\)/gi, "").trim() || "Depot";
-    const address = description || marker.jobData?.address || "Operational Base";
-    const depotKindLabel =
-      marker.depotKind === "start"
-        ? "Start Depot"
-        : marker.depotKind === "end"
-          ? "End Depot"
-          : "Depot";
+    // Route depots carry the address as title; plain depots carry a name in jobData.
+    const info = marker.depotInfo;
+    const depotName = String(marker.jobData?.name || "").replace(/\s*\((Depot|Operational Base|Start|End)\)/gi, "").trim();
+    const address = (info ? title : description || marker.jobData?.address || title) || "";
+    const kind = marker.depotKind === "start" ? "start" : marker.depotKind === "end" ? "end" : "depot";
+    const valid = (v?: string) => (v && dayjs(v).isValid() ? dayjs(v) : null);
+    const when = valid(info?.time), start = valid(info?.tripStart), end = valid(info?.tripEnd);
+    const minutes = start && end ? end.diff(start, "minute") : 0;
+    const length = minutes > 0 ? [Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)} h` : "", minutes % 60 ? `${minutes % 60} min` : ""].filter(Boolean).join(" ") : null;
+    const nextDay = kind === "end" && start && end && !end.isSame(start, "day");
+    const tint = info && marker.color ? marker.color : "#12211A";
+    const coords = `${marker.position.lat.toFixed(5)}, ${marker.position.lng.toFixed(5)}`;
+    const heading = kind === "start" ? "Start of trip" : kind === "end" ? "End of trip" : depotName || "Depot";
+    const HeadIcon = kind === "depot" ? Warehouse : Flag;
+    const facts = [
+      info?.driverName && { icon: UserRound, text: info.driverName, label: "Driver" },
+      info?.vehicleName && { icon: Truck, text: info.vehicleName, label: "Vehicle" },
+      length && { icon: Timer, text: length, label: "Trip length" },
+      info?.jobCount ? { icon: Package, text: `${info.jobCount} ${info.jobCount === 1 ? "job" : "jobs"}`, label: "Jobs on this trip" } : null,
+    ].filter(Boolean) as { icon: typeof Timer; text: string; label: string }[];
+    const copyAddress = async () => {
+      try {
+        if (!navigator.clipboard) throw new Error("Clipboard unavailable");
+        await navigator.clipboard.writeText(`${address}\n${coords}`);
+        message.success("Address copied");
+      } catch { message.error("Could not copy the address"); }
+    };
 
     return (
-      <div className="w-[230px] max-w-[245px] text-slate-800 font-sans select-none">
-        {/* Header: Badge & Coordinates on the left, Close Cross Button on the right (same line) */}
-        <div className="flex items-center justify-between pb-1.5 border-b border-gray-100">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-[#003220] text-white rounded shrink-0">
-              <Building2 size={10} />
-              <span>{depotKindLabel}</span>
-            </span>
-            <span className="text-[10px] font-mono font-semibold text-gray-600 select-all truncate" title="Coordinates">
-              {marker.position.lat.toFixed(4)}, {marker.position.lng.toFixed(4)}
-            </span>
-          </div>
+      <div className="lang w-[248px] font-sans text-[#12211A]">
+        <div className="flex items-center gap-2">
+          <HeadIcon size={18} color={tint} aria-hidden="true" className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{heading}</span>
           {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="flex items-center justify-center w-5 h-5 -mr-0.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors cursor-pointer border-none bg-transparent outline-none focus:outline-none shrink-0"
-            >
-              <X size={13} />
+            <button type="button" onClick={onClose} aria-label="Close"
+              className="-mr-1.5 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent text-[#626E67] hover:bg-[#F3F6F4] hover:text-[#12211A]">
+              <X size={14} aria-hidden="true" />
             </button>
           )}
         </div>
 
-        {/* Name */}
-        <div className="text-[13px] font-bold text-gray-900 leading-snug mt-1.5 mb-0.5 truncate" title={cleanDepotName}>
-          {cleanDepotName}
-        </div>
+        {when && (
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-[24px] font-medium leading-none tracking-[-0.02em] tabular-nums">{when.format("h:mm A")}</span>
+            <span className={`text-[12px] ${nextDay ? "font-medium text-[#8A5A00]" : "text-[#626E67]"}`} title={when.format("dddd, MMM D, YYYY")}>
+              {nextDay ? "next day" : when.format("ddd, MMM D")}
+            </span>
+          </div>
+        )}
 
-        {/* Address */}
-        <div className="flex items-start gap-1 text-[11px] font-medium text-gray-700 leading-snug pt-0.5 pb-0.5">
-          <MapPin size={11} className="shrink-0 text-gray-500 mt-0.5" />
-          <span className="line-clamp-2 select-text">{address}</span>
+        {facts.length > 0 && (
+          <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12.5px]">
+            {facts.map(({ icon: Icon, text, label }) => (
+              <div key={label} className="flex min-w-0 items-center gap-1.5" title={label}>
+                <Icon size={15} aria-hidden="true" className="shrink-0 text-[#626E67]" />
+                <span className="truncate" aria-label={`${label}: ${text}`}>{text}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-2.5 flex items-start gap-1.5 border-t border-[#E3E8E5] pt-2">
+          <MapPin size={15} aria-hidden="true" className="mt-px shrink-0 text-[#626E67]" />
+          <span className="min-w-0 flex-1 text-[12px] leading-[17px] text-[#4A5750] line-clamp-2 select-text" title={`${address}\n${coords}`}>
+            {address || "Address not set"}
+          </span>
+          {address && (
+            <button type="button" aria-label="Copy address and coordinates" title="Copy address and coordinates" onClick={() => void copyAddress()}
+              className="-mr-1 -mt-1 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent text-[#626E67] hover:bg-[#F3F6F4] hover:text-[#12211A]">
+              <CopyOutlined aria-hidden="true" />
+            </button>
+          )}
         </div>
       </div>
     );
   }
 
   if (marker.isAdditionalLocation) {
+    // Same card shape as the depot card: coloured icon and name, one line of facts, address with copy.
     const rawName = marker.jobData?.name || title || "Location";
-    const cleanLocName = rawName.replace(/\s*\([^)]*\)$/, "").trim() || "Location";
-    const rawType = (
-      marker.locationType ||
-      marker.jobData?.type ||
-      marker.jobData?.location_type ||
-      "other"
-    )
-      .toLowerCase()
-      .replace(/\s+/g, "_");
-    const matchedOpt = LOCATION_TYPE_OPTIONS.find(
-      (opt) => opt.value === rawType || opt.label.toLowerCase() === rawType
-    );
-    const typeLabel = matchedOpt
-      ? matchedOpt.label
-      : rawType.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
-    const badgeColor = getLocationTypeColor(rawType);
-    const address =
-      description ||
-      marker.jobData?.address ||
-      [marker.jobData?.address, marker.jobData?.city].filter(Boolean).join(", ") ||
-      "No address set";
-    const aliases = marker.jobData?.aliases as string[] | undefined;
+    const name = rawName.replace(/\s*\([^)]*\)$/, "").trim() || "Location";
+    const rawType = String(marker.locationType || marker.jobData?.type || marker.jobData?.location_type || "other")
+      .toLowerCase().replace(/\s+/g, "_");
+    const matched = LOCATION_TYPE_OPTIONS.find(opt => opt.value === rawType || opt.label.toLowerCase() === rawType);
+    const typeLabel = matched ? matched.label : rawType.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+    const tint = getLocationTypeColor(rawType);
+    const address = description || [marker.jobData?.address, marker.jobData?.city].filter(Boolean).join(", ") || "";
+    const aliases = (marker.jobData?.aliases as string[] | undefined) ?? [];
+    const coords = `${marker.position.lat.toFixed(5)}, ${marker.position.lng.toFixed(5)}`;
+    const copyAddress = async () => {
+      try {
+        if (!navigator.clipboard) throw new Error("Clipboard unavailable");
+        await navigator.clipboard.writeText(`${address}\n${coords}`);
+        message.success("Address copied");
+      } catch { message.error("Could not copy the address"); }
+    };
 
     return (
-      <div className="w-[230px] max-w-[245px] text-slate-800 font-sans select-none">
-        {/* Header: Category Badge & Coordinates on the left, Close Cross Button on the right (same line) */}
-        <div className="flex items-center justify-between pb-1.5 border-b border-gray-100">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded shrink-0"
-              style={{
-                backgroundColor: `${badgeColor}18`,
-                color: badgeColor,
-                border: `1px solid ${badgeColor}35`,
-              }}
-            >
-              <MapPin size={9} />
-              <span>{typeLabel}</span>
-            </span>
-            <span className="text-[10px] font-mono font-semibold text-gray-600 select-all truncate" title="Coordinates">
-              {marker.position.lat.toFixed(4)}, {marker.position.lng.toFixed(4)}
-            </span>
-          </div>
+      <div className="lang w-[248px] font-sans text-[#12211A]">
+        <div className="flex items-center gap-2">
+          <MapPin size={18} color={tint} aria-hidden="true" className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate text-[15px] font-medium" title={name}>{name}</span>
           {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="flex items-center justify-center w-5 h-5 -mr-0.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors cursor-pointer border-none bg-transparent outline-none focus:outline-none shrink-0"
-            >
-              <X size={13} />
+            <button type="button" onClick={onClose} aria-label="Close"
+              className="-mr-1.5 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent text-[#626E67] hover:bg-[#F3F6F4] hover:text-[#12211A]">
+              <X size={14} aria-hidden="true" />
             </button>
           )}
         </div>
-
-        {/* Name */}
-        <div className="text-[13px] font-bold text-gray-900 leading-snug mt-1.5 mb-0.5 truncate" title={cleanLocName}>
-          {cleanLocName}
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-[26px] text-[12px]">
+          <span className="font-medium" style={{ color: tint }}>{typeLabel}</span>
+          {aliases.slice(0, 3).map(alias => (
+            <span key={alias} className="bg-[#F3F6F4] px-1.5 py-px text-[11.5px] text-[#4A5750]">{alias}</span>
+          ))}
+          {aliases.length > 3 && <span className="text-[11.5px] text-[#626E67]" title={aliases.slice(3).join(", ")}>+{aliases.length - 3}</span>}
         </div>
-
-        {/* Address */}
-        <div className="flex items-start gap-1 text-[11px] font-medium text-gray-700 leading-snug pt-0.5 pb-0.5">
-          <MapPin size={11} className="shrink-0 text-gray-500 mt-0.5" />
-          <span className="line-clamp-2 select-text">{address}</span>
+        <div className="mt-2.5 flex items-start gap-1.5 border-t border-[#E3E8E5] pt-2">
+          <MapPin size={15} aria-hidden="true" className="mt-px shrink-0 text-[#626E67]" />
+          <span className="min-w-0 flex-1 text-[12px] leading-[17px] text-[#4A5750] line-clamp-2 select-text" title={`${address}\n${coords}`}>
+            {address || "Address not set"}
+          </span>
+          {address && (
+            <button type="button" aria-label="Copy address and coordinates" title="Copy address and coordinates" onClick={() => void copyAddress()}
+              className="-mr-1 -mt-1 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent text-[#626E67] hover:bg-[#F3F6F4] hover:text-[#12211A]">
+              <CopyOutlined aria-hidden="true" />
+            </button>
+          )}
         </div>
-
-        {/* Aliases / Codes (if any) */}
-        {aliases && aliases.length > 0 && (
-          <div className="flex items-center gap-1 flex-wrap pt-0.5 pb-0.5">
-            <span className="text-[10px] text-gray-500 font-semibold">Codes:</span>
-            {aliases.slice(0, 3).map((alias, i) => (
-              <span key={i} className="text-[9px] font-mono font-medium bg-gray-100 text-gray-800 px-1 py-0.2 rounded">
-                {alias}
-              </span>
-            ))}
-            {aliases.length > 3 && (
-              <span className="text-[9px] text-gray-500 font-mono font-medium">+{aliases.length - 3}</span>
-            )}
-          </div>
-        )}
       </div>
     );
   }
 
-  const stopType = String(jobData?.stop_type || "").toLowerCase();
-  const isPickupStop = stopType === "pickup";
-  const isDropoffStop = stopType === "dropoff" || stopType === "drop_off";
+  const stopType = String(jobData?.stop_type || marker.stopType || "").toLowerCase();
+  const stopKind = stopKindOf(stopType);
+  const isPickupStop = stopKind === "pickup";
+  const isDropoffStop = stopKind === "dropoff";
 
-  const handleUpdateJobStatus = async (status: string) => {
-    if (!jobData?.id) return;
-
-    let targetStatus = status;
-    if (status === "completed" && isPickupStop) {
-      targetStatus = "in_transit";
-    }
-
-    try {
-      setIsMarkingComplete(true);
-      const updatedJob = await updateJobStatus(jobData.id, targetStatus);
-      patchJobLocally(updatedJob);
-      await fetchRoutes(selectedStatus);
-      message.success(
-        isPickupStop
-          ? "Pickup marked as done (In Transit)"
-          : status === "completed"
-            ? "Job marked as completed"
-            : "Job marked as skipped",
-      );
-    } catch {
-      message.error(
-        status === "completed"
-          ? "Failed to mark job as completed"
-          : "Failed to skip job",
-      );
-    } finally {
-      setIsMarkingComplete(false);
-    }
-  };
-
-  const confirmAction = (status: string) => {
-    const isComplete = status === "completed";
-    const title = isPickupStop
-      ? "Mark Pickup as Done?"
-      : isComplete
-        ? "Mark as Completed?"
-        : "Skip this job?";
-    const content = isPickupStop
-      ? "Are you sure you want to mark this pickup as done?"
-      : isComplete
-        ? "Are you sure you want to mark this job as completed?"
-        : "Are you sure you want to skip this job?";
-    const okText = isPickupStop
-      ? "Mark Pickup Done"
-      : isComplete
-        ? "Mark as Completed"
-        : "Skip";
-
+  const confirmAction = (action: "completed" | "failed") => {
+    const jobId = jobData?.id ?? marker.comparison?.jobId;
+    if (!jobId) return;
+    const eta = marker.comparison?.arrivalTime;
+    const who = marker.comparison?.name || [jobData?.first_name, jobData?.last_name].filter(Boolean).join(" ")
+      || jobData?.worker_shuttle_detail?.candidate_name || jobData?.custom_fields?.candidate_name || null;
+    const confirm = stopStatusConfirm({
+      action, kind: stopKind, jobId, who,
+      whenText: eta && dayjs(eta).isValid() ? `${dayjs(eta).format("h:mm A")} · ${dayjs(eta).format("ddd, MMM D")}` : null,
+      address: (title && title !== "Address unavailable" ? title : null) || jobData?.address_formatted || null,
+    });
     modal.confirm({
-      title,
-      content,
-      okText,
-      okType: isComplete ? "primary" : "danger",
-      cancelText: "Cancel",
-      onOk: () => handleUpdateJobStatus(status),
+      ...confirm.modal,
+      onOk: async () => {
+        try {
+          setIsMarkingComplete(true);
+          const updatedJob = await updateJobStatus(jobId, confirm.targetStatus);
+          patchJobLocally(updatedJob);
+          await fetchRoutes(selectedStatus);
+          message.success(confirm.successText);
+        } catch {
+          message.error(confirm.errorText);
+        } finally {
+          setIsMarkingComplete(false);
+        }
+      },
     });
   };
 
@@ -286,8 +254,8 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
         {detail.leg && <div><dt className="text-slate-500">Trip</dt><dd className="m-0 font-medium text-slate-800">{detail.leg}</dd></div>}
       </dl>}
       {!detail.unassigned && jobData && !showButtons && <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2">
-        <Button size="small" icon={<CheckCircleOutlined />} loading={isMarkingComplete} onClick={() => confirmAction("completed")} className="flex-1">Mark Complete</Button>
-        <Button size="small" disabled={isMarkingComplete} onClick={() => confirmAction("failed")}>Skip</Button>
+        <Button size="small" icon={<CheckCircleOutlined />} loading={isMarkingComplete} onClick={() => confirmAction("completed")} className="flex-1">Mark Completed</Button>
+        <Button size="small" disabled={isMarkingComplete} onClick={() => confirmAction("failed")}>Skip Stop</Button>
       </div>}
     </div>;
   }
@@ -414,14 +382,14 @@ const RouteInfoWindow: React.FC<RouteInfoWindowProps> = ({
                   width: "100%",
                 }}
               >
-                Mark Complete
+                Mark Completed
               </Button>
               <Button
                 onClick={() => confirmAction("failed")}
                 type="default"
                 size="small"
               >
-                Skip
+                Skip Stop
               </Button>
             </div>
           )}

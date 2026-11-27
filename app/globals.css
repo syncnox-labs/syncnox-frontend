@@ -4,10 +4,10 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #172B4D;
   --primary: #003220;
-  --border: #e5e7eb;
-  --secondary: #ecfdf5;
+  --border: #DCDFE4;
+  --secondary: #E7F3ED;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -110,24 +110,25 @@ body {
 /* Default Non-Danger Button Styling - Global */
 .ant-btn-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger),
 .ant-btn-color-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger) {
-  border-color: #d9d9d9 !important;
-  color: #1f2937 !important;
+  border-color: #B3B9C4 !important;
+  background-color: #ffffff !important;
+  color: #172B4D !important;
   border-radius: 0 !important;
   transition: all 0.2s ease-in-out !important;
 }
 
 .ant-btn-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger):hover,
 .ant-btn-color-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger):hover {
-  border-color: #003220 !important;
-  color: #003220 !important;
-  background-color: #ffffff !important;
+  border-color: #B3B9C4 !important;
+  color: #172B4D !important;
+  background-color: #F1F2F4 !important;
 }
 
 .ant-btn-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger):hover .anticon,
 .ant-btn-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger):hover svg,
 .ant-btn-color-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger):hover .anticon,
 .ant-btn-color-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger):hover svg {
-  color: #003220 !important;
+  color: #172B4D !important;
 }
 
 /* Danger Button Styling - Global */
@@ -217,8 +218,9 @@ body {
 }
 
 .ant-menu-inline .ant-menu-item-selected {
-  background-color: var(--primary) !important;
-  color: white !important;
+  background-color: #E7F3ED !important;
+  color: #0B5D3B !important;
+  font-weight: 500;
 }
 
 .ant-menu-inline .ant-menu-item:hover:not(.ant-menu-item-selected) {
@@ -268,7 +270,7 @@ body {
    Ant Design Steps Styling — Completed Step Icon & Colors
 ═══════════════════════════════════════════════════════════ */
 .ant-steps-item-finish .ant-steps-item-icon {
-  background-color: #ecfdf5 !important;
+  background-color: #E7F3ED !important;
   border-color: #10b981 !important;
 }
 .ant-steps-item-finish .ant-steps-item-icon .ant-steps-icon {
@@ -302,7 +304,7 @@ body {
    ═══════════════════════════════════════════════════════════ */
 .gm-style .gm-style-iw-c {
   padding: 8px 10px !important;
-  border-radius: 6px !important;
+  border-radius: 0 !important;
   box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.15), 0 2px 6px -1px rgba(0, 0, 0, 0.1) !important;
 }
 
@@ -566,12 +568,16 @@ body {
   .route-header .route-view-switch { justify-content: center; }
 }
 
-/* Keep timeline search and interval controls compact on phones and tablets. */
+/* Timeline search and zoom: the standard 32 px control height, 44 px where touch is the main input. */
 .timeline-compact-controls .ant-input-affix-wrapper,
 .timeline-compact-controls .ant-select-single {
-  height: 24px;
-  min-height: 24px;
+  height: 32px;
+  min-height: 32px;
   font-size: 12px;
+}
+@media (pointer: coarse) {
+  .timeline-compact-controls .ant-input-affix-wrapper,
+  .timeline-compact-controls .ant-select-single { height: 44px; min-height: 44px; }
 }
 .timeline-compact-controls .ant-input-affix-wrapper { padding-block: 1px; }
 .timeline-compact-controls .ant-input-affix-wrapper input.ant-input {
@@ -596,3 +602,467 @@ body {
 .ant-checkbox-inner {
   border-radius: 0 !important;
 }
+
+/* ═══ Atlassian Design System colors, with Syncnox green as the brand and action color. Every Tailwind color class in the app resolves to an ADS value,
+   so existing screens pick up the palette without being edited. ═══ */
+@theme {
+  --color-gray-50: #F7F8F9;
+  --color-gray-100: #F1F2F4;
+  --color-gray-200: #DCDFE4;
+  --color-gray-300: #B3B9C4;
+  --color-gray-400: #8590A2;
+  --color-gray-500: #626F86;
+  --color-gray-600: #44546F;
+  --color-gray-700: #2C3E5D;
+  --color-gray-800: #172B4D;
+  --color-gray-900: #091E42;
+  --color-gray-950: #091E42;
+  --color-slate-50: #F7F8F9;
+  --color-slate-100: #F1F2F4;
+  --color-slate-200: #DCDFE4;
+  --color-slate-300: #B3B9C4;
+  --color-slate-400: #8590A2;
+  --color-slate-500: #626F86;
+  --color-slate-600: #44546F;
+  --color-slate-700: #2C3E5D;
+  --color-slate-800: #172B4D;
+  --color-slate-900: #091E42;
+  --color-slate-950: #091E42;
+  --color-zinc-50: #F7F8F9;
+  --color-zinc-100: #F1F2F4;
+  --color-zinc-200: #DCDFE4;
+  --color-zinc-300: #B3B9C4;
+  --color-zinc-400: #8590A2;
+  --color-zinc-500: #626F86;
+  --color-zinc-600: #44546F;
+  --color-zinc-700: #2C3E5D;
+  --color-zinc-800: #172B4D;
+  --color-zinc-900: #091E42;
+  --color-zinc-950: #091E42;
+  --color-neutral-50: #F7F8F9;
+  --color-neutral-100: #F1F2F4;
+  --color-neutral-200: #DCDFE4;
+  --color-neutral-300: #B3B9C4;
+  --color-neutral-400: #8590A2;
+  --color-neutral-500: #626F86;
+  --color-neutral-600: #44546F;
+  --color-neutral-700: #2C3E5D;
+  --color-neutral-800: #172B4D;
+  --color-neutral-900: #091E42;
+  --color-neutral-950: #091E42;
+  --color-emerald-50: #E7F3ED;
+  --color-emerald-100: #D3EADF;
+  --color-emerald-200: #A9D5C0;
+  --color-emerald-300: #7BBD9F;
+  --color-emerald-400: #4C9F7C;
+  --color-emerald-500: #2A8361;
+  --color-emerald-600: #0B5D3B;
+  --color-emerald-700: #0B5D3B;
+  --color-emerald-800: #0A4A33;
+  --color-emerald-900: #003220;
+  --color-emerald-950: #003220;
+  --color-blue-50: #E9F2FF;
+  --color-blue-100: #CCE0FF;
+  --color-blue-200: #85B8FF;
+  --color-blue-300: #579DFF;
+  --color-blue-400: #388BFF;
+  --color-blue-500: #1D7AFC;
+  --color-blue-600: #0C66E4;
+  --color-blue-700: #0C66E4;
+  --color-blue-800: #0055CC;
+  --color-blue-900: #09326C;
+  --color-blue-950: #09326C;
+  --color-sky-50: #E9F2FF;
+  --color-sky-100: #CCE0FF;
+  --color-sky-200: #85B8FF;
+  --color-sky-300: #579DFF;
+  --color-sky-400: #388BFF;
+  --color-sky-500: #1D7AFC;
+  --color-sky-600: #0C66E4;
+  --color-sky-700: #0C66E4;
+  --color-sky-800: #0055CC;
+  --color-sky-900: #09326C;
+  --color-sky-950: #09326C;
+  --color-indigo-50: #E9F2FF;
+  --color-indigo-100: #CCE0FF;
+  --color-indigo-200: #85B8FF;
+  --color-indigo-300: #579DFF;
+  --color-indigo-400: #388BFF;
+  --color-indigo-500: #1D7AFC;
+  --color-indigo-600: #0C66E4;
+  --color-indigo-700: #0C66E4;
+  --color-indigo-800: #0055CC;
+  --color-indigo-900: #09326C;
+  --color-indigo-950: #09326C;
+  --color-green-50: #DCFFF1;
+  --color-green-100: #DCFFF1;
+  --color-green-200: #BAF3DB;
+  --color-green-300: #7EE2B8;
+  --color-green-400: #4BCE97;
+  --color-green-500: #2ABB7F;
+  --color-green-600: #22A06B;
+  --color-green-700: #1F845A;
+  --color-green-800: #216E4E;
+  --color-green-900: #164B35;
+  --color-green-950: #164B35;
+  --color-teal-50: #DCFFF1;
+  --color-teal-100: #DCFFF1;
+  --color-teal-200: #BAF3DB;
+  --color-teal-300: #7EE2B8;
+  --color-teal-400: #4BCE97;
+  --color-teal-500: #2ABB7F;
+  --color-teal-600: #22A06B;
+  --color-teal-700: #1F845A;
+  --color-teal-800: #216E4E;
+  --color-teal-900: #164B35;
+  --color-teal-950: #164B35;
+  --color-red-50: #FFECEB;
+  --color-red-100: #FFECEB;
+  --color-red-200: #FFD5D2;
+  --color-red-300: #FD9891;
+  --color-red-400: #F87168;
+  --color-red-500: #F15B50;
+  --color-red-600: #E2483D;
+  --color-red-700: #C9372C;
+  --color-red-800: #AE2E24;
+  --color-red-900: #5D1F1A;
+  --color-red-950: #5D1F1A;
+  --color-rose-50: #FFECEB;
+  --color-rose-100: #FFECEB;
+  --color-rose-200: #FFD5D2;
+  --color-rose-300: #FD9891;
+  --color-rose-400: #F87168;
+  --color-rose-500: #F15B50;
+  --color-rose-600: #E2483D;
+  --color-rose-700: #C9372C;
+  --color-rose-800: #AE2E24;
+  --color-rose-900: #5D1F1A;
+  --color-rose-950: #5D1F1A;
+  --color-yellow-50: #FFF7D6;
+  --color-yellow-100: #FFF7D6;
+  --color-yellow-200: #F8E6A0;
+  --color-yellow-300: #F5CD47;
+  --color-yellow-400: #E2B203;
+  --color-yellow-500: #CF9F02;
+  --color-yellow-600: #B38600;
+  --color-yellow-700: #946F00;
+  --color-yellow-800: #7F5F01;
+  --color-yellow-900: #533F04;
+  --color-yellow-950: #533F04;
+  --color-amber-50: #FFF7D6;
+  --color-amber-100: #FFF7D6;
+  --color-amber-200: #F8E6A0;
+  --color-amber-300: #F5CD47;
+  --color-amber-400: #E2B203;
+  --color-amber-500: #CF9F02;
+  --color-amber-600: #B38600;
+  --color-amber-700: #946F00;
+  --color-amber-800: #7F5F01;
+  --color-amber-900: #533F04;
+  --color-amber-950: #533F04;
+  --color-orange-50: #FFF7D6;
+  --color-orange-100: #FFF7D6;
+  --color-orange-200: #F8E6A0;
+  --color-orange-300: #F5CD47;
+  --color-orange-400: #E2B203;
+  --color-orange-500: #CF9F02;
+  --color-orange-600: #B38600;
+  --color-orange-700: #946F00;
+  --color-orange-800: #7F5F01;
+  --color-orange-900: #533F04;
+  --color-orange-950: #533F04;
+  --color-purple-50: #F3F0FF;
+  --color-purple-100: #F3F0FF;
+  --color-purple-200: #DFD8FD;
+  --color-purple-300: #B8ACF6;
+  --color-purple-400: #9F8FEF;
+  --color-purple-500: #8F7EE7;
+  --color-purple-600: #8270DB;
+  --color-purple-700: #6E5DC6;
+  --color-purple-800: #5E4DB2;
+  --color-purple-900: #352C63;
+  --color-purple-950: #352C63;
+  --color-violet-50: #F3F0FF;
+  --color-violet-100: #F3F0FF;
+  --color-violet-200: #DFD8FD;
+  --color-violet-300: #B8ACF6;
+  --color-violet-400: #9F8FEF;
+  --color-violet-500: #8F7EE7;
+  --color-violet-600: #8270DB;
+  --color-violet-700: #6E5DC6;
+  --color-violet-800: #5E4DB2;
+  --color-violet-900: #352C63;
+  --color-violet-950: #352C63;
+}
+.text-\[\#003220\] { color: #172B4D !important; }
+.text-\[\#002a00\] { color: #172B4D !important; }
+.bg-\[\#003220\] { background-color: #003220 !important; }
+.border-\[\#003220\] { border-color: #003220 !important; }
+.border-\[\#002a00\] { border-color: #003220 !important; }
+.hover\:border-\[\#003220\]:hover { border-color: #003220 !important; }
+.hover\:text-\[\#003220\]:hover { color: #0B5D3B !important; }
+.hover\:bg-\[\#002417\]:hover { background-color: #0A4A33 !important; }
+.hover\:bg-\[\#002a00\]:hover { background-color: #0A4A33 !important; }
+.hover\:bg-\[\#002A00\]:hover { background-color: #0A4A33 !important; }
+.hover\:bg-\[\#003220\]\/90:hover { background-color: #0A4A33 !important; }
+.bg-\[\#003220\]\/10 { background-color: #E7F3ED !important; }
+.bg-\[\#003220\]\/5 { background-color: #E7F3ED !important; }
+.border-\[\#003220\]\/25 { border-color: #A9D5C0 !important; }
+.border-\[\#003220\]\/20 { border-color: #A9D5C0 !important; }
+.focus-visible\:outline-\[\#003220\]:focus-visible { outline-color: #2A8361 !important; }
+.ring-\[\#003220\]\/10 { --tw-ring-color: rgba(0,50,32,0.16) !important; }
+.ring-\[\#003220\]\/20 { --tw-ring-color: rgba(0,50,32,0.24) !important; }
+.group:hover .group-hover\:text-\[\#003220\] { color: #003220 !important; }
+.group:hover .group-hover\:bg-\[\#003220\] { background-color: #003220 !important; }
+/* Square corners everywhere (owner's rule). Circles stay only for dots, switches and round avatars. */
+@theme {
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+}
+.rounded { border-radius: 0; }
+.ant-btn, .ant-input, .ant-input-affix-wrapper, .ant-picker, .ant-select-selector, .ant-select-outlined, .ant-input-number, .ant-tag,
+.ant-dropdown-menu, .ant-dropdown-menu-item, .ant-select-dropdown, .ant-select-item, .ant-popover-inner, .ant-tooltip-inner, .ant-card,
+.ant-alert, .ant-picker-panel-container, .ant-message-notice-content, .ant-drawer-content, .ant-collapse, .ant-collapse-item { border-radius: 0 !important; }
+/* ADS text field: white, a 1px border, a blue focus ring */
+.ant-input, .ant-input-affix-wrapper, .ant-picker, .ant-input-number, .ant-select-outlined { box-shadow: none !important; }
+.ant-input:focus, .ant-input-focused, .ant-input-affix-wrapper-focused, .ant-picker-focused, .ant-input-number-focused,
+.ant-select-focused.ant-select-outlined { border-color: #2A8361 !important; box-shadow: inset 0 0 0 1px #2A8361 !important; }
+.ant-btn { box-shadow: none !important; }
+.ant-btn-variant-text:not(:disabled):hover { background: #F1F2F4 !important; }
+/* ADS dynamic table: quiet header, one rule under it, filter icons on hover */
+.ag-header { border-bottom: 2px solid #DCDFE4 !important; }
+.ag-header-cell .ag-header-cell-filter-button, .ag-header-cell .ag-header-cell-menu-button { opacity: 0; transition: opacity 0.15s ease; }
+.ag-header-cell:hover .ag-header-cell-filter-button, .ag-header-cell:hover .ag-header-cell-menu-button,
+.ag-header-cell:focus-within .ag-header-cell-filter-button, .ag-header-cell.ag-header-cell-filtered .ag-header-cell-filter-button,
+.ag-header-cell .ag-filter-active { opacity: 1; }
+.ag-paging-panel { border-top: 1px solid #DCDFE4 !important; color: #44546F; font-size: 12px; }
+/* ADS buttons: the default button is a neutral gray fill with no outline; subtle (text) buttons have no box */
+.ant-btn-variant-text { border-color: transparent !important; }
+.ant-btn-variant-text.ant-btn-color-dangerous:not(:disabled):hover, .ant-btn-variant-text.ant-btn-dangerous:not(:disabled):hover { background: #FFECEB !important; }
+.ant-menu-inline .ant-menu-item:hover:not(.ant-menu-item-selected) { background-color: #F1F2F4 !important; }
+.ant-btn-variant-text.ant-btn-color-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger), .ant-btn-variant-link.ant-btn-color-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger) { background-color: transparent !important; }
+.ant-btn-variant-text.ant-btn-color-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger):hover { background-color: #F1F2F4 !important; }
+.ant-btn-color-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger):disabled, .ant-btn-color-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger).ant-btn-disabled { color: #091E424F !important; background-color: #091E4208 !important; }
+.ant-btn-variant-text.ant-btn-color-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger):disabled { background-color: transparent !important; }
+/* Links follow the green action color; blue stays for "in progress" and information */
+.text-blue-600.hover\:underline, a.text-blue-600, button.text-blue-600 { color: #0B5D3B !important; }
+.ant-btn-variant-text.ant-btn-color-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger), .ant-btn-variant-link.ant-btn-color-default:not(.ant-btn-color-danger):not(.ant-btn-dangerous):not(.ant-btn-status-danger) { border-color: transparent !important; }
+
+/* ── Settings pages (Team, Vehicles, Locations): Atlassian form and list styling ── */
+.ant-form-item-label > label { font-size: 12px !important; font-weight: 600 !important; color: #44546F !important; height: auto !important; }
+.ant-form-vertical .ant-form-item-label { padding-bottom: 4px !important; }
+.entity-form-nav .ant-menu-horizontal { border-bottom: 0 !important; }
+.entity-form-nav .ant-menu-horizontal > .ant-menu-item { padding-inline: 4px !important; margin-inline-end: 20px; font-weight: 500; color: #44546F; }
+.entity-form-nav .ant-menu-horizontal > .ant-menu-item-selected { color: #0B5D3B !important; }
+.entity-form-nav .ant-menu-horizontal > .ant-menu-item::after { inset-inline: 0 !important; border-bottom-width: 2px !important; }
+.entity-form-nav .ant-menu-horizontal > .ant-menu-item-selected::after { border-bottom-color: #0B5D3B !important; }
+/* Segmented view switches: the selected side is a pale tint, not a filled block */
+.ant-radio-group-solid .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled),
+.ant-radio-group-solid .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled):hover {
+  background: #E7F3ED !important; color: #0B5D3B !important; border-color: #0B5D3B !important; font-weight: 500;
+}
+.ant-radio-group-solid .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled)::before { background-color: #0B5D3B !important; }
+/* The first part of a record form sits right under the tabs, so it needs no rule above it */
+.form-section:first-child, div > .form-section:first-of-type { border-top: 0; padding-top: 4px; }
+.form-section .ant-form-item { margin-bottom: 16px; }
+.form-section .ant-form-item-extra { font-size: 12px; color: #626F86; }
+/* Choice buttons (for example a person's role): the chosen one is a pale tint with green text */
+.ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled),
+.ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled):hover {
+  background: #E7F3ED !important; color: #0B5D3B !important; border-color: #0B5D3B !important; font-weight: 500;
+}
+.ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) span { color: #0B5D3B !important; }
+.ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled)::before { background-color: #0B5D3B !important; }
+
+/* Status filter menu: the last entry ("All statuses") is a different kind of choice, so a rule sets it apart */
+.status-filter-menu .ant-select-item-option:last-child { border-top: 1px solid #EBECF0; margin-top: 4px; padding-top: 9px; }
+.status-filter-menu .ant-select-item-option-selected:not(.ant-select-item-option-disabled) { background: #F7F8F9 !important; font-weight: 400; }
+.status-filter-menu .ant-select-item-option-active:not(.ant-select-item-option-disabled) { background: #F1F2F4 !important; }
+
+/* Stat band (components/ui/kit.tsx): hairlines between figures, on every breakpoint, without doubling at the edges */
+.stat-band > * { box-shadow: 1px 0 0 var(--hairline), 0 1px 0 var(--hairline); }
+.stat-band { overflow: hidden; }
+
+/* Page action buttons (components/ui/kit.tsx ActionButton): flat, square, medium weight, a small chevron after the label.
+   The dark green fill is the one accent on a page; the secondary button is a thin dark outline. */
+.action-button { display: inline-flex; height: 32px; min-width: 0; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid transparent; border-radius: 0;
+  font: inherit; font-size: 13px; font-weight: 500; line-height: 1; letter-spacing: -0.005em; cursor: pointer; white-space: nowrap;
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease; }
+.action-button:focus-visible { outline: 2px solid #0B5D3B; outline-offset: 2px; }
+.action-button:disabled { opacity: .5; cursor: not-allowed; }
+.action-button-primary { background: #003220; color: #fff; border-color: #003220; }
+.action-button-primary:hover { background: #0B5D3B; border-color: #0B5D3B; }
+.action-button-secondary { background: transparent; color: #12211A; border-color: #12211A; }
+.action-button-secondary:hover { background: #12211A; color: #fff; }
+.action-button-secondary.is-pressed { background: #12211A; color: #fff; }
+.action-button-quiet { background: transparent; color: #4A5750; padding: 0 12px; }
+.action-button-quiet:hover { background: #F3F6F4; color: #12211A; }
+
+/* Buttons across the app are flat: no shadow, no inner highlight, no gradient, no movement when pressed.
+   A button shows it can be pressed through its fill and its hover color only. */
+.ant-btn { font-weight: 500; letter-spacing: 0; transition: background-color .12s ease, border-color .12s ease, color .12s ease !important; }
+.ant-btn, .ant-btn:hover, .ant-btn:active, .ant-btn:focus { box-shadow: none !important; text-shadow: none !important; background-image: none !important; transform: none !important; }
+.ant-btn::before, .ant-btn::after { box-shadow: none !important; }
+.ant-btn:focus-visible { outline: 2px solid #0B5D3B !important; outline-offset: 2px !important; }
+.ant-btn.ant-btn-variant-outlined:not(:disabled):not(.ant-btn-dangerous):not(.ant-btn-color-danger):hover { border-color: #8590A2 !important; }
+.ant-btn.ant-btn-variant-text, .ant-btn.ant-btn-variant-link { font-weight: 500; }
+
+/* ── Fluid scale (components/ui/kit.tsx) ───────────────────────────────────────────────────────────────
+   A page that adds .kit-fluid sizes its titles, figures, padding, gaps and charts from the window, the way
+   Cloudflare's dashboard does: every value is a clamp(min, grows-with-width, max). A 13-inch laptop gets the
+   compact end, a large monitor the roomy end, with no jumps in between. Chart height also respects window
+   height, so a short screen never spends half of itself on one chart. Body text (13 and 14px) and the 11px
+   labels do not scale: reading size should not depend on the monitor.
+   Without .kit-fluid the kit falls back to the compact sizes. */
+.kit-fluid {
+  --k-title: clamp(22px, 0.9vw + 12px, 34px);       /* page title:      1280 -> 23.5   1470 -> 25   1920 -> 29   2560 -> 34 */
+  --k-figure: clamp(24px, 1.5vw + 7px, 44px);       /* key figures:     1280 -> 26     1470 -> 29   1920 -> 36   2560 -> 44 */
+  --k-num: clamp(20px, 0.8vw + 11px, 30px);         /* figures in a block */
+  --k-block: clamp(15px, 0.45vw + 10px, 21px);      /* block titles */
+  --k-pad: clamp(14px, 1.1vw + 3px, 30px);          /* padding inside a block */
+  --k-gap: clamp(8px, 0.7vw + 1px, 20px);           /* space between blocks */
+  --k-chart: clamp(124px, min(9.5vw + 14px, 22vh), 260px);
+  --k-donut: clamp(108px, min(7vw + 28px, 18vh), 188px);
+}
+.kit-title { font-size: var(--k-title, 26px); line-height: 1.22; letter-spacing: -0.025em; }
+.kit-figure { font-size: var(--k-figure, 30px); line-height: 1.08; letter-spacing: -0.03em; font-weight: 500; }
+.kit-num { font-size: var(--k-num, 24px); line-height: 1.15; letter-spacing: -0.025em; font-weight: 500; }
+.kit-block-title { font-size: var(--k-block, 17px); line-height: 1.35; letter-spacing: -0.015em; font-weight: 500; }
+.kit-pad { padding: var(--k-pad, 20px); }
+.kit-pad-tile { padding: calc(var(--k-pad, 20px) * 0.8) var(--k-pad, 20px); }
+.kit-gap { gap: var(--k-gap, 12px); }
+.kit-gap-lg { gap: calc(var(--k-gap, 12px) * 1.35); }
+
+
+/* ── Syncnox interface language, opt-in per screen with the class "lang" ───────────────────────────────
+   The same rules as the dashboard kit, applied to the standard controls inside that screen:
+   fill instead of outline, two weights (400 and 500), one accent, neutrals taken from the brand green.
+   Tables stay compact: this is a working screen, so only the finish changes, not the density. */
+.lang { color: #12211A; }
+/* fields: a soft fill, no outline; the outline appears only on focus */
+.lang .ant-input-affix-wrapper, .lang .ant-input, .lang .ant-picker, .lang .ant-select-outlined .ant-select-selector, .lang .ant-select-outlined {
+  background-color: #F3F6F4 !important; border-color: transparent !important; box-shadow: none !important; color: #12211A; }
+.lang .ant-input-affix-wrapper .ant-input { background-color: transparent !important; }
+.lang .ant-input-affix-wrapper:hover, .lang .ant-picker:hover, .lang .ant-select-outlined:hover .ant-select-selector, .lang .ant-select-outlined:hover { background-color: #EAEFEC !important; }
+.lang .ant-input-affix-wrapper-focused, .lang .ant-picker-focused, .lang .ant-select-focused .ant-select-selector, .lang .ant-select-focused.ant-select-outlined {
+  background-color: #fff !important; border-color: #0B5D3B !important; box-shadow: 0 0 0 1px #0B5D3B !important; }
+.lang .ant-input::placeholder, .lang .ant-picker-input > input::placeholder { color: #626E67; }
+/* buttons: flat, medium weight */
+.lang .ant-btn { font-weight: 500 !important; box-shadow: none !important; }
+.lang .ant-btn.ant-btn-variant-text:not(:disabled):hover { background: #F3F6F4 !important; }
+/* table: small uppercase labels on a filled header row, medium weight for the row's key value */
+.lang .ag-header-cell-text { text-transform: uppercase; letter-spacing: 0.09em; }
+.lang .ag-header { border-bottom: 0 !important; }
+.lang .ag-root-wrapper .text-blue-600, .lang .ag-root-wrapper a { color: #12211A !important; font-weight: 500 !important; }
+.lang .ag-root-wrapper .text-blue-600:hover, .lang .ag-root-wrapper a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.lang .ag-paging-panel { color: #4A5750; border-top-color: #E3E8E5 !important; }
+/* headings inside a "lang" screen: medium weight, brand-neutral ink */
+.lang h1.ant-typography, .lang h2.ant-typography, .lang h3.ant-typography, .lang h4.ant-typography, .lang h5.ant-typography { font-weight: 500 !important; color: #12211A !important; letter-spacing: -0.015em; }
+/* date range calendar: days inside the chosen range get the light green tint with dark text; the two ends keep the dark green */
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-in-range:not(.ant-picker-cell-disabled)::before,
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-start:not(.ant-picker-cell-range-start-single)::before,
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-end:not(.ant-picker-cell-range-end-single)::before { background: #E7F3ED !important; }
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-in-range:not(.ant-picker-cell-range-start):not(.ant-picker-cell-range-end) .ant-picker-cell-inner { background: transparent !important; color: #12211A !important; }
+.ant-picker-dropdown .ant-picker-presets li { color: #12211A; }
+.ant-picker-dropdown .ant-picker-presets li:hover { background: #F3F6F4 !important; }
+/* a field that sits on a filled block is white, so it still reads as a field */
+.lang .kit-pad .ant-picker, .lang .kit-pad .ant-select-outlined .ant-select-selector, .lang .kit-pad .ant-input-affix-wrapper { background-color: #fff !important; }
+
+/* a disabled outline button becomes a quiet fill: it should not look like the next thing to press */
+.action-button-secondary:disabled { opacity: 1; background: #F3F6F4; border-color: transparent; color: #9AA8A0; }
+.action-button-primary:disabled { opacity: 1; background: #DDE4E0; border-color: transparent; color: #626E67; }
+/* menus opened from an action button: two-line entries, light icons, no rounded corners */
+.action-menu .ant-dropdown-menu { padding: 6px; border-radius: 0; min-width: 248px; box-shadow: 0 8px 24px rgba(18,33,26,0.16); }
+.action-menu .ant-dropdown-menu-item { padding: 8px 10px !important; border-radius: 0 !important; align-items: flex-start !important; gap: 4px; }
+.action-menu .ant-dropdown-menu-item:hover, .action-menu .ant-dropdown-menu-item-active { background: #F3F6F4 !important; }
+.action-menu .ant-dropdown-menu-item .ant-dropdown-menu-item-icon { margin-top: 2px; color: #4A5750; }
+/* drop area for a file: a soft fill with a thin dashed line; the line turns green when you point at it or drag over it */
+.bulk-dropzone .ant-upload-wrapper .ant-upload-drag { background: #F3F6F4 !important; border: 1px dashed #9AA8A0 !important; border-radius: 0 !important; transition: background-color .14s ease, border-color .14s ease; }
+.bulk-dropzone .ant-upload-wrapper .ant-upload-drag:not(.ant-upload-disabled):hover, .bulk-dropzone .ant-upload-wrapper .ant-upload-drag.ant-upload-drag-hover { background: #E7F3ED !important; border-color: #0B5D3B !important; }
+.bulk-dropzone .ant-upload-wrapper .ant-upload-drag .ant-upload { padding: 0 !important; }
+/* popup title area in a "lang" popup */
+.lang .ant-modal-content { border-radius: 0 !important; }
+.lang .ant-modal-close { border-radius: 0 !important; }
+
+/* ── "lang" screens: buttons, forms and tabs used on the record screens (Team, Vehicles, Locations) ── */
+/* the one filled button is flat dark green; every other button is a calm thin outline */
+.lang .ant-btn.ant-btn-variant-solid:not(.ant-btn-dangerous):not(.ant-btn-color-danger):not(:disabled) { background: #003220 !important; border-color: #003220 !important; }
+.lang .ant-btn.ant-btn-variant-solid:not(.ant-btn-dangerous):not(.ant-btn-color-danger):not(:disabled):hover { background: #0B5D3B !important; border-color: #0B5D3B !important; }
+.lang .ant-btn.ant-btn-variant-outlined:not(.ant-btn-dangerous):not(.ant-btn-color-danger):not(:disabled) { background: transparent !important; border-color: #B7C2BC !important; color: #12211A !important; }
+.lang .ant-btn.ant-btn-variant-outlined:not(.ant-btn-dangerous):not(.ant-btn-color-danger):not(:disabled):hover { background: #F3F6F4 !important; border-color: #12211A !important; }
+/* form labels: medium, brand-neutral ink */
+.lang .ant-form-item-label > label { font-size: 13px !important; font-weight: 500 !important; color: #12211A !important; }
+.lang .ant-form-item-extra, .lang .ant-form-item-explain { color: #626E67; }
+/* the tabs of a record: plain words, green line under the open one */
+.lang .entity-form-nav .ant-menu-horizontal > .ant-menu-item { color: #4A5750; font-weight: 400; }
+.lang .entity-form-nav .ant-menu-horizontal > .ant-menu-item-selected { color: #12211A !important; font-weight: 500; }
+.lang .entity-form-nav .ant-menu-horizontal { box-shadow: inset 0 -1px 0 #D5DCD8; }
+/* choice buttons (for example a role): the chosen one is the accent */
+.lang .ant-radio-button-wrapper { background: #fff !important; border-color: #D5DCD8 !important; color: #4A5750 !important; font-weight: 400; }
+.lang .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) { background: #003220 !important; border-color: #003220 !important; color: #fff !important; font-weight: 500; }
+.lang .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) svg { color: #fff !important; }
+.lang .ant-radio-button-wrapper-checked::before { background-color: #003220 !important; }
+.lang .ant-radio-checked .ant-radio-inner, .lang .ant-checkbox-checked .ant-checkbox-inner { background-color: #003220 !important; border-color: #003220 !important; }
+.lang .ant-switch.ant-switch-checked { background: #003220 !important; }
+.lang .form-section { border-top-color: #E3E8E5 !important; }
+.lang .ant-input-number, .lang .ant-input-number-outlined, .lang .ant-picker-outlined, .lang textarea.ant-input { background-color: #F3F6F4 !important; border-color: transparent !important; box-shadow: none !important; }
+.lang .ant-input-number-focused, .lang textarea.ant-input:focus { background-color: #fff !important; border-color: #0B5D3B !important; box-shadow: 0 0 0 1px #0B5D3B !important; }
+.lang .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) span, .lang .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) .ant-radio-button-label { color: #fff !important; }
+.lang .responsive-entity-list input { border-color: transparent !important; height: 32px; font-size: 13px; color: #12211A; }
+.lang .responsive-entity-list input:focus { border-color: #0B5D3B !important; box-shadow: none !important; }
+
+/* a small label that appears under an icon-only control when you point at it or tab to it */
+.tip { position: relative; }
+.tip[data-tip]:hover::after, .tip[data-tip]:focus-visible::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 60;
+  background: #12211A; color: #fff; font-size: 12px; font-weight: 400; line-height: 1; letter-spacing: 0; padding: 6px 8px; white-space: nowrap; pointer-events: none; }
+
+/* one load constraint per line: type, maximum, unit, remove. The number field is only as wide as a number needs. */
+.constraint-grid { display: grid; grid-template-columns: minmax(0, 190px) 120px minmax(0, 150px) 32px; gap: 8px; align-items: start; }
+@media (max-width: 520px) { .constraint-grid { grid-template-columns: minmax(0, 1fr) 84px minmax(0, 1fr) 32px; } }
+.form-section .ant-form-item-extra { font-size: 12px; color: #626E67; margin-top: 4px; }
+
+/* One side gutter for every screen comes from the app shell (components/Layout/AppLayout.tsx): 16px on phones, 24px from 640px up.
+   Pages do not add their own side padding on top of it. */
+
+/* Plan toolbars on a phone: search takes the full row, the other filters share the next row equally. */
+@media (max-width: 639px) {
+  .plan-toolbar-filters { width: 100%; }
+  .plan-toolbar-filters > .ant-input-affix-wrapper, .plan-toolbar-filters > .ant-input { width: 100% !important; flex: 1 1 100%; }
+  .plan-toolbar-filters > .ant-select, .plan-toolbar-filters > .ant-picker, .plan-toolbar-filters > button, .plan-toolbar-filters > div { flex: 1 1 calc(50% - 4px); min-width: 0 !important; }
+  .plan-toolbar > div:last-child { width: 100%; justify-content: flex-start; }
+}
+/* The small "i" beside a page title is not a touch button row: it keeps its own size so every title sits at the same height. */
+.responsive-settings h1 + button, .responsive-entity-page h1 + button { min-height: 24px !important; }
+/* Settings header buttons on small screens match the Team, Vehicles and Locations headers. */
+@media (max-width: 1023px) {
+  .responsive-settings > div:first-child .ant-btn { height: 36px; min-height: 36px; padding-inline: 10px; font-size: 12px; }
+}
+
+/* Custom fields table (components/CustomFields/FieldsTable.tsx): on a phone the type and the three "who sees it" columns
+   fold into one line under the field name, so the table never needs to scroll sideways. */
+.fields-narrow { display: none; }
+@media (max-width: 767px) {
+  .fields-table .fields-wide { display: none; }
+  .fields-table .fields-narrow { display: block; }
+  .fields-search { width: 100%; justify-content: space-between; }
+  .fields-search input { width: 100%; }
+  .fields-search label { flex: 1; }
+}
+@media (max-width: 1023px) {
+  .responsive-settings > div:first-child .action-button { height: 36px; min-height: 36px !important; }
+}
+/* reload 1795632017 */
+/* reload 1795632105 */
+/* reload 1795633593 */
+/* reload 1795633956 */
+/* reload 1795634309 */
+/* reload 1795634755 */
+/* reload 1795635187 */
+/* reload 1795636778 */
+/* reload 1795637534 */

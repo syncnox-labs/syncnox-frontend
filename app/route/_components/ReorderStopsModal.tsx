@@ -1,36 +1,13 @@
 "use client";
 import React, { useState, useEffect, useMemo } from "react";
-import {
-  Modal,
-  Button,
-  Tag,
-  Tooltip,
-  Input,
-  message,
-  Popconfirm,
-  Badge,
-} from "antd";
-import {
-  MenuOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
-  DeleteOutlined,
-  ReloadOutlined,
-  SaveOutlined,
-  ThunderboltOutlined,
-  SearchOutlined,
-  ClockCircleOutlined,
-  EnvironmentOutlined,
-  UserOutlined,
-  FlagOutlined,
-  HomeOutlined,
-  CheckCircleOutlined,
-} from "@ant-design/icons";
-import { GripVertical, House, Flag, Sparkles as SparklesIcon } from "lucide-react";
+import { Modal, Button, Tooltip, Input, Popconfirm } from "antd";
+import { ArrowUpOutlined, ArrowDownOutlined, DeleteOutlined, SearchOutlined } from "@ant-design/icons";
+import { GripVertical, House, Flag, Lock } from "lucide-react";
 import dayjs from "dayjs";
 import type { Job } from "@/types/job.type";
 import { formatTime12h } from "@/utils/app.utils";
 import { getRouteColor } from "@/utils/timeline.utils";
+import { StopArrowSvg, EditedMark } from "./TimelineStopArrow";
 
 export interface ReorderStopItem {
   id: string | number;
@@ -171,6 +148,30 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
     return stopsList.some((s, i) => s.job_id !== initialJobIds[i]);
   }, [routeData, stopsList]);
 
+  // Where each stop sat when the dialog opened, to mark what moved.
+  const startPosition = useMemo(() => {
+    const map = new Map<number, number>();
+    (routeData?.stops || []).filter((s: any) => s.job_id && !String(s.stop_type || "").startsWith("depot"))
+      .forEach((s: any, i: number) => { const idx = routeData.stops.indexOf(s); map.set(idx, i); });
+    return map;
+  }, [routeData]);
+
+  // A drop-off can never come before its own pickup.
+  const outOfOrder = useMemo(() => {
+    const bad = new Set<number>();
+    const pickupAt = new Map<number, number>();
+    stopsList.forEach((s, i) => { if (s.stop_type === "pickup" || s.stop_type === "pick_up") pickupAt.set(s.job_id, i); });
+    stopsList.forEach((s, i) => {
+      if ((s.stop_type === "dropoff" || s.stop_type === "drop_off") && pickupAt.has(s.job_id) && pickupAt.get(s.job_id)! > i) bad.add(s.job_id);
+    });
+    return bad;
+  }, [stopsList]);
+
+  const [announcement, setAnnouncement] = useState("");
+  const announceMove = (item: ReorderStopItem | undefined, to: number) => {
+    if (item) setAnnouncement(`Job #${item.job_id} ${item.stop_type === "pickup" ? "pickup" : "drop-off"} moved to position ${to + 1} of ${stopsList.length}.`);
+  };
+
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedItemIndex(index);
@@ -203,6 +204,7 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
     updated.splice(targetIndex, 0, movedItem);
 
     setStopsList(updated);
+    announceMove(movedItem, targetIndex);
     setDraggedItemIndex(null);
     setDragOverIndex(null);
   };
@@ -220,6 +222,7 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
     updated[index] = updated[index - 1];
     updated[index - 1] = temp;
     setStopsList(updated);
+    announceMove(temp, index - 1);
   };
 
   const moveDown = (index: number) => {
@@ -229,6 +232,7 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
     updated[index] = updated[index + 1];
     updated[index + 1] = temp;
     setStopsList(updated);
+    announceMove(temp, index + 1);
   };
 
   // Reset order to original
@@ -257,7 +261,7 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
       }
     });
     setStopsList(initial);
-    message.info("Stop order reset to original");
+    setAnnouncement("Stop order reset.");
   };
 
   const handleSaveOrder = async () => {
@@ -314,322 +318,145 @@ const ReorderStopsModal: React.FC<ReorderStopsModalProps> = ({
     );
   }, [stopsList, searchTerm]);
 
+  const busy = isSaving || isReoptimizing;
+  const invalid = outOfOrder.size > 0;
+  const depotRow = (stop: any, kind: "start" | "end") => (
+    <div className="flex items-center gap-3 bg-[#F3F6F4] px-3 py-2 text-[12px]">
+      <span aria-hidden="true" className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-white" style={{ backgroundColor: routeColor }}>
+        {kind === "start" ? <House size={13} /> : <Flag size={13} />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5 text-[#12211A]">{kind === "start" ? "Trip starts" : "Trip ends"}
+          <span className="inline-flex items-center gap-1 text-[11px] text-[#626E67]"><Lock size={11} aria-hidden="true" />fixed</span></span>
+        <span className="block truncate text-[#626E67]">{stop.address_formatted || (kind === "start" ? "Departure depot" : "Return depot")}</span>
+      </span>
+      {stop.arrival_time && <span className="shrink-0 tabular-nums text-[#12211A]">{formatTime12h(stop.arrival_time)}</span>}
+    </div>
+  );
+
   return (
     <Modal
       open={open}
-      onCancel={onClose}
-      width={780}
-      className="responsive-reorder-modal"
+      onCancel={busy ? undefined : onClose}
+      maskClosable={!busy}
+      width={760}
       centered
-      title={
-        <div className="responsive-toolbar flex items-center justify-between pr-6 py-1 select-none border-b border-gray-100 pb-3">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div
-              className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs"
-              style={{ backgroundColor: routeColor }}
-            />
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-gray-900 text-base">
-                  Reorder Stops — {driverName}
-                </span>
-                {isOrderChanged && (
-                  <Tag color="orange" className="font-semibold text-xs border-orange-300">
-                    Unsaved Changes
-                  </Tag>
-                )}
-              </div>
-              <p className="text-xs text-gray-500 font-normal m-0 mt-0.5">
-                Drag and drop stops or use the arrow buttons to customize the stop order. ETAs will update accordingly.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Tag color="blue" className="text-xs font-bold px-2 py-0.5">
-              {stopsList.length} Job Stops
-            </Tag>
-          </div>
+      rootClassName="lang"
+      className="responsive-reorder-modal"
+      title={<div className="pr-6">
+        <div className="flex flex-wrap items-center gap-2 text-[16px] font-medium text-[#12211A]">
+          <span aria-hidden="true" className="h-3 w-3 shrink-0" style={{ backgroundColor: routeColor }} />
+          Change stop order
+          {isOrderChanged && <span className="text-[12px] font-normal text-[#8A6700]">· not saved</span>}
         </div>
-      }
-      footer={
-        <div className="responsive-toolbar flex items-center justify-between pt-2 border-t border-gray-100">
-          <div className="flex items-center gap-2">
-            <Button
-              size="small"
-              icon={<ReloadOutlined />}
-              onClick={handleReset}
-              disabled={!isOrderChanged || isSaving || isReoptimizing}
-              className="text-xs text-gray-600"
-            >
-              Reset Order
-            </Button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            <Button size="middle" onClick={onClose} disabled={isSaving || isReoptimizing}>
-              Cancel
-            </Button>
-
-            {onSaveAndReOptimize && (
-              <Button
-                size="middle"
-                icon={<ThunderboltOutlined />}
-                loading={isReoptimizing}
-                disabled={isSaving}
-                onClick={handleSaveAndReoptimize}
-                className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs border-none"
-              >
-                Save & Reoptimize
+        <div className="mt-0.5 text-[12px] font-normal text-[#4A5750]">
+          {driverName} · {stopsList.length} stops. Drag a stop, or use the arrows. New times are worked out when you save.
+        </div>
+      </div>}
+      footer={<div className="flex flex-col gap-2 border-t border-[#E3E8E5] pt-3">
+        {invalid && <p role="alert" className="m-0 text-left text-[12px] text-[#C9372C]">
+          A drop-off is before its own pickup ({[...outOfOrder].map(id => `Job #${id}`).join(", ")}). Move it below the pickup to save.
+        </p>}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button type="button" onClick={handleReset} disabled={!isOrderChanged || busy}
+            className="mr-auto border-0 bg-transparent p-0 text-[12px] text-[#0B5D3B] cursor-pointer hover:underline disabled:cursor-not-allowed disabled:text-[#9AA59F] disabled:no-underline">
+            Reset order
+          </button>
+          <Button onClick={onClose} disabled={busy}>Cancel</Button>
+          {onSaveAndReOptimize && (
+            <Tooltip title="Saves this order, then re-optimizes the route. The optimizer may change the order again.">
+              <Button loading={isReoptimizing} disabled={isSaving || invalid} onClick={handleSaveAndReoptimize}>
+                Save and re-optimize
               </Button>
-            )}
-
-            <Button
-              type="primary"
-              size="middle"
-              icon={<SaveOutlined />}
-              loading={isSaving}
-              disabled={isReoptimizing || (!isOrderChanged && stopsList.length > 0)}
-              onClick={handleSaveOrder}
-            >
-              Save New Order
-            </Button>
-          </div>
-        </div>
-      }
-      styles={{ body: { padding: "16px 20px", maxHeight: "72vh", overflowY: "auto" } }}
-    >
-      <div className="space-y-3">
-        {/* Search Bar */}
-        {stopsList.length > 5 && (
-          <Input
-            size="small"
-            placeholder="Search stops by job #, name, or address..."
-            prefix={<SearchOutlined className="text-gray-400 text-xs" />}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            allowClear
-            className="text-xs rounded-md"
-          />
-        )}
-
-        {/* Start Depot (Locked) */}
-        {depotStart && (
-          <div className="flex items-center gap-3 p-2.5 rounded-lg border border-amber-200 bg-amber-50/70 select-none">
-            <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 font-bold shadow-xs">
-              <House size={16} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-amber-900">
-                  DEPOT (START)
-                </span>
-                <span className="text-[10px] font-semibold text-amber-700 bg-amber-200/60 px-1.5 py-0.2 rounded">
-                  Locked
-                </span>
-              </div>
-              <p className="text-xs text-amber-800/80 truncate m-0 font-medium">
-                {depotStart.address_formatted || "Departure Depot"}
-              </p>
-            </div>
-            {depotStart.arrival_time && (
-              <div className="text-right text-xs font-bold text-amber-900 shrink-0">
-                <ClockCircleOutlined className="mr-1 text-amber-600" />
-                {formatTime12h(depotStart.arrival_time)}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Draggable Stop List */}
-        <div className="space-y-1.5">
-          {filteredStops.map((stopItem, index) => {
-            const actualIndex = stopsList.findIndex((s) => s.id === stopItem.id);
-            const isDragging = draggedItemIndex === actualIndex;
-            const isDragOver = dragOverIndex === actualIndex;
-            const isPickup = stopItem.stop_type === "pickup";
-            const isDropoff =
-              stopItem.stop_type === "dropoff" ||
-              stopItem.stop_type === "drop_off";
-
-            return (
-              <div
-                key={stopItem.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, actualIndex)}
-                onDragOver={(e) => handleDragOver(e, actualIndex)}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, actualIndex)}
-                onDragEnd={handleDragEnd}
-                className={`reorder-stop-row flex items-center gap-2.5 p-2 rounded-lg border transition-all select-none cursor-grab active:cursor-grabbing ${
-                  isDragging
-                    ? "opacity-40 border-dashed border-emerald-500 bg-emerald-50/50 scale-[0.99]"
-                    : isDragOver
-                    ? "border-2 border-emerald-600 bg-emerald-50 shadow-md translate-y-0.5"
-                    : stopItem.is_new
-                    ? "border-emerald-400 bg-emerald-50/40 hover:bg-emerald-50/70 shadow-xs"
-                    : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/70 shadow-xs"
-                }`}
-              >
-                {/* Drag Handle */}
-                <div
-                  className="text-gray-400 hover:text-gray-700 cursor-grab p-1 shrink-0 flex items-center justify-center"
-                  title="Drag to reorder"
-                >
-                  <GripVertical size={16} />
-                </div>
-
-                {/* Display Sequence Number Badge */}
-                <div
-                  className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 shadow-xs text-white ${
-                    stopItem.is_new
-                      ? "bg-emerald-600 ring-2 ring-emerald-300"
-                      : "bg-slate-700"
-                  }`}
-                >
-                  {actualIndex + 1}
-                </div>
-
-                {/* Stop Type & Highlights */}
-                <div className="shrink-0 flex flex-wrap items-center gap-1">
-                  {isPickup ? (
-                    <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
-                      PICKUP
-                    </span>
-                  ) : isDropoff ? (
-                    <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
-                      DROP-OFF
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-300">
-                      JOB
-                    </span>
-                  )}
-
-                  {/* Newly Added Job Highlight */}
-                  {stopItem.is_new && (
-                    <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-400 flex items-center gap-1 animate-pulse">
-                      <SparklesIcon size={10} className="text-amber-600" />
-                      NEW
-                    </span>
-                  )}
-
-                  {/* Time Edited Flag */}
-                  {stopItem.time_edited && (
-                    <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-purple-100 text-purple-900 border border-purple-300 flex items-center gap-0.5">
-                      <ClockCircleOutlined className="text-[10px]" /> EDITED
-                    </span>
-                  )}
-                </div>
-
-                {/* Stop Details */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900 truncate">
-                    <span>Job #{stopItem.job_id}</span>
-                    {stopItem.candidate_name && (
-                      <span className="text-gray-600 font-semibold truncate">
-                        • {stopItem.candidate_name}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-gray-500 truncate flex items-center gap-1 mt-0.5">
-                    <EnvironmentOutlined className="text-gray-400 text-[10px] shrink-0" />
-                    <span className="truncate">{stopItem.address_formatted || "No address provided"}</span>
-                  </div>
-                </div>
-
-                {/* ETA */}
-                {stopItem.arrival_time && (
-                  <div className="text-right text-xs font-semibold text-gray-700 shrink-0 px-1">
-                    <div className="text-[10px] text-gray-400 font-medium uppercase">ETA</div>
-                    <div className="font-bold text-slate-800">
-                      {formatTime12h(stopItem.arrival_time)}
-                    </div>
-                  </div>
-                )}
-
-                {/* Move Up / Down Buttons */}
-                <div className="flex items-center gap-0.5 shrink-0 pl-1 border-l border-gray-100">
-                  <Tooltip title="Move Stop Up">
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<ArrowUpOutlined className="text-xs" />}
-                      disabled={actualIndex === 0}
-                      aria-label="Move stop up"
-                      onClick={() => moveUp(actualIndex)}
-                      className="p-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded"
-                    />
-                  </Tooltip>
-                  <Tooltip title="Move Stop Down">
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<ArrowDownOutlined className="text-xs" />}
-                      disabled={actualIndex === stopsList.length - 1}
-                      aria-label="Move stop down"
-                      onClick={() => moveDown(actualIndex)}
-                      className="p-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded"
-                    />
-                  </Tooltip>
-                  {onRemoveStop && (
-                    <Popconfirm
-                      title="Remove this stop from route?"
-                      description="The job will be moved back to Unassigned."
-                      okText="Remove"
-                      okButtonProps={{ danger: true, size: "small" }}
-                      cancelButtonProps={{ size: "small" }}
-                      onConfirm={() => handleRemove(stopItem.job_id)}
-                    >
-                      <Tooltip title="Remove Stop from Route">
-                        <Button
-                          type="text"
-                          danger
-                          size="small"
-                          icon={<DeleteOutlined className="text-xs" />}
-                          className="p-1 text-gray-400 hover:text-red-600 rounded"
-                        />
-                      </Tooltip>
-                    </Popconfirm>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-
-          {filteredStops.length === 0 && (
-            <div className="p-8 text-center text-gray-400 text-sm font-medium border border-dashed rounded-lg bg-gray-50">
-              No matching stops found.
-            </div>
+            </Tooltip>
           )}
+          <Button type="primary" loading={isSaving}
+            disabled={isReoptimizing || invalid || (!isOrderChanged && stopsList.length > 0)} onClick={handleSaveOrder}>
+            Save order
+          </Button>
         </div>
-
-        {/* End Depot (Locked) */}
-        {depotEnd && (
-          <div className="flex items-center gap-3 p-2.5 rounded-lg border border-amber-200 bg-amber-50/70 select-none">
-            <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 font-bold shadow-xs">
-              <Flag size={16} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-amber-900">
-                  DEPOT (END)
-                </span>
-                <span className="text-[10px] font-semibold text-amber-700 bg-amber-200/60 px-1.5 py-0.2 rounded">
-                  Locked
-                </span>
-              </div>
-              <p className="text-xs text-amber-800/80 truncate m-0 font-medium">
-                {depotEnd.address_formatted || "Return Depot"}
-              </p>
-            </div>
-            {depotEnd.arrival_time && (
-              <div className="text-right text-xs font-bold text-amber-900 shrink-0">
-                <ClockCircleOutlined className="mr-1 text-amber-600" />
-                {formatTime12h(depotEnd.arrival_time)}
-              </div>
-            )}
-          </div>
+      </div>}
+      styles={{ body: { maxHeight: "calc(100dvh - 280px)", overflowY: "auto" } }}
+    >
+      <div className="flex flex-col gap-3">
+        <p className="sr-only" aria-live="polite">{announcement}</p>
+        {stopsList.length > 5 && (
+          <Input size="small" placeholder="Search by name, address or job #" aria-label="Search stops"
+            prefix={<SearchOutlined className="text-[#626E67]" />} value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)} allowClear />
         )}
+        {searchTerm && <p className="m-0 text-[12px] text-[#626E67]">Showing matches only. Clear the search to drag stops across the whole list.</p>}
+
+        <div className="border border-[#E3E8E5]">
+          {depotStart && depotRow(depotStart, "start")}
+          <ol className="m-0 list-none p-0" aria-label="Stops in order">
+            {filteredStops.map((stopItem) => {
+              const actualIndex = stopsList.findIndex((s) => s.id === stopItem.id);
+              const isDragging = draggedItemIndex === actualIndex;
+              const isDragOver = dragOverIndex === actualIndex;
+              const isPickup = stopItem.stop_type === "pickup" || stopItem.stop_type === "pick_up";
+              const from = startPosition.get(stopItem.originalIndex);
+              const moved = from !== undefined && from !== actualIndex;
+              const bad = outOfOrder.has(stopItem.job_id) && !isPickup;
+              return (
+                <li
+                  key={stopItem.id}
+                  draggable={!busy && !searchTerm}
+                  onDragStart={(e) => handleDragStart(e, actualIndex)}
+                  onDragOver={(e) => handleDragOver(e, actualIndex)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, actualIndex)}
+                  onDragEnd={handleDragEnd}
+                  className={`reorder-stop-row relative flex items-center gap-2.5 border-t border-[#E3E8E5] px-2 py-2 select-none ${
+                    isDragging ? "opacity-40" : ""} ${
+                    bad ? "bg-[#FDECEA]" : moved ? "bg-[#FFF8E6]" : "bg-white hover:bg-[#F8FAF9]"} ${
+                    !busy && !searchTerm ? "cursor-grab active:cursor-grabbing" : ""}`}
+                >
+                  {isDragOver && !isDragging && <span aria-hidden="true" className="absolute inset-x-0 -top-px h-0.5 bg-[#003220]" />}
+                  <span className="shrink-0 p-1 text-[#9AA59F]" title="Drag to reorder" aria-hidden="true"><GripVertical size={16} /></span>
+                  <span className="w-6 shrink-0 text-center text-[13px] font-medium text-[#12211A] tabular-nums">{actualIndex + 1}</span>
+                  <span aria-hidden="true" className="inline-flex h-[30px] w-6 shrink-0 items-center justify-center">
+                    <span className="inline-flex scale-[0.62]"><StopArrowSvg isPickup={isPickup} displayIndex="" fill="#fff" stroke={routeColor} textColor={routeColor} /></span>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px]">
+                      <span className="text-[#626E67]">{isPickup ? "Pickup" : "Drop-off"}</span>
+                      <span className="truncate font-medium text-[#12211A]">{stopItem.candidate_name || `Job #${stopItem.job_id}`}</span>
+                      {stopItem.candidate_name && <span className="text-[12px] text-[#626E67] tabular-nums">Job #{stopItem.job_id}</span>}
+                      {stopItem.is_new && <span className="text-[11px] text-[#0B5D3B]">New</span>}
+                      {stopItem.time_edited && <span className="inline-flex items-center gap-1 text-[11px] text-[#4A5750]"><EditedMark size={11} />Edited</span>}
+                      {moved && !bad && <span className="text-[11px] text-[#8A6700]">Moved from {from! + 1}</span>}
+                      {bad && <span className="text-[11px] text-[#C9372C]">Before its pickup</span>}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[12px] text-[#626E67]">{stopItem.address_formatted || "No address"}</span>
+                  </span>
+                  {stopItem.arrival_time && <span className={`shrink-0 text-right text-[12px] tabular-nums ${moved ? "text-[#626E67]" : "text-[#12211A]"}`}
+                    title={moved ? "Planned time before this change" : "Planned time"}>
+                    {formatTime12h(stopItem.arrival_time)}{moved && <span className="block text-[11px]">was</span>}
+                  </span>}
+                  <span className="flex shrink-0 items-center border-l border-[#E3E8E5] pl-1">
+                    <Button type="text" size="small" icon={<ArrowUpOutlined />} disabled={busy || actualIndex === 0}
+                      aria-label={`Move stop ${actualIndex + 1} up`} title="Move up" onClick={() => moveUp(actualIndex)} />
+                    <Button type="text" size="small" icon={<ArrowDownOutlined />} disabled={busy || actualIndex === stopsList.length - 1}
+                      aria-label={`Move stop ${actualIndex + 1} down`} title="Move down" onClick={() => moveDown(actualIndex)} />
+                    {onRemoveStop && (
+                      <Popconfirm title="Remove this job from the route?" description="Its pickup and drop-off go back to Unassigned."
+                        okText="Remove" okButtonProps={{ danger: true, size: "small" }} cancelButtonProps={{ size: "small" }}
+                        onConfirm={() => handleRemove(stopItem.job_id)}>
+                        <Button type="text" size="small" danger icon={<DeleteOutlined />} disabled={busy}
+                          aria-label={`Remove job ${stopItem.job_id} from this route`} title="Remove from route" />
+                      </Popconfirm>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+            {filteredStops.length === 0 && (
+              <li className="border-t border-[#E3E8E5] py-8 text-center text-[13px] text-[#626E67]">No stop matches this search.</li>
+            )}
+          </ol>
+          {depotEnd && <div className="border-t border-[#E3E8E5]">{depotRow(depotEnd, "end")}</div>}
+        </div>
       </div>
     </Modal>
   );

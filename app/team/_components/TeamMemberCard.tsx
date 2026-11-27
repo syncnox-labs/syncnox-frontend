@@ -30,16 +30,15 @@ const TeamMemberCard = ({
   onToggleCheck,
   onClick,
 }: TeamMemberCardProps) => {
-  const sub = [capitalize(team.role_type), `ID ${team.id}`]
+  // The second line says something a dispatcher can use (role, then the vehicle), not the record number
+  const sub = [capitalize(team.role_type), team.vehicle || (team.status === "inactive" ? "Inactive" : "")]
     .filter(Boolean)
     .join(" · ");
 
   return (
     <div
-      className={`flex items-center gap-2.5 p-2.5 cursor-pointer border transition-all mb-1 bg-white relative rounded-none ${
-        isSelected
-          ? "bg-emerald-50/80 border-[#003220] shadow-xs"
-          : "border-transparent hover:bg-emerald-50/40 hover:border-emerald-200"
+      className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer border-b border-[#E3E8E5] transition-colors relative ${
+        isSelected ? "bg-white shadow-[inset_2px_0_0_#0B5D3B]" : "bg-transparent hover:bg-[#EAEFEC]"
       }`}
       onClick={onClick}
       role="button"
@@ -58,16 +57,16 @@ const TeamMemberCard = ({
           <Checkbox checked={isChecked} />
         </div>
       )}
-      <div className="w-9 h-9 bg-[#003220] text-white flex items-center justify-center text-xs font-bold shrink-0 tracking-wide rounded-none">
+      <div className="w-7 h-7 bg-[#E3E8E5] text-[#12211A] flex items-center justify-center text-[10px] font-medium shrink-0 rounded-none">
         {getInitials(team.name)}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-semibold text-gray-900 leading-snug flex items-center gap-1.5">
+        <div className="text-[13px] font-medium text-[#12211A] leading-snug flex items-center gap-1.5">
           <span className="truncate">{team.name}</span>
           {team.role_type === "driver" && <DriverPresenceIndicator driverId={team.id} />}
         </div>
         {sub && (
-          <div className="text-[11.5px] text-gray-500 truncate mt-0.5 leading-snug">
+          <div className="text-xs text-[#626E67] truncate leading-snug">
             {sub}
           </div>
         )}

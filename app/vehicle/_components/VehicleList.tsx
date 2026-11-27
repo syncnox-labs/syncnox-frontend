@@ -71,9 +71,10 @@ const VehicleList = () => {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return vehicles;
-    return vehicles.filter((v) => v.name.toLowerCase().includes(q));
+    return vehicles.filter((v) => !q || v.name.toLowerCase().includes(q));
   }, [vehicles, search]);
+
+  const noDriverCount = useMemo(() => vehicles.filter((v) => !v.team_member_id).length, [vehicles]);
 
   const toggleCheck = (id: number) => {
     setCheckedIds((prev) =>
@@ -140,7 +141,7 @@ const VehicleList = () => {
   }
 
   return (
-    <div className="responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
+    <div className="lang kit-fluid responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
       {/* ── Page header ─────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-y-2 pb-3 shrink-0 border-b border-gray-200 mb-0">
         <SettingsPageTitle
@@ -160,20 +161,24 @@ const VehicleList = () => {
             </Button>
           )}
           <Button
-            icon={<Download size={15} />}
+            type="text"
+            aria-label="Export vehicles"
+            data-tip="Export vehicles"
+            className="tip"
+            icon={<Download size={18} />}
             loading={isExporting}
             onClick={handleExport}
             id="vehicle-export-btn"
-          >
-            Export
-          </Button>
+          />
           <Button
-            icon={<Upload size={15} />}
+            type="text"
+            aria-label="Import vehicles"
+            data-tip="Import vehicles"
+            className="tip"
+            icon={<Upload size={18} />}
             onClick={() => setBulkModalOpen(true)}
             id="vehicle-bulk-import-btn"
-          >
-            Import Vehicles
-          </Button>
+          />
           <Button
             type="primary"
             icon={<Plus size={15} />}
@@ -199,12 +204,12 @@ const VehicleList = () => {
       <div className={view === "form" ? "contents" : "hidden"}>
       <div data-detail-open={mobileDetailOpen} className="responsive-entity-split flex min-h-0 min-w-0 overflow-hidden gap-0 flex-1">
         {/* LEFT — Searchable card list */}
-        <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
-          <div className="p-3 pb-2 border-b border-gray-200 bg-gray-50/70 shrink-0">
+        <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col bg-[#F3F6F4] overflow-hidden">
+          <div className="px-3 pt-3 pb-2 shrink-0">
             <div className="relative flex items-center">
               <Search className="absolute left-2.5 text-gray-400 pointer-events-none z-10" size={14} />
               <input
-                className="w-full py-1.5 pl-8 pr-2.5 border border-gray-200 text-xs bg-white text-gray-900 outline-none transition focus:border-[#003220] focus:ring-2 focus:ring-[#003220]/10 placeholder:text-gray-400 rounded-none"
+                className="w-full h-8 pl-8 pr-2.5 border border-transparent text-[13px] bg-white text-[#12211A] outline-none transition focus:border-[#0B5D3B] placeholder:text-[#626E67] rounded-none"
                 placeholder="Search vehicles…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -214,16 +219,18 @@ const VehicleList = () => {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
-            <div className="flex items-center justify-between px-1 mb-1.5">
-              <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase m-0">
-                {filtered.length} vehicle{filtered.length !== 1 ? "s" : ""}
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <div className="flex items-center justify-between px-3 py-1.5">
+              {/* Information only: how many vehicles, and how many have nobody assigned to drive them. */}
+              <p className="text-xs text-[#626E67] m-0 tabular-nums">
+                {search.trim() ? `${filtered.length} of ${vehicles.length}` : vehicles.length} vehicle{vehicles.length !== 1 ? "s" : ""}
+                {noDriverCount > 0 && <span title="Plans can still give these vehicles to a driver trip by trip"> · {noDriverCount} without a regular driver</span>}
               </p>
               {filtered.length > 0 && (
                 <button
                   type="button"
                   onClick={handleSelectAll}
-                  className="text-[11px] font-medium text-[#003220] hover:underline cursor-pointer bg-transparent border-none p-0"
+                  className="text-xs font-medium text-[#12211A] underline decoration-[#9AA8A0] underline-offset-4 hover:decoration-[#12211A] cursor-pointer bg-transparent border-none p-0"
                 >
                   {checkedIds.length === filtered.length ? "Deselect all" : "Select all"}
                 </button>
@@ -231,7 +238,7 @@ const VehicleList = () => {
             </div>
 
             {filtered.length === 0 ? (
-              <div className="p-5 text-center text-xs text-gray-400">No vehicles match your search.</div>
+              <div className="p-5 text-center text-xs text-[#626E67]">No vehicles match this search.</div>
             ) : (
               filtered.map((vehicle) => (
                 <VehicleCard
@@ -253,12 +260,12 @@ const VehicleList = () => {
           {selectedVehicle ? (
             <>
               {/* Detail header */}
-              <div className="flex items-center gap-3 p-3.5 px-5 border-b border-gray-200 shrink-0 bg-white">
-                <div className="w-11 h-11 bg-slate-100 flex items-center justify-center text-[#003220] shrink-0 rounded-none">
+              <div className="flex items-center gap-3 py-3 px-5 border-b border-[#D5DCD8] shrink-0 bg-white">
+                <div className="w-10 h-10 bg-[#F1F2F4] flex items-center justify-center text-[#4A5750] shrink-0 rounded-none">
                   <Truck size={22} />
                 </div>
                 <div>
-                  <div className="text-[17px] font-bold text-gray-900 leading-tight">{selectedVehicle.name}</div>
+                  <div className="text-lg font-medium tracking-[-0.01em] text-[#12211A] leading-tight">{selectedVehicle.name}</div>
                   <div className="text-[12.5px] text-gray-500 mt-0.5">
                     {[
                       formatType(selectedVehicle.type),
@@ -297,7 +304,7 @@ const VehicleList = () => {
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3 p-10">
-              <div className="w-14 h-14 bg-slate-100 flex items-center justify-center text-slate-300 rounded-none">
+              <div className="flex items-center justify-center text-[#9AA8A0]">
                 <Truck size={28} />
               </div>
               <p className="text-sm text-gray-400 text-center max-w-[240px]">

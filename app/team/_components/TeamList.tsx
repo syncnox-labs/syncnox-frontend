@@ -64,9 +64,10 @@ const TeamList = () => {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return teams;
-    return teams.filter((t) => t.name.toLowerCase().includes(q));
+    return teams.filter((t) => !q || t.name.toLowerCase().includes(q));
   }, [teams, search]);
+
+  const inactiveCount = useMemo(() => teams.filter((t) => t.status === "inactive").length, [teams]);
 
   const toggleCheck = (id: number) => {
     setCheckedIds((prev) =>
@@ -141,7 +142,7 @@ const TeamList = () => {
   }
 
   return (
-    <div className="responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
+    <div className="lang kit-fluid responsive-entity-page flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
       {/* ── Page header ─────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-y-2 pb-3 shrink-0 border-b border-gray-200 mb-0">
         <SettingsPageTitle
@@ -161,20 +162,24 @@ const TeamList = () => {
             </Button>
           )}
           <Button
-            icon={<Download size={15} />}
+            type="text"
+            aria-label="Export team members"
+            data-tip="Export team members"
+            className="tip"
+            icon={<Download size={18} />}
             loading={isExporting}
             onClick={handleExport}
             id="team-export-btn"
-          >
-            Export
-          </Button>
+          />
           <Button
-            icon={<Upload size={15} />}
+            type="text"
+            aria-label="Import team members"
+            data-tip="Import team members"
+            className="tip"
+            icon={<Upload size={18} />}
             onClick={() => setBulkModalOpen(true)}
             id="team-bulk-import-btn"
-          >
-            Import Team Members
-          </Button>
+          />
           <Button
             type="primary"
             icon={<Plus size={15} />}
@@ -200,12 +205,12 @@ const TeamList = () => {
       <div className={view === "form" ? "contents" : "hidden"}>
       <div data-detail-open={mobileDetailOpen} className="responsive-entity-split flex min-h-0 min-w-0 overflow-hidden gap-0 flex-1">
         {/* LEFT — Searchable card list */}
-        <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col border-r border-gray-200 bg-gray-50/70 overflow-hidden">
-          <div className="p-3 pb-2 border-b border-gray-200 bg-gray-50/70 shrink-0">
+        <div className="responsive-entity-list w-[280px] min-w-[280px] flex flex-col bg-[#F3F6F4] overflow-hidden">
+          <div className="px-3 pt-3 pb-2 shrink-0">
             <div className="relative flex items-center">
               <Search className="absolute left-2.5 text-gray-400 pointer-events-none z-10" size={14} />
               <input
-                className="w-full py-1.5 pl-8 pr-2.5 border border-gray-200 text-xs bg-white text-gray-900 outline-none transition focus:border-[#003220] focus:ring-2 focus:ring-[#003220]/10 placeholder:text-gray-400 rounded-none"
+                className="w-full h-8 pl-8 pr-2.5 border border-transparent text-[13px] bg-white text-[#12211A] outline-none transition focus:border-[#0B5D3B] placeholder:text-[#626E67] rounded-none"
                 placeholder="Search members…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -215,16 +220,18 @@ const TeamList = () => {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
-            <div className="flex items-center justify-between px-1 mb-1.5">
-              <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase m-0">
-                {filtered.length} member{filtered.length !== 1 ? "s" : ""}
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <div className="flex items-center justify-between px-3 py-1.5">
+              {/* Information only: how many people, and how many of them are switched off. */}
+              <p className="text-xs text-[#626E67] m-0 tabular-nums">
+                {search.trim() ? `${filtered.length} of ${teams.length}` : teams.length} member{teams.length !== 1 ? "s" : ""}
+                {inactiveCount > 0 && <span> · {inactiveCount} inactive</span>}
               </p>
               {filtered.length > 0 && (
                 <button
                   type="button"
                   onClick={handleSelectAll}
-                  className="text-[11px] font-medium text-[#003220] hover:underline cursor-pointer bg-transparent border-none p-0"
+                  className="text-xs font-medium text-[#12211A] underline decoration-[#9AA8A0] underline-offset-4 hover:decoration-[#12211A] cursor-pointer bg-transparent border-none p-0"
                 >
                   {checkedIds.length === filtered.length ? "Deselect all" : "Select all"}
                 </button>
@@ -232,7 +239,7 @@ const TeamList = () => {
             </div>
 
             {filtered.length === 0 ? (
-              <div className="p-5 text-center text-xs text-gray-400">No members match your search.</div>
+              <div className="p-5 text-center text-xs text-[#626E67]">No team members match this search.</div>
             ) : (
               filtered.map((team) => (
                 <TeamMemberCard
@@ -254,13 +261,13 @@ const TeamList = () => {
           {selectedTeam ? (
             <>
               {/* Detail header */}
-              <div className="flex items-center gap-3 p-3.5 px-5 border-b border-gray-200 shrink-0 bg-white">
-                <div className="w-11 h-11 bg-primary text-white flex items-center justify-center text-base font-bold shrink-0 rounded-none">
+              <div className="flex items-center gap-3 py-3 px-5 border-b border-[#D5DCD8] shrink-0 bg-white">
+                <div className="w-10 h-10 bg-[#F3F6F4] text-[#12211A] flex items-center justify-center text-sm font-medium shrink-0 rounded-none">
                   {getInitials(selectedTeam.name)}
                 </div>
                 <div>
-                  <div className="text-[17px] font-bold text-gray-900 leading-tight">{selectedTeam.name}</div>
-                  <div className="text-[12.5px] text-gray-500 mt-0.5">
+                  <div className="text-lg font-medium tracking-[-0.01em] text-[#12211A] leading-tight">{selectedTeam.name}</div>
+                  <div className="text-xs text-[#626E67] mt-0.5">
                     {[
                       selectedTeam.role_type
                         ? selectedTeam.role_type.charAt(0).toUpperCase() +
@@ -305,7 +312,7 @@ const TeamList = () => {
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3 p-10">
-              <div className="w-14 h-14 bg-slate-100 flex items-center justify-center text-slate-300 rounded-none">
+              <div className="flex items-center justify-center text-[#9AA8A0]">
                 <Users size={28} />
               </div>
               <p className="text-sm text-gray-400 text-center max-w-[240px]">

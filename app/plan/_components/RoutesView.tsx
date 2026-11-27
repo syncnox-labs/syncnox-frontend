@@ -1,8 +1,10 @@
 "use client";
+import { tableTheme } from "@/components/ui/tableTheme";
+import RoutesToolbar from "@/components/plan/RoutesToolbar";
 import BaseTable from "@/components/Table/BaseTable";
 import { AllRoutes } from "@/types/routes.type";
 import { useRouteStore } from "@/store/routes.store";
-import { Typography, Progress, Button, Select, Flex, Popover, Checkbox, Modal, message } from "antd";
+import { Typography, Button, Select, Flex, Popover, Checkbox, Modal, message } from "antd";
 import { ColDef } from "ag-grid-community";
 import { useRouter } from "next/navigation";
 import StatusBadge from "@/components/Jobs/StatusBanner";
@@ -12,6 +14,7 @@ import Link from "next/link";
 import { useIndexStore } from "@/store/index.store";
 import { FilterFilled, DeleteOutlined, ExclamationCircleFilled, PlusOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { formatPlanDate } from "@/utils/app.utils";
 import { planActionsClassName, planToolbarClassName } from "./planStyles";
 
 const { Title } = Typography;
@@ -31,80 +34,6 @@ const STATUS_FILTER_OPTIONS = [
   { value: "completed", label: "Completed", dot: "bg-emerald-500" },
   { value: "all", label: "All", dot: "" },
 ] as const;
-
-const StatusHeader = (props: any) => {
-  const { selectedStatus, setSelectedStatus } = props;
-  const [open, setOpen] = useState(false);
-
-  const activeOption =
-    STATUS_FILTER_OPTIONS.find((opt) => opt.value === selectedStatus) ||
-    STATUS_FILTER_OPTIONS[3];
-
-  const filterContent = (
-    <div className="p-1 min-w-[150px] space-y-1 font-sans">
-      <div className="px-2 py-1 text-[11px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 mb-1">
-        Filter by Status
-      </div>
-      {STATUS_FILTER_OPTIONS.map(({ value, label, dot }) => {
-        const isChecked = selectedStatus === value;
-        return (
-          <div
-            key={value}
-            onClick={() => {
-              setSelectedStatus(value);
-              setOpen(false);
-            }}
-            className={`flex items-center gap-2.5 px-2 py-1.5 rounded cursor-pointer transition-colors text-xs ${
-              isChecked
-                ? "bg-emerald-50 text-emerald-900 font-semibold"
-                : "hover:bg-gray-50 text-gray-700 font-medium"
-            }`}
-          >
-            <Checkbox checked={isChecked} />
-            {dot && <span className={`w-2 h-2 rounded-full ${dot} shrink-0`} />}
-            <span>{label}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-
-  return (
-    <Popover
-      content={filterContent}
-      trigger="click"
-      placement="bottomRight"
-      open={open}
-      onOpenChange={setOpen}
-      arrow={false}
-      styles={{ container: { padding: 4, borderRadius: 8 } }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex items-center justify-between w-full cursor-pointer group py-1"
-      >
-        <span className="font-bold text-sm text-[#003220]">Status</span>
-        <div
-          className={`flex items-center gap-1.5 px-2 py-0.5 rounded border transition-all text-xs ${
-            selectedStatus !== "all"
-              ? "bg-emerald-50 border-emerald-300 text-emerald-800 font-semibold"
-              : "bg-gray-50 border-gray-200 text-gray-600 group-hover:border-gray-300"
-          }`}
-        >
-          {activeOption.dot && (
-            <span className={`w-1.5 h-1.5 rounded-full ${activeOption.dot} shrink-0`} />
-          )}
-          <span className="text-[11px] truncate max-w-[70px]">
-            {activeOption.label}
-          </span>
-          <span className="text-[9px] text-gray-400 group-hover:text-gray-600 transition-transform">
-            {open ? "▲" : "▼"}
-          </span>
-        </div>
-      </div>
-    </Popover>
-  );
-};
 
 const DistanceHeader = (props: any) => {
   const { displayName, unit, setUnit, progressSort } = props;
@@ -137,6 +66,7 @@ const DistanceHeader = (props: any) => {
 
 export default function RoutesView() {
   const router = useRouter();
+  const [search, setSearch] = useState("");
   const { setCurrentTab } = useIndexStore();
   const { routes, isLoading, refreshRoutes, deleteRoute, deleteRoutesBulk, selectedStatus, setSelectedStatus } =
     useRouteStore();
@@ -193,17 +123,14 @@ export default function RoutesView() {
       },
     },
     {
-      headerName: "Scheduled Date",
+      headerName: "Date",
+      headerTooltip: "Scheduled date",
       field: "scheduled_date",
+      valueFormatter: (params: any) => formatPlanDate(params.value),
       width: 150,
     },
     {
       headerName: "Status",
-      headerComponent: StatusHeader,
-      headerComponentParams: {
-        selectedStatus,
-        setSelectedStatus,
-      },
       field: "status",
       cellRenderer: (params: any) => (
         <StatusBadge value={params.value} styleMap={statusStyleMap} />
@@ -216,6 +143,41 @@ export default function RoutesView() {
       field: "assigned_team_members",
       valueFormatter: (params) =>
         params.value?.map((m: any) => m.name).join(", ") || "-",
+      // Search still matches every name, including the ones behind "+N"
+      getQuickFilterText: (params) => params.value?.map((m: any) => m.name).join(" ") || "",
+      width: 170,
+      cellRenderer: (params: any) => {
+        const members: { id?: number; name: string }[] = params.value || [];
+        if (members.length === 0) return <span className="text-[#626F86]">-</span>;
+        const initials = (name: string) => name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+        const tile = "inline-flex h-6 w-6 shrink-0 items-center justify-center text-[10px] font-semibold leading-none";
+        const shown = members.length > 4 ? members.slice(0, 3) : members;
+        const hidden = members.length - shown.length;
+        return (
+          <Popover
+            placement="bottomLeft"
+            mouseEnterDelay={0.15}
+            title={<span className="text-xs font-semibold text-[#44546F]">{members.length} team {members.length === 1 ? "member" : "members"}</span>}
+            content={
+              <div className="flex max-h-64 min-w-[180px] flex-col gap-1.5 overflow-auto">
+                {members.map((m, i) => (
+                  <div key={m.id ?? i} className="flex items-center gap-2 text-[13px] text-[#172B4D]">
+                    <span className={`${tile} bg-[#F1F2F4] text-[#44546F]`} aria-hidden="true">{initials(m.name)}</span>
+                    {m.name}
+                  </div>
+                ))}
+              </div>
+            }
+          >
+            <div className="flex h-full w-fit cursor-default items-center gap-[3px]" aria-label={members.map((m) => m.name).join(", ")}>
+              {shown.map((m, i) => (
+                <span key={m.id ?? i} className={`${tile} bg-[#F1F2F4] text-[#44546F]`}>{initials(m.name)}</span>
+              ))}
+              {hidden > 0 && <span className={`${tile} w-auto min-w-6 border border-[#DCDFE4] bg-white px-1 text-[#44546F]`}>+{hidden}</span>}
+            </div>
+          </Popover>
+        );
+      },
     },
     {
       headerName: "Created At",
@@ -223,7 +185,7 @@ export default function RoutesView() {
       valueFormatter: (params) => {
         if (!params.value) return "-";
         const d = dayjs(params.value);
-        return d.isValid() ? d.format("YYYY-MM-DD hh:mm A") : String(params.value);
+        return d.isValid() ? d.format("MMM D, YYYY · h:mm A") : String(params.value);
       },
       comparator: (valueA, valueB) => {
         if (!valueA && !valueB) return 0;
@@ -261,15 +223,28 @@ export default function RoutesView() {
         const h = Math.floor(totalSeconds / 3600);
         const m = Math.floor((totalSeconds % 3600) / 60);
         const s = Math.floor(totalSeconds % 60);
-        return `${h} h ${m} m ${s} s`;
+        return h > 0 ? `${h} h ${m} min` : `${m} min`;
       },
       width: 120,
     },
     {
       headerName: "Progress",
-      cellRenderer: (params: any) => (
-        <Progress percent={params.data?.progress_percentage} />
-      ),
+      minWidth: 180,
+      cellRenderer: (params: any) => {
+        // Square, thin bar; the figure sits in a fixed-width slot so every bar is the same length and the numbers line up
+        const percent = Math.max(0, Math.min(100, Math.round(Number(params.data?.progress_percentage) || 0)));
+        const done = percent >= 100;
+        return (
+          <div className="flex h-full w-full items-center gap-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label={`${percent}% of stops completed`}>
+            <div className="h-1.5 min-w-0 flex-1 bg-[#DCDFE4]">
+              <div className="h-full" style={{ width: `${percent}%`, background: done ? "#1F845A" : "#0C66E4" }} />
+            </div>
+            <span className="w-10 shrink-0 text-right text-[13px] tabular-nums" style={{ color: done ? "#1F845A" : percent === 0 ? "#626F86" : "#172B4D", fontWeight: done ? 600 : 400 }}>
+              {percent}%
+            </span>
+          </div>
+        );
+      },
     },
     {
       headerName: "Total Stops",
@@ -338,30 +313,23 @@ export default function RoutesView() {
 
   return (
     <div className="flex flex-col h-full min-h-[360px] min-w-0">
-      <Flex justify="space-between" gap={36} align="center" className={planToolbarClassName}>
-        <Title level={4} className="m-0 pt-2">
-          Routes
-        </Title>
-        <Flex wrap gap={8} align="center" className={`${planActionsClassName} ms-auto`}>
-          <Link href="/plan" onClick={() => setCurrentTab("jobs")}>
-            <Button aria-label="Create new route">
-              <span className="inline-flex items-center gap-1.5 lg:hidden"><PlusOutlined aria-hidden="true" />Route</span>
-              <span className="hidden lg:inline">Create New Route</span>
-            </Button>
-          </Link>
-          <Button
-            danger
-            icon={<DeleteOutlined />}
-            disabled={selectedRouteIds.length === 0}
-            onClick={handleDeleteRoutesRequest}
-          />
-        </Flex>
-      </Flex>
-      <div className="flex-1 min-h-0 mt-2">
+      <RoutesToolbar
+        count={isLoading ? undefined : routes.length}
+        search={search}
+        onSearch={setSearch}
+        status={selectedStatus}
+        onStatusChange={value => setSelectedStatus(value as typeof selectedStatus)}
+        selectedCount={selectedRouteIds.length}
+        onDelete={handleDeleteRoutesRequest}
+        onCreateRoute={() => setCurrentTab("jobs")}
+      />
+      <div className="flex-1 min-h-0">
         <BaseTable<AllRoutes>
           columnDefs={columns}
+          themeParams={tableTheme}
           rowData={routes}
           rowSelection="multiple"
+          quickFilterText={search}
           loading={isLoading}
           emptyMessage="No routes to show"
           pagination={true}

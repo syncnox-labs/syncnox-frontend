@@ -2,6 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  // One icon style: both icon libraries resolve to Phosphor wrappers in lib/icons
+  turbopack: {
+    resolveAlias: {
+      "lucide-react": "./lib/icons/lucide.tsx",
+      "@ant-design/icons": "./lib/icons/antd.tsx",
+    },
+  },
   async rewrites() {
     if (process.env.NEXT_PUBLIC_ENVIRONMENT === "development") {
       const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL;

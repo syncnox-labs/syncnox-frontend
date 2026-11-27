@@ -81,6 +81,45 @@ interface ProcessedRow {
   [key: string]: any;
 }
 
+// One palette for row states: green ready, amber worth a look, red skipped.
+const STATUS_LOOK: Record<string, { color: string; icon: typeof CheckCircleOutlined }> = {
+  success: { color: "#1F845A", icon: CheckCircleOutlined },
+  duplicate: { color: "#B38600", icon: WarningOutlined },
+  validation_error: { color: "#C9372C", icon: ExclamationCircleOutlined },
+  geocoding_error: { color: "#C9372C", icon: CloseCircleOutlined },
+};
+const STATUS_ORDER = ["geocoding_error", "validation_error", "duplicate", "success"];
+
+/**
+ * Which column says who or what a row is, for any template. Nothing here names a field: the
+ * template's own labels, its required marks and the sheet's values decide.
+ *  - a "name" in the field label or key counts most;
+ *  - a required field counts;
+ *  - values that differ row to row identify a row (a client shared by 30 rows does not);
+ *  - addresses, dates, times and numbers never identify a row.
+ */
+export function pickIdentityField(
+  fields: { identifier: string; label: string; required: boolean; position: number }[],
+  rows: Record<string, any>[],
+): string | null {
+  // Whole words only: "candidate" must not read as "date".
+  const NOT_IDENTITY = new Set(["address", "location", "point", "date", "time", "hour", "phone", "email", "duration", "type",
+    "priority", "lat", "lng", "latitude", "longitude", "note", "notes", "start", "end", "window", "minutes"]);
+  const words = (text: string) => text.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  let best: { id: string; score: number; position: number } | null = null;
+  for (const field of fields) {
+    const text = `${field.identifier} ${field.label}`;
+    if (words(text).some(word => NOT_IDENTITY.has(word))) continue;
+    const values = rows.map(row => String(row?.[field.identifier] ?? row?.custom_fields?.[field.identifier] ?? "").trim()).filter(Boolean);
+    if (!values.length) continue;
+    if (values.every(v => /^[\d\s.,:+\-/()]+$/.test(v))) continue;
+    const distinct = new Set(values).size / values.length;
+    const score = (words(text).some(word => word === "name" || word === "nom") ? 3 : 0) + (field.required ? 1 : 0) + (distinct > 0.6 ? 2 : distinct > 0.3 ? 1 : 0);
+    if (!best || score > best.score || (score === best.score && field.position < best.position)) best = { id: field.identifier, score, position: field.position };
+  }
+  return best?.id ?? null;
+}
+
 const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
   const gridRef = useRef<AgGridReact>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -97,6 +136,16 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
 
   type FilterType = "all" | "geocoding_error" | "validation_error" | "duplicate" | "ready";
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
+  // The column kept visible while scrolling sideways: suggested from the data, changeable, remembered per template.
+  const templateKey = useBulkUploadStore.getState().templateType || useIndexStore.getState().activeJobTemplate || "default";
+  const pinStorageKey = `syncnox.importKeepVisible.${templateKey}`;
+  const [pinChoice, setPinChoiceState] = useState<string | null | undefined>(() => {
+    try { const saved = window.localStorage.getItem(pinStorageKey); return saved === null ? undefined : saved === "" ? null : saved; } catch { return undefined; }
+  });
+  const setPinChoice = (value: string | null) => {
+    setPinChoiceState(value);
+    try { window.localStorage.setItem(pinStorageKey, value ?? ""); } catch { /* storage can be unavailable */ }
+  };
 
   // Process and categorize row data
   const { rowData, stats } = useMemo(() => {
@@ -168,6 +217,25 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
     };
   }, [geocodedData]);
 
+  // What the import will create, in plain numbers.
+  const facts = useMemo(() => {
+    const ready = rowData.filter(r => r.status === "success" || r.status === "duplicate");
+    const pick = (r: ProcessedRow, key: string) => String(r[key] ?? r.custom_fields?.[key] ?? "").trim();
+    const dates = [...new Set(ready.map(r => pick(r, "scheduled_date") || defaultScheduledDate || "").filter(Boolean))].sort();
+    const clients = new Set(ready.map(r => pick(r, "client_name")).filter(Boolean)).size;
+    const tripCounts = new Map<string, number>();
+    ready.forEach(r => { const t = pick(r, "pickup_type") || pick(r, "job_type"); if (t) tripCounts.set(t, (tripCounts.get(t) ?? 0) + 1); });
+    const dayLabel = (value: string) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+      return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : value;
+    };
+    return {
+      dates: dates.length === 0 ? null : dates.length === 1 ? dayLabel(dates[0]) : `${dates.length} dates, ${dayLabel(dates[0])} to ${dayLabel(dates[dates.length - 1])}`,
+      clients,
+      trips: [...tripCounts.entries()].sort((a, b) => b[1] - a[1]).map(([type, n]) => `${n} ${type.replaceAll("_", " ").toLowerCase()}`),
+    };
+  }, [rowData, defaultScheduledDate]);
+
   // Filter row data based on selected status filter
   const displayedRowData = useMemo(() => {
     if (activeFilter === "all") return rowData;
@@ -181,6 +249,28 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
     setActiveFilter((prev) => (prev === filter ? "all" : filter));
   };
 
+  // Columns follow the user's own spreadsheet, so a new user recognises their file whatever the template.
+  const uploadResponse = useBulkUploadStore.getState().uploadResponse;
+  const sheetColumns = uploadResponse?.sample_data?.[0] ? Object.keys(uploadResponse.sample_data[0]) : [];
+  const sheetPosition = (identifier: string) => {
+    const i = sheetColumns.indexOf(columnMapping[identifier]);
+    if (i !== -1) return i;
+    const meta = uploadResponse?.columns?.find(c => c.identifier === identifier);
+    return 1000 + (meta?.index ?? 0);
+  };
+  const keepVisibleOptions = Object.keys(columnMapping).filter(key => columnMapping[key] && key !== "address_formatted")
+    .sort((a, b) => sheetPosition(a) - sheetPosition(b))
+    .map(identifier => {
+      const meta = uploadResponse?.columns?.find(c => c.identifier === identifier);
+      return { identifier, label: meta?.description?.replace(/\s*\*$/, "") || identifier.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" "),
+        required: /\*\s*$/.test(meta?.description ?? ""), position: sheetPosition(identifier) };
+    });
+  const suggestedPin = useMemo(() => pickIdentityField(keepVisibleOptions, geocodedData.slice(0, 200).map(row => row.original_data || {})),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [columnMapping, geocodedData.length]);
+  const pinnedField = pinChoice === undefined || (pinChoice !== null && !keepVisibleOptions.some(o => o.identifier === pinChoice))
+    ? suggestedPin : pinChoice;
+
   // Column definitions with enhanced styling
   const columnDefs: ColDef[] = useMemo(() => {
     const activeTemplate =
@@ -192,56 +282,29 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
 
     const columns: ColDef[] = [
       {
-        headerName: "",
+        headerName: "Status",
         field: "status",
-        width: 50,
+        width: 190,
         pinned: "left",
-        sortable: false,
+        sortable: true,
         filter: false,
+        // Problems first when sorted ascending.
+        comparator: (a: string, b: string) => STATUS_ORDER.indexOf(a) - STATUS_ORDER.indexOf(b),
         cellRenderer: (params: { data: ProcessedRow }) => {
           const { status, statusMessage } = params.data;
-
-          const iconStyle = { fontSize: 16 };
-
-          switch (status) {
-            case "geocoding_error":
-              return (
-                <Tooltip title={statusMessage} overlayStyle={{ maxWidth: 400 }}>
-                  <CloseCircleOutlined
-                    style={{ ...iconStyle, color: "#ff4d4f" }}
-                  />
-                </Tooltip>
-              );
-            case "validation_error":
-              return (
-                <Tooltip
-                  title={
-                    <div style={{ whiteSpace: "pre-line" }}>
-                      {statusMessage}
-                    </div>
-                  }
-                  overlayStyle={{ maxWidth: 400 }}
-                >
-                  <ExclamationCircleOutlined
-                    style={{ ...iconStyle, color: "#fa8c16" }}
-                  />
-                </Tooltip>
-              );
-            case "duplicate":
-              return (
-                <Tooltip title={statusMessage} overlayStyle={{ maxWidth: 400 }}>
-                  <WarningOutlined style={{ ...iconStyle, color: "#1890ff" }} />
-                </Tooltip>
-              );
-            default:
-              return (
-                <Tooltip title="Ready to import">
-                  <CheckCircleOutlined
-                    style={{ ...iconStyle, color: "#52c41a" }}
-                  />
-                </Tooltip>
-              );
-          }
+          const look = STATUS_LOOK[status] ?? STATUS_LOOK.success;
+          const Icon = look.icon;
+          const firstLine = String(statusMessage || "").split("\n")[0];
+          const text = status === "success" ? "Ready" : status === "duplicate" ? "Possible duplicate"
+            : status === "geocoding_error" ? "Address not found" : firstLine || "Needs fixing";
+          return (
+            <Tooltip title={status === "success" ? "Ready to import" : <div style={{ whiteSpace: "pre-line" }}>{statusMessage}</div>} overlayStyle={{ maxWidth: 400 }}>
+              <span className="inline-flex max-w-full items-center gap-1.5 text-[12px]" style={{ color: look.color }}>
+                <Icon style={{ fontSize: 14, flexShrink: 0 }} />
+                <span className="truncate">{text}</span>
+              </span>
+            </Tooltip>
+          );
         },
       },
     ];
@@ -330,7 +393,9 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
     // Add dynamic columns for mapped fields
     const mappedFields = new Set(Object.keys(columnMapping).filter(key => columnMapping[key]));
     if (uploadCols.some(col => col.identifier === "language")) mappedFields.add("language");
-    mappedFields.forEach((identifier) => {
+    const fieldOrder = [...mappedFields].filter(identifier => identifier !== "address_formatted");
+    fieldOrder.sort((a, b) => sheetPosition(a) - sheetPosition(b));
+    fieldOrder.forEach((identifier) => {
       if (identifier !== "address_formatted") {
         // Skip redundant first_name column if client_name is mapped or template is worker_shuttle
         if (identifier === "first_name" && (isWorkerShuttle || columnMapping["client_name"])) {
@@ -352,8 +417,12 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
 
         const colDef: ColDef = {
           headerName: headerText,
+          headerTooltip: headerText,
           field: identifier,
-          width: 150,
+          width: identifier.includes("address") || identifier.endsWith("_point") ? 220 : identifier.includes("name") ? 180 : 150,
+          wrapHeaderText: true,
+          autoHeaderHeight: true,
+          tooltipValueGetter: (params) => (params.value ? String(params.value) : undefined),
           editable: true,
           valueGetter: (params) => {
             const d = params.data;
@@ -383,6 +452,15 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
           },
         };
 
+        if (identifier === "scheduled_date") {
+          colDef.valueFormatter = (params) => {
+            const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(params.value ?? ""));
+            if (!match) return params.value ?? "";
+            const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+            return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+          };
+        }
+        if (identifier === pinnedField) { colDef.pinned = "left"; colDef.lockPosition = "left"; }
         if (identifier === "pickup_type") {
           colDef.cellEditor = "agSelectCellEditor";
           colDef.cellEditorParams = {
@@ -405,7 +483,7 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
     });
 
     return columns;
-  }, [columnMapping]);
+  }, [columnMapping, pinnedField]);
 
   /**
    * Re-resolve a row's coordinates from its current addresses.
@@ -621,11 +699,10 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
 
     switch (params.data.status) {
       case "geocoding_error":
-        return "bg-red-50";
       case "validation_error":
-        return "bg-orange-50";
+        return "bg-[#FDECEA]";
       case "duplicate":
-        return "bg-blue-50";
+        return "bg-[#FFF8E6]";
       default:
         return "";
     }
@@ -702,176 +779,56 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
 
   return (
     <div className="flex flex-col h-full min-h-0 flex-1">
-      {/* Interactive Filter Bar */}
-      <div className="flex flex-wrap items-center gap-2 mb-2 p-1.5 bg-gray-50/80 border border-gray-200 rounded-none shadow-2xs">
-        <div className="flex items-center gap-1.5 px-2 text-gray-500 border-r border-gray-200 pr-2.5 mr-0.5">
-          <FilterOutlined className="text-xs text-gray-500" />
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-            Filter:
-          </span>
+      {/* Answer first: what will happen, then what needs a look */}
+      <div className="lang mb-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <div className="text-[18px] font-medium text-[#12211A]">
+            {stats.readyToImport === stats.total
+              ? `${stats.total} ${stats.total === 1 ? "job is" : "jobs are"} ready to import`
+              : `${stats.readyToImport} of ${stats.total} jobs ready · ${stats.geocodingErrors + stats.validationErrors} need fixing`}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[13px] text-[#4A5750]">
+            {facts.dates && <span>{facts.dates}</span>}
+            {facts.clients > 0 && <span>· {facts.clients} {facts.clients === 1 ? "client" : "clients"}</span>}
+            {facts.trips.length > 0 && <span>· {facts.trips.join(", ")}</span>}
+            {stats.duplicates > 0 && <span className="text-[#8A6700]">· {stats.duplicates} possible {stats.duplicates === 1 ? "duplicate" : "duplicates"} (still imported)</span>}
+          </div>
         </div>
-
-        {/* All Rows Filter Pill */}
-        <Tooltip title={activeFilter === "all" ? "Showing all rows" : "Click to show all rows"}>
-          <button
-            type="button"
-            onClick={() => handleFilterClick("all")}
-            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-none cursor-pointer text-xs font-medium transition-all border ${
-              activeFilter === "all"
-                ? "bg-white border-gray-400 shadow-2xs text-gray-900 font-semibold"
-                : "bg-white/60 border-gray-200 text-gray-600 hover:bg-white hover:border-gray-300"
-            }`}
-          >
-            <InfoCircleOutlined className={activeFilter === "all" ? "text-gray-700" : "text-gray-400"} />
-            <span>All Rows</span>
-            <span
-              className={`px-1.5 py-0 rounded-none text-[11px] font-bold ${
-                activeFilter === "all"
-                  ? "bg-gray-900 text-white"
-                  : "bg-gray-100 text-gray-700 border border-gray-200"
-              }`}
-            >
-              {stats.total}
-            </span>
-          </button>
-        </Tooltip>
-
-        {/* Geocoding Errors Filter Pill */}
-        {stats.geocodingErrors > 0 && (
-          <Tooltip title={activeFilter === "geocoding_error" ? "Showing geocoding errors (Click to reset)" : `Click to filter ${stats.geocodingErrors} geocoding error(s)`}>
-            <button
-              type="button"
-              onClick={() => handleFilterClick("geocoding_error")}
-              className={`flex items-center gap-1.5 px-2 py-0.5 rounded-none cursor-pointer text-xs font-medium transition-all border ${
-                activeFilter === "geocoding_error"
-                  ? "bg-red-50 border-red-500 text-red-900 font-semibold"
-                  : "bg-white/60 border-red-200 text-red-600 hover:bg-red-50/80 hover:border-red-300"
-              }`}
-            >
-              <CloseCircleOutlined style={{ color: "#ff4d4f" }} />
-              <span>Geocoding Errors</span>
-              <span
-                className={`px-1.5 py-0 rounded-none text-[11px] font-bold ${
-                  activeFilter === "geocoding_error"
-                    ? "bg-red-600 text-white"
-                    : "bg-red-100 text-red-700 border border-red-200"
-                }`}
-              >
-                {stats.geocodingErrors}
-              </span>
-            </button>
-          </Tooltip>
-        )}
-
-        {/* Validation Errors Filter Pill */}
-        {stats.validationErrors > 0 && (
-          <Tooltip title={activeFilter === "validation_error" ? "Showing validation errors (Click to reset)" : `Click to filter ${stats.validationErrors} validation error(s)`}>
-            <button
-              type="button"
-              onClick={() => handleFilterClick("validation_error")}
-              className={`flex items-center gap-1.5 px-2 py-0.5 rounded-none cursor-pointer text-xs font-medium transition-all border ${
-                activeFilter === "validation_error"
-                  ? "bg-orange-50 border-orange-500 text-orange-900 font-semibold"
-                  : "bg-white/60 border-orange-200 text-orange-600 hover:bg-orange-50/80 hover:border-orange-300"
-              }`}
-            >
-              <ExclamationCircleOutlined style={{ color: "#fa8c16" }} />
-              <span>Validation Errors</span>
-              <span
-                className={`px-1.5 py-0 rounded-none text-[11px] font-bold ${
-                  activeFilter === "validation_error"
-                    ? "bg-orange-500 text-white"
-                    : "bg-orange-100 text-orange-700 border border-orange-200"
-                }`}
-              >
-                {stats.validationErrors}
-              </span>
-            </button>
-          </Tooltip>
-        )}
-
-        {/* Duplicates Filter Pill */}
-        {stats.duplicates > 0 && (
-          <Tooltip title={activeFilter === "duplicate" ? "Showing duplicate rows (Click to reset)" : `Click to filter ${stats.duplicates} duplicate row(s)`}>
-            <button
-              type="button"
-              onClick={() => handleFilterClick("duplicate")}
-              className={`flex items-center gap-1.5 px-2 py-0.5 rounded-none cursor-pointer text-xs font-medium transition-all border ${
-                activeFilter === "duplicate"
-                  ? "bg-blue-50 border-blue-500 text-blue-900 font-semibold"
-                  : "bg-white/60 border-blue-200 text-blue-600 hover:bg-blue-50/80 hover:border-blue-300"
-              }`}
-            >
-              <WarningOutlined style={{ color: "#1890ff" }} />
-              <span>Duplicates</span>
-              <span
-                className={`px-1.5 py-0 rounded-none text-[11px] font-bold ${
-                  activeFilter === "duplicate"
-                    ? "bg-blue-600 text-white"
-                    : "bg-blue-100 text-blue-700 border border-blue-200"
-                }`}
-              >
-                {stats.duplicates}
-              </span>
-            </button>
-          </Tooltip>
-        )}
-
-        {/* Ready to Import Filter Pill */}
-        <Tooltip title={activeFilter === "ready" ? "Showing ready rows (Click to reset)" : `Click to filter ${stats.readyToImport} ready row(s)`}>
-          <button
-            type="button"
-            onClick={() => handleFilterClick("ready")}
-            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-none cursor-pointer text-xs font-medium transition-all border ml-auto ${
-              activeFilter === "ready"
-                ? "bg-green-50 border-green-600 text-green-900 font-semibold"
-                : "bg-white/60 border-green-200 text-green-700 hover:bg-green-50/80 hover:border-green-300"
-            }`}
-          >
-            <CheckCircleOutlined style={{ color: "#52c41a" }} />
-            <span>Ready to Import</span>
-            <span
-              className={`px-1.5 py-0 rounded-none text-[11px] font-bold ${
-                activeFilter === "ready"
-                  ? "bg-green-600 text-white"
-                  : "bg-green-100 text-green-800 border border-green-200"
-              }`}
-            >
-              {stats.readyToImport}
-            </span>
-          </button>
-        </Tooltip>
-
-        {/* Clear Filter Link */}
-        {activeFilter !== "all" && (
-          <button
-            type="button"
-            onClick={() => setActiveFilter("all")}
-            className="text-xs text-gray-500 hover:text-gray-900 underline cursor-pointer ml-2 px-1 py-0.5"
-          >
-            Reset
-          </button>
-        )}
+        <div role="tablist" aria-label="Show rows" className="flex items-stretch border-b border-[#E3E8E5]">
+          {([
+            ["all", "All", stats.total, "#12211A"],
+            ["ready", "Ready", stats.readyToImport, "#1F845A"],
+            ...(stats.geocodingErrors ? [["geocoding_error", "Address not found", stats.geocodingErrors, "#C9372C"]] : []),
+            ...(stats.validationErrors ? [["validation_error", "Needs fixing", stats.validationErrors, "#C9372C"]] : []),
+            ...(stats.duplicates ? [["duplicate", "Possible duplicates", stats.duplicates, "#B38600"]] : []),
+          ] as [FilterType, string, number, string][]).map(([key, label, count, color]) => {
+            const on = activeFilter === key;
+            return <button key={key} type="button" role="tab" aria-selected={on} onClick={() => setActiveFilter(key)}
+              className={`-mb-px inline-flex items-center gap-1.5 border-0 border-b-2 bg-transparent px-2.5 py-1.5 text-[13px] cursor-pointer ${on ? "font-medium" : "text-[#4A5750] hover:text-[#12211A]"}`}
+              style={{ borderBottomColor: on ? color : "transparent", color: on ? color : undefined }}>
+              {label}<span className="tabular-nums text-[12px] opacity-80">{count}</span>
+            </button>;
+          })}
+        </div>
       </div>
-
-      {/* Error Alerts */}
       {stats.hasErrors && (
-        <Alert
-          type="warning"
-          showIcon
-          icon={<ExclamationCircleOutlined />}
-          className="mb-4"
-          message={
-            <span>
-              <strong>
-                {stats.geocodingErrors + stats.validationErrors} rows
-              </strong>{" "}
-              have errors and will be skipped during import. Hover over the
-              status icon to see details.
-            </span>
-          }
-        />
+        <p className="lang m-0 mb-2 border-l-2 border-[#C9372C] bg-[#FDECEA] px-3 py-2 text-[13px] text-[#12211A]">
+          {stats.geocodingErrors + stats.validationErrors} {stats.geocodingErrors + stats.validationErrors === 1 ? "row is" : "rows are"} skipped unless fixed.
+          Double-click a cell to correct it; the address is checked again straight away.
+        </p>
       )}
+      <div className="lang mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        {!stats.hasErrors ? <p className="m-0 text-[12px] text-[#626E67]">Double-click any cell to correct it before importing. Changed addresses are checked again.</p> : <span />}
+        {keepVisibleOptions.length > 1 && <label className="flex items-center gap-2 text-[12px] text-[#4A5750]"
+          title="This column stays on the left while you scroll sideways. Your choice is remembered for this job type.">
+          Keep visible
+          <select value={pinnedField ?? ""} onChange={e => setPinChoice(e.target.value || null)} aria-label="Column to keep visible while scrolling"
+            className="h-7 border border-[#D5DCD8] bg-white px-1.5 text-[12px] text-[#12211A]">
+            <option value="">No column</option>
+            {keepVisibleOptions.map(o => <option key={o.identifier} value={o.identifier}>{o.label}{o.identifier === suggestedPin ? " (suggested)" : ""}</option>)}
+          </select>
+        </label>}
+      </div>
 
       {/* Data Grid Container */}
       <div className="flex-1 min-h-0 relative mb-3 border border-gray-200 overflow-hidden">
@@ -893,22 +850,22 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
             suppressRowClickSelection={true}
             getRowClass={getRowClass}
             onCellValueChanged={handleCellValueChanged}
-            headerHeight={40}
-            rowHeight={36}
+            rowHeight={40}
+            tooltipShowDelay={400}
           />
         </div>
       </div>
 
       {/* Footer Actions */}
       <div className="import-step-footer flex items-center justify-between pt-4 border-t mt-4">
-        <span className="text-sm text-gray-500">
+        <span className="text-[13px] text-[#4A5750]">
           {resolvingRows.size > 0
             ? `Updating locations for ${resolvingRows.size} edited row${
                 resolvingRows.size > 1 ? "s" : ""
               }...`
             : stats.readyToImport > 0
-            ? `${stats.readyToImport} jobs will be imported`
-            : "No valid jobs to import"}
+            ? `${stats.readyToImport} ${stats.readyToImport === 1 ? "job" : "jobs"} will be added to the plan as drafts${stats.total > stats.readyToImport ? ` · ${stats.total - stats.readyToImport} skipped` : ""}`
+            : "Nothing can be imported yet. Fix the rows marked in red."}
         </span>
 
         <div className="flex gap-2">
@@ -934,8 +891,7 @@ const DataPreviewStep = ({ onFinish, onBack }: DataPreviewStepProps) => {
               disabled={stats.readyToImport === 0 || resolvingRows.size > 0}
               className="rounded-none"
             >
-              Import{" "}
-              {stats.readyToImport > 0 ? `${stats.readyToImport} Jobs` : ""}
+              {stats.readyToImport > 0 ? `Import ${stats.readyToImport} ${stats.readyToImport === 1 ? "job" : "jobs"}` : "Import"}
             </Button>
           </Tooltip>
         </div>

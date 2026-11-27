@@ -1,5 +1,6 @@
 "use client";
 
+import { tableTheme } from "@/components/ui/tableTheme";
 import { useEffect, useState } from "react";
 import {
   Button,
@@ -29,6 +30,7 @@ import { ColDef } from "ag-grid-community";
 import { Job, JobStatus } from "@/types/job.type";
 import { CustomFieldDefinition, getCustomFields } from "@/apis/custom-fields.api";
 import dayjs from "dayjs";
+import { formatPlanDate } from "@/utils/app.utils";
 
 type JobTab = "all" | JobStatus;
 
@@ -40,7 +42,7 @@ import MarkerTooltip from "@/components/MarkerTooltip";
 import { createJobTableColumns, STANDARD_JOB_FIELD_KEYS } from "@/utils/jobs.utils";
 import { createActionsColumn } from "@/components/Table/ActionsColumn";
 import CreateRouteModal from "@/app/plan/_components/CreateRouteModal";
-import DraftJobsDatePicker from "@/components/Jobs/DraftJobsDatePicker";
+import JobsToolbar from "@/components/plan/JobsToolbar";
 import AddJobsModal from "@/app/plan/AddJobsModal";
 import BulkUploadModal from "@/components/BulkUploadModal";
 import { jobsActionsClassName, jobsDateGroupClassName, jobsToolbarClassName } from "./planStyles";
@@ -155,6 +157,16 @@ export default function JobsList() {
     ? statusFilteredJobs.filter((j) => j.scheduled_date === selectedDate)
     : statusFilteredJobs;
 
+  // An empty table should say why it is empty and where the work is, not "No data available".
+  const statusWord = selectedJobTab === "all" ? "" : `${String(selectedJobTab).replace(/_/g, " ")} `;
+  const emptyMessage = selectedDate
+    ? `No ${statusWord}jobs on ${formatPlanDate(selectedDate)}`
+    : `No ${statusWord}jobs`;
+  const todayKey = dayjs().format("YYYY-MM-DD");
+  const otherDates = [...availableJobDates].filter((d) => d && d !== selectedDate).sort();
+  const nearestDate = otherDates.find((d) => d >= todayKey) ?? otherDates.at(-1);
+  const goToDate = (date: string) => { setSelectedJobIds([]); setSelectedMarkerId(null); setSelectedDate(date); };
+
   const activeMarkers = displayedJobs
     .map((job: Job, index: number) => {
       const loc = job?.location || job?.pick_up_location || job?.drop_off_location;
@@ -250,10 +262,6 @@ export default function JobsList() {
       </button>
     ),
     teamsMap: getTeamsMap(),
-    statusHeaderProps: {
-      selectedJobTab,
-      handleJobStatusChange,
-    },
   });
 
   const actionsColumn = createActionsColumn<Job>({
@@ -309,15 +317,21 @@ export default function JobsList() {
     },
   ];
 
+  // Typing in the search box narrows the rows already loaded for this date
+  const [search, setSearch] = useState("");
+
   const tableContent = (
     <div className="h-full w-full p-0 flex flex-col min-h-0 overflow-hidden">
       <BaseTable<Job>
         columnDefs={deliveryColumns}
+        themeParams={tableTheme}
         rowData={displayedJobs}
+        emptyMessage={emptyMessage}
         loading={isJobsLoading || !jobsListActive}
         pagination={true}
         paginationPageSize={100}
         rowSelection="multiple"
+        quickFilterText={search}
         containerClassName="h-full w-full flex-1"
         containerStyle={{ height: "100%", width: "100%" }}
         onSelectionChanged={(event) => {
@@ -332,68 +346,47 @@ export default function JobsList() {
 
   return (
     <div className="flex flex-col h-full min-h-[360px] min-w-0">
-      {/* ── Top Bar (Exact same layout as RoutesView) ── */}
-      <Flex justify="space-between" gap={8} align="center" wrap className={jobsToolbarClassName}>
-        <Flex wrap gap={12} align="center" className={jobsDateGroupClassName}>
-          <Title level={4} className="m-0 pt-2">
-            Jobs
-          </Title>
-          <DraftJobsDatePicker
-            selectedDate={selectedDate}
-            setSelectedDate={date => { setSelectedJobIds([]); setSelectedMarkerId(null); setSelectedDate(date); }}
-            draftJobDates={availableJobDates}
-          />
-          {jobsListActive && (unscheduledJobsCount > 0 || jobsListDate === UNSCHEDULED_JOBS_DATE) && <Button
-            size="small" aria-pressed={jobsListDate === UNSCHEDULED_JOBS_DATE}
-            type={jobsListDate === UNSCHEDULED_JOBS_DATE ? "primary" : "default"}
-            onClick={() => {
-              setSelectedJobIds([]); setSelectedMarkerId(null);
-              void loadJobsList(UNSCHEDULED_JOBS_DATE, selectedJobTab);
-            }}>Unscheduled ({unscheduledJobsCount})</Button>}
-        </Flex>
-
-        <Flex wrap gap={8} align="center" className={jobsActionsClassName}>
-          <Button
-            aria-label="Create new route"
-            disabled={selectedJobIds.length === 0}
-            onClick={() => setShowCreateRouteModal(true)}
-          >
-            <span className="inline-flex items-center gap-1.5 lg:hidden"><PlusOutlined aria-hidden="true" />Route</span>
-            <span className="hidden lg:inline">Create New Route</span>
-          </Button>
-
-          <Button
-            danger
-            icon={<DeleteOutlined />}
-            disabled={selectedJobIds.length === 0}
-            onClick={handleDeleteJobsRequest}
-          />
-
-          <Button
-            icon={<EnvironmentOutlined />}
-            type={isMapOpen ? "primary" : "default"}
-            onClick={() => setIsMapOpen(!isMapOpen)}
-          />
-
-          <Dropdown menu={{ items: addJobsMenuItems }} trigger={["click"]}>
-            <Button
-              aria-label="Add jobs"
-              type="primary"
-              className="bg-[#003220] hover:bg-[#002417] text-white flex items-center gap-1.5 border-none"
-            >
-              <span className="inline-flex items-center gap-1.5 lg:hidden">Jobs</span>
-              <span className="hidden lg:inline">Add Jobs</span>
-              <DownOutlined style={{ fontSize: "10px" }} />
-            </Button>
-          </Dropdown>
-        </Flex>
-      </Flex>
+      <JobsToolbar
+        count={jobsListActive && !isJobsLoading ? displayedJobs.length : undefined}
+        search={search}
+        onSearch={setSearch}
+        date={selectedDate}
+        onDateChange={date => { setSelectedJobIds([]); setSelectedMarkerId(null); setSelectedDate(date); }}
+        datesWithJobs={availableJobDates}
+        status={selectedJobTab}
+        onStatusChange={value => handleJobStatusChange({ target: { value } })}
+        showUnscheduled={jobsListActive && (unscheduledJobsCount > 0 || jobsListDate === UNSCHEDULED_JOBS_DATE)}
+        unscheduledCount={unscheduledJobsCount}
+        unscheduledActive={jobsListDate === UNSCHEDULED_JOBS_DATE}
+        onShowUnscheduled={() => {
+          setSelectedJobIds([]); setSelectedMarkerId(null);
+          void loadJobsList(UNSCHEDULED_JOBS_DATE, selectedJobTab);
+        }}
+        selectedCount={selectedJobIds.length}
+        onCreateRoute={() => setShowCreateRouteModal(true)}
+        onDelete={handleDeleteJobsRequest}
+        mapOpen={isMapOpen}
+        onToggleMap={() => setIsMapOpen(!isMapOpen)}
+        onAddSingle={() => setShowAddJobModal(true)}
+        onBulkImport={() => setShowBulkUploadModal(true)}
+      />
 
       {jobsListActive && jobsError && <Alert type="error" showIcon title="Unable to load jobs" description={jobsError}
         action={<Button size="small" onClick={() => void loadJobsList(jobsListDate || selectedDate || dayjs().format("YYYY-MM-DD"), jobsListStatus)}>Retry</Button>} />}
 
+      {jobsListActive && !isJobsLoading && !jobsError && displayedJobs.length === 0 && nearestDate && (
+        <div className="lang flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[#E3E8E5] bg-[#F8FAF9] px-3 py-2 text-[13px] text-[#4A5750]" role="status">
+          <span>{emptyMessage}.</span>
+          <span>Next date with {statusWord}jobs:</span>
+          <button type="button" onClick={() => goToDate(nearestDate)}
+            className="cursor-pointer border-0 bg-transparent p-0 text-[13px] font-medium text-[#0B5D3B] underline underline-offset-2 hover:text-[#003220]">
+            {formatPlanDate(nearestDate)}
+          </button>
+        </div>
+      )}
+
       {/* ── Table & Map Area ── */}
-      <div className="flex-1 min-h-0 mt-2">
+      <div className="flex-1 min-h-0">
         {isMapOpen ? (
           <PanelGroup direction="vertical" className="h-full w-full">
             <Panel defaultSize={40} minSize={20} className="w-full">
@@ -438,10 +431,10 @@ export default function JobsList() {
       {/* Edit Job Drawer */}
       <Drawer
         title={<EditJobTitle job={editJobData} />}
-        width={720}
+        size={720}
         onClose={() => setEditJobData(null)}
         open={Boolean(editJobData)}
-        destroyOnClose
+        destroyOnHidden
       >
         <JobForm
           initialData={editJobData}

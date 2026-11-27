@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useParams } from "next/navigation";
 import { Spin, Alert, Input, Checkbox, Button } from "antd";
 import {
@@ -24,11 +24,19 @@ import {
   Search,
   Sparkles,
   X,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  ArrowDown,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import FloatingUnassignedPanel from "../_components/FloatingUnassignedPanel";
 import OptimizationView from "../_components/OptimizationView";
 import { useManualRoutingStore } from "@/store/manualRouting.store";
 import { BULK_ASSIGNMENT_LIMIT } from "@/apis/routes.api";
+import { formatRouteClock, manualJobTrip } from "../_components/manualRouting.utils";
+import TripPlaces, { splitAddress } from "../_components/TripPlaces";
 import { useOptimizationStore } from "@/store/optimization.store";
 import { useJobsStore } from "@/store/jobs.store";
 import type { UnassignedJob } from "@/types/routes.type";
@@ -338,7 +346,10 @@ const RoutePage = () => {
     useOptimizationStore();
   const { jobs } = useJobsStore();
   const [isLoading, setIsLoading] = useState(true);
-  const [isUnassignedExpanded, setIsUnassignedExpanded] = useState(true);
+  // On a phone the open panel covers the whole plan, so it starts closed there; anyone's own choice wins.
+  const [unassignedChoice, setIsUnassignedExpanded] = useState<boolean | null>(null);
+  const isSmallScreen = useSyncExternalStore(subscribeSmallScreen, readSmallScreen, () => false);
+  const isUnassignedExpanded = unassignedChoice ?? !isSmallScreen;
   /** Active reason filter ("ALL" or specific reason_code) */
   const [activeReasonFilter, setActiveReasonFilter] = useState<string>("ALL");
   /** Whether the "How to fix" steps drawer is expanded */
@@ -350,6 +361,10 @@ const RoutePage = () => {
   >(null);
   const [unassignedJobSearch, setUnassignedJobSearch] = useState("");
   const [selectedJobIds, setSelectedJobIds] = useState<number[]>([]);
+  /** Full-size view of the unassigned jobs, and how it is drawn and ordered */
+  const [isFullView, setIsFullView] = useState(false);
+  const [fullViewMode, setFullViewMode] = useState<"table" | "cards">("table");
+  const [unassignedSort, setUnassignedSort] = useState<{ key: "time" | "name" | "client" | "issue"; dir: 1 | -1 }>({ key: "time", dir: 1 });
 
   useEffect(() => {
     setSelectedJobIds([]);
@@ -390,10 +405,29 @@ const RoutePage = () => {
       routeIndex, placement: routeIndex === undefined ? "auto" : "existing" });
   };
 
-  const unassignedJobs = useMemo<UnassignedJob[]>(
-    () => currentOptimization?.result?.unassigned_jobs || [],
-    [currentOptimization?.result?.unassigned_jobs],
-  );
+  // The server can leave a job on its unassigned list after the job was placed by hand (seen on a plan:
+  // return-only jobs with both stops on a trip, still listed as "no feasible route"). A job whose every
+  // stop is already on a trip is not unassigned, so it is not offered for assigning a second time.
+  const unassignedJobs = useMemo<UnassignedJob[]>(() => {
+    const listed = currentOptimization?.result?.unassigned_jobs || [];
+    const routed = new Map<string, number>();
+    (currentOptimization?.result?.routes || []).forEach((trip) => trip.stops?.forEach((stop) => {
+      if (stop.job_id == null) return;
+      const type = String(stop.stop_type || "").toLowerCase();
+      if (!["pickup", "pick_up", "dropoff", "drop_off"].includes(type)) return;
+      routed.set(String(stop.job_id), (routed.get(String(stop.job_id)) ?? 0) + 1);
+    }));
+    if (routed.size === 0) return listed;
+    const jobTypeById = new Map(jobs.map((job) => [String(job.id), String(job.job_type || "").toLowerCase()]));
+    return listed.filter((item) => {
+      const count = routed.get(String(item.job_id)) ?? 0;
+      if (count === 0) return true;
+      const type = jobTypeById.get(String(item.job_id)) ?? "";
+      // One-way jobs need a pickup and a drop-off; round trips need both on each leg.
+      const needed = type.includes("round") ? 4 : 2;
+      return count < needed;
+    });
+  }, [currentOptimization?.result?.unassigned_jobs, currentOptimization?.result?.routes, jobs]);
 
   const unassignedJobCards = useMemo(() => {
     const jobsById = new Map(jobs.map((job) => [job.id, job]));
@@ -465,6 +499,21 @@ const RoutePage = () => {
       const reasonMeta = REASON_META[reasonCode] ?? FALLBACK_META;
       const reasonParts = summarizeReasonText(unassignedJob.reason);
 
+      // The trip as the Assign window describes it: which way it goes and what its time means.
+      const jobTrip = fullJob ? manualJobTrip(fullJob) : null;
+      const tripDirection = jobTrip?.direction || "";
+      // A return after midnight belongs to the next day; the Assign window says so, and the order must follow it.
+      const isNextDay = Boolean(jobTrip?.timeLabel.includes("(next day)"));
+      const direction: "GO" | "RETURN" | "" = tripDirection === "GO" || tripDirection === "RETURN" ? tripDirection : "";
+      const timeMeaning = direction === "GO" ? "Work starts" : direction === "RETURN" ? "Pickup" : "Scheduled";
+      const toAddress =
+        fullJob?.drop_off_address ||
+        shuttleDetails?.drop_off_address ||
+        customFields.drop_off_address ||
+        undefined;
+      // A deadline the optimizer names in its explanation, for example "(deadline 22:15)".
+      const deadlineMatch = /deadline\s+(\d{1,2}:\d{2})/i.exec(unassignedJob.reason || "");
+
       return {
         ...unassignedJob,
         reasonCode,
@@ -478,6 +527,16 @@ const RoutePage = () => {
         scheduledTime,
         scheduledDate,
         fixedDriver: fixedDriver ? String(fixedDriver) : undefined,
+        direction,
+        timeMeaning,
+        timeText: scheduledTime ? formatRouteClock(scheduledTime) : "",
+        /** 24-hour "HH:MM" used only for sorting; jobs without a time go last. */
+        timeSort: scheduledTime && /^\d{1,2}:\d{2}/.test(scheduledTime)
+          ? isNextDay ? `${Number(scheduledTime.split(":")[0]) + 24}:${scheduledTime.split(":")[1].slice(0, 2)}` : scheduledTime.padStart(5, "0")
+          : "99:99",
+        isNextDay,
+        deadlineText: deadlineMatch ? formatRouteClock(deadlineMatch[1]) : "",
+        toAddress: toAddress ? String(toAddress) : undefined,
       };
     });
   }, [jobs, unassignedJobs, currentOptimization?.scheduled_date]);
@@ -517,6 +576,18 @@ const RoutePage = () => {
     });
   }, [unassignedJobCards, unassignedJobSearch, activeReasonFilter]);
 
+  /** The filtered jobs in the chosen order. By default the job that leaves soonest is first. */
+  const orderedUnassignedJobCards = useMemo(() => {
+    const value = (job: (typeof filteredUnassignedJobCards)[number]) =>
+      unassignedSort.key === "time" ? job.timeSort
+        : unassignedSort.key === "name" ? job.candidateName.toLowerCase()
+          : unassignedSort.key === "client" ? job.clientName.toLowerCase()
+            : job.reasonMeta.label.toLowerCase();
+    return [...filteredUnassignedJobCards].sort(
+      (a, b) => value(a).localeCompare(value(b)) * unassignedSort.dir || a.timeSort.localeCompare(b.timeSort) || a.job_id - b.job_id,
+    );
+  }, [filteredUnassignedJobCards, unassignedSort]);
+
   useEffect(() => {
     const available = new Set(unassignedJobs.map((job) => job.job_id));
     setSelectedJobIds((previous) => previous.filter((jobId) => available.has(jobId)));
@@ -554,114 +625,16 @@ const RoutePage = () => {
       placement: "auto" });
   };
 
-  if (isLoading) {
-    return (
-      <div className="absolute inset-0 flex items-center justify-center">
-        <Spin size="large" />
-      </div>
-    );
-  }
-
-  if (error && !currentOptimization) {
-    return (
-      <div className="absolute inset-0 flex items-center justify-center p-4">
-        <Alert
-          message="Error Loading Optimization"
-          description={error}
-          type="error"
-          showIcon
-        />
-      </div>
-    );
-  }
-
-  if (!currentOptimization) {
-    return (
-      <div className="absolute inset-0 flex items-center justify-center p-4">
-        <Alert
-          message="Optimization Not Found"
-          description="The requested optimization could not be found."
-          type="warning"
-          showIcon
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="absolute inset-0 flex flex-col">
-      {/* Optimization View - Full screen */}
-      <div className="flex-1 min-h-0">
-        <OptimizationView
-          route={currentOptimization}
-          requestedJobDetailsId={requestedJobDetailsId}
-          onRequestedJobDetailsOpened={() => setRequestedJobDetailsId(null)}
-        />
-      </div>
-
-      {/* Floating panel moves by its pill or expanded header. */}
-      {unassignedJobs.length > 0 && (
-        <FloatingUnassignedPanel expanded={isUnassignedExpanded}>
-          {isUnassignedExpanded ? (
-            /* ── Expanded Panel ──────────────────────────────────────── */
-            <div className="bg-white rounded-2xl shadow-2xl shadow-slate-900/15 border border-slate-200/90 overflow-hidden flex flex-col max-h-[calc(100dvh-88px)]">
-
-              {/* ── 1. Header ─────────────────────────────────────────── */}
-              <div
-                data-panel-drag-handle
-                style={{ touchAction: "none" }}
-                title="Drag to move; click to minimize. Alt + arrow keys to move with keyboard."
-                role="button"
-                tabIndex={0}
-                aria-label="Minimize or move unassigned jobs panel"
-                aria-expanded={true}
-                onKeyDown={event => {
-                  if (event.target !== event.currentTarget || event.altKey) return;
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    setIsUnassignedExpanded(false);
-                  }
-                }}
-                onClick={() => setIsUnassignedExpanded(false)}
-                className="px-4 py-3 bg-gradient-to-r from-rose-50/90 via-white to-amber-50/60 border-b border-slate-200/80 flex items-center justify-between cursor-pointer select-none hover:from-rose-100/60 transition-colors shrink-0"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                    <AlertTriangle size={15} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900 text-sm leading-tight">
-                        Unassigned Jobs
-                      </span>
-                      <span className="bg-rose-600 text-white font-bold text-[11px] px-2 py-0.5 rounded-full leading-none shadow-xs">
-                        {unassignedJobs.length}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 m-0 leading-tight mt-0.5">
-                      Select jobs to review an assignment, or drag onto a route
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsUnassignedExpanded(false);
-                  }}
-                  title="Minimize panel"
-                  className="text-slate-400 hover:text-slate-700 transition-colors p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
-                >
-                  <ChevronDown size={16} />
-                </button>
-              </div>
-
+  // ── Pieces shared by the side panel and the full-size view ─────────────────
+  const actionBar = (
               <div className="px-3.5 py-2.5 flex flex-wrap gap-2 border-b border-slate-100">
                 <Button size="small" type="primary" disabled={assignmentDisabled || !selectedJobIds.length || selectedJobIds.length > BULK_ASSIGNMENT_LIMIT}
                   onClick={handleBulkAssign}>Assign selected{selectedJobIds.length ? ` (${selectedJobIds.length})` : ""}</Button>
                 <Button size="small" disabled={assignmentDisabled} onClick={() => id && useManualRoutingStore.getState().open({ planId: id, action: "create", jobIds: [...selectedJobIds] })}>+ Create route</Button>
               </div>
+  );
 
-              {/* ── 2. Interactive Reason Filter & Fix Guide ──────────── */}
+  const reasonFilterBlock = (
               <div className="px-3.5 py-2.5 border-b border-slate-200/80 bg-slate-50/70 shrink-0 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-wider">
@@ -776,8 +749,9 @@ const RoutePage = () => {
                   </div>
                 )}
               </div>
+  );
 
-              {/* ── 3. Fixed Search & Bulk Selection Toolbar ──────────── */}
+  const searchSelectBlock = (
               <div className="px-3.5 py-2.5 bg-white border-b border-slate-200/80 shrink-0 space-y-2">
                 <div className="flex items-center gap-2">
                   <Input
@@ -835,10 +809,10 @@ const RoutePage = () => {
 
                 {selectedJobIds.length > BULK_ASSIGNMENT_LIMIT && <p role="alert" className="text-xs text-rose-600 m-0">Select up to {BULK_ASSIGNMENT_LIMIT} jobs per batch.</p>}
               </div>
+  );
 
-              {/* ── 4. Scrollable Per-Job Cards List ──────────────────── */}
-              <div className="px-3.5 py-2.5 overflow-y-auto flex-1 min-h-0 max-h-[360px] space-y-2.5 bg-slate-50/60">
-                {filteredUnassignedJobCards.map((job, idx) => {
+  /** One job as a card: when, who, where, for whom, why it is unassigned, and what you can do. */
+  const renderJobCard = (job: (typeof unassignedJobCards)[number], idx: number) => {
                   const isSelected = selectedJobIds.includes(job.job_id);
                   const isReasonExpanded = expandedReasonJobIds.includes(job.job_id);
                   const { Icon: ReasonIcon, label: reasonLabel, color: reasonColor, bgColor: reasonBg, borderColor: reasonBorder } = job.reasonMeta;
@@ -875,10 +849,10 @@ const RoutePage = () => {
                           e.dataTransfer.setDragImage(dragEl, 20, 20);
                         }
                       }}
-                      className={`group bg-white border rounded-xl p-3 text-xs space-y-2 transition-all cursor-pointer active:cursor-grabbing ${
+                      className={`group border border-solid p-3 text-xs space-y-2 transition-colors cursor-pointer active:cursor-grabbing ${
                         isSelected
-                          ? "border-emerald-500 ring-1 ring-emerald-500/30 bg-emerald-50/10 shadow-sm"
-                          : "border-slate-200/90 shadow-xs hover:border-emerald-300 hover:shadow-md hover:shadow-slate-900/5"
+                          ? "border-[#0B5D3B] bg-[#F1F8F4] shadow-[inset_2px_0_0_#0B5D3B]"
+                          : "border-slate-200 bg-white hover:border-[#0B5D3B]"
                       }`}
                       aria-label={`Open details for ${job.candidateName}`}
                     >
@@ -905,8 +879,18 @@ const RoutePage = () => {
                             />
                           </span>
 
-                          <div className="w-7 h-7 rounded-full bg-[#003220] text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
-                            <UserRound size={14} />
+                          {/* When: the time is the first thing read on the card, with what it means and which way the trip goes */}
+                          <div className="w-[88px] shrink-0 whitespace-nowrap border-0 border-r border-solid border-slate-200 pr-2" title="Scheduled shift / pickup date and time">
+                            <div className="text-[15px] font-semibold leading-5 tabular-nums text-slate-900">{job.timeText || "No time"}</div>
+                            <div className="mt-0.5 flex items-center gap-1 text-[10.5px] font-medium leading-4 text-slate-500">
+                              {job.direction === "RETURN" ? <ArrowLeft size={11} aria-hidden="true" /> : job.direction === "GO" ? <ArrowRight size={11} aria-hidden="true" /> : <Clock size={10} aria-hidden="true" />}
+                              <span>{job.timeMeaning}</span>
+                            </div>
+                            {job.isNextDay && <div className="mt-0.5 text-[10.5px] font-medium leading-4 text-slate-500">next day</div>}
+                            {job.deadlineText && <div className="mt-0.5 text-[10.5px] font-semibold leading-4 text-slate-700" title="The latest time the optimizer allowed for this job">by {job.deadlineText}</div>}
+                            {job.scheduledDate && job.scheduledDate !== formatShortDate(currentOptimization?.scheduled_date) && (
+                              <div className="mt-0.5 text-[10.5px] leading-4 text-slate-500">{job.scheduledDate}</div>
+                            )}
                           </div>
 
                           <div className="min-w-0 flex-1">
@@ -928,15 +912,6 @@ const RoutePage = () => {
                               {!job.hasCandidateName && (
                                 <span>Candidate name not set</span>
                               )}
-                              {(job.scheduledTime || job.scheduledDate) && (
-                                <span
-                                  className="inline-flex items-center gap-1 font-semibold text-slate-700 bg-slate-100/90 px-1.5 py-0.5 rounded leading-none"
-                                  title="Scheduled shift / pickup date and time"
-                                >
-                                  <Clock size={10} className="text-slate-500" />
-                                  {[job.scheduledTime, job.scheduledDate].filter(Boolean).join(" · ")}
-                                </span>
-                              )}
                               {job.fixedDriver && (
                                 <span
                                   className="inline-flex items-center gap-1 text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded font-medium leading-none truncate max-w-[130px]"
@@ -956,15 +931,8 @@ const RoutePage = () => {
 
                       {/* Location & Client Info */}
                       {(job.address || job.hasClientName) && (
-                        <div className="pl-6 space-y-1 text-[11px]">
-                          {job.address && (
-                            <div className="flex items-start gap-1.5 text-slate-600 leading-snug">
-                              <MapPin size={12} className="text-emerald-600 shrink-0 mt-0.5" />
-                              <span className="line-clamp-1 font-medium" title={job.address}>
-                                {job.address}
-                              </span>
-                            </div>
-                          )}
+                        <div className="space-y-1 text-[11px]">
+                          {(job.address || job.toAddress) && <TripPlaces from={job.address} to={job.toAddress} />}
                           {job.hasClientName && (
                             <div className="flex items-start gap-1.5 text-slate-600 leading-snug">
                               <Building2 size={12} className="text-blue-500 shrink-0 mt-0.5" />
@@ -1035,7 +1003,144 @@ const RoutePage = () => {
                       </div>
                     </div>
                   );
-                })}
+  };
+
+  /** A column heading that sorts the full-size table. */
+  const sortHeading = (key: "time" | "name" | "client" | "issue", label: string) => {
+    const active = unassignedSort.key === key;
+    return (
+      <button
+        type="button"
+        onClick={() => setUnassignedSort((prev) => ({ key, dir: prev.key === key && prev.dir === 1 ? -1 : 1 }))}
+        aria-label={`Sort by ${label}${active ? (unassignedSort.dir === 1 ? ", ascending" : ", descending") : ""}`}
+        className="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-[11px] font-medium uppercase tracking-[0.06em] text-[#626E67] hover:text-[#12211A]"
+      >
+        {label}
+        {active && (unassignedSort.dir === 1 ? <ArrowUp size={11} aria-hidden="true" /> : <ArrowDown size={11} aria-hidden="true" />)}
+      </button>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center">
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  if (error && !currentOptimization) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        <Alert
+          message="Error Loading Optimization"
+          description={error}
+          type="error"
+          showIcon
+        />
+      </div>
+    );
+  }
+
+  if (!currentOptimization) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        <Alert
+          message="Optimization Not Found"
+          description="The requested optimization could not be found."
+          type="warning"
+          showIcon
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 flex flex-col">
+      {/* Optimization View - Full screen */}
+      <div className="flex-1 min-h-0">
+        <OptimizationView
+          route={currentOptimization}
+          requestedJobDetailsId={requestedJobDetailsId}
+          onRequestedJobDetailsOpened={() => setRequestedJobDetailsId(null)}
+        />
+      </div>
+
+      {/* Floating panel moves by its pill or expanded header. */}
+      {unassignedJobs.length > 0 && !isFullView && (
+        <FloatingUnassignedPanel expanded={isUnassignedExpanded}>
+          {isUnassignedExpanded ? (
+            /* ── Expanded Panel ──────────────────────────────────────── */
+            <div className="bg-white rounded-2xl shadow-2xl shadow-slate-900/15 border border-slate-200/90 overflow-hidden flex flex-col max-h-[calc(100dvh-88px)]">
+
+              {/* ── 1. Header ─────────────────────────────────────────── */}
+              <div
+                data-panel-drag-handle
+                style={{ touchAction: "none" }}
+                title="Drag to move; click to minimize. Alt + arrow keys to move with keyboard."
+                role="button"
+                tabIndex={0}
+                aria-label="Minimize or move unassigned jobs panel"
+                aria-expanded={true}
+                onKeyDown={event => {
+                  if (event.target !== event.currentTarget || event.altKey) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setIsUnassignedExpanded(false);
+                  }
+                }}
+                onClick={() => setIsUnassignedExpanded(false)}
+                className="px-4 py-3 bg-white border-b border-[#D5DCD8] flex items-center justify-between cursor-pointer select-none hover:bg-[#F3F6F4] transition-colors shrink-0"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="text-[#C9372C] flex items-center justify-center shrink-0">
+                    <AlertTriangle size={15} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 text-sm leading-tight">
+                        Unassigned Jobs
+                      </span>
+                      <span className="bg-rose-600 text-white font-bold text-[11px] px-2 py-0.5 rounded-full leading-none shadow-xs">
+                        {unassignedJobs.length}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 m-0 leading-tight mt-0.5">
+                      Select jobs to review an assignment, or drag onto a route
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsFullView(true);
+                  }}
+                  aria-label="Open unassigned jobs in full view"
+                  data-tip="Full view and table"
+                  className="tip ml-auto mr-1 inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                >
+                  <Maximize2 size={15} aria-hidden="true" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsUnassignedExpanded(false);
+                  }}
+                  title="Minimize panel"
+                  className="text-slate-400 hover:text-slate-700 transition-colors p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+                >
+                  <ChevronDown size={16} />
+                </button>
+              </div>
+
+              {actionBar}
+              {reasonFilterBlock}
+              {searchSelectBlock}
+
+              {/* ── 4. Scrollable Per-Job Cards List ──────────────────── */}
+              <div className="px-3.5 py-2.5 overflow-y-auto flex-1 min-h-0 max-h-[360px] space-y-2.5 bg-slate-50/60">
+                {orderedUnassignedJobCards.map((job, idx) => renderJobCard(job, idx))}
 
                 {filteredUnassignedJobCards.length === 0 && (
                   <div className="py-8 px-4 text-center space-y-2">
@@ -1068,16 +1173,14 @@ const RoutePage = () => {
                 style={{ touchAction: "none" }}
                 title="Drag to move; click to open. Alt + arrow keys to move with keyboard."
                 onClick={() => setIsUnassignedExpanded(true)}
-                className="flex items-center gap-2.5 px-3.5 py-2 bg-white rounded-full shadow-lg border border-rose-200 text-slate-800 hover:border-rose-300 hover:shadow-xl transition-all cursor-pointer select-none group"
+                className="flex h-10 items-center gap-2.5 border border-[#B3B9C4] bg-white px-3 text-[#172B4D] shadow-[0_2px_8px_rgba(9,30,66,0.16)] hover:bg-[#F7F8F9] transition-colors cursor-pointer select-none group"
               >
-                <div className="w-5 h-5 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                  <AlertTriangle size={12} />
-                </div>
+                <AlertTriangle size={16} className="shrink-0 text-[#C9372C]" />
                 <GripVertical size={14} className="text-slate-400 cursor-grab active:cursor-grabbing" aria-hidden="true" />
-                <span className="font-bold text-xs text-slate-900">
-                  Unassigned Jobs
+                <span className="text-[13px] font-semibold text-[#172B4D]">
+                  Unassigned jobs
                 </span>
-                <span className="bg-rose-600 text-white font-bold text-[10.5px] px-2 py-0.5 rounded-full leading-none">
+                <span className="min-w-5 bg-[#C9372C] px-1.5 py-1 text-center text-[11px] font-semibold leading-none text-white tabular-nums">
                   {unassignedJobs.length}
                 </span>
                 <ChevronUp
@@ -1088,6 +1191,152 @@ const RoutePage = () => {
             </div>
           )}
         </FloatingUnassignedPanel>
+      )}
+
+      {/* Full-size view: every unassigned job with all its facts side by side, as a table or as cards. */}
+      {unassignedJobs.length > 0 && isFullView && (
+        <div
+          role="dialog"
+          aria-label="Unassigned jobs, full view"
+          className="lang absolute inset-3 z-[45] flex min-h-0 flex-col border border-solid border-[#D5DCD8] bg-white shadow-[0_8px_24px_rgba(18,33,26,0.16)]"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setIsFullView(false);
+          }}
+        >
+          <div className="flex shrink-0 flex-wrap items-end justify-between gap-x-6 gap-y-2 border-0 border-b border-solid border-[#D5DCD8] px-5 pb-0 pt-4">
+            <div className="min-w-0 pb-3">
+              <p className="m-0 text-[11px] font-medium uppercase leading-4 tracking-[0.09em] text-[#626E67]">Not on any route</p>
+              <p className="m-0 mt-0.5 flex items-baseline gap-2 text-lg font-medium leading-6 text-[#12211A]">
+                <span className="tabular-nums text-[#C9372C]">{unassignedJobs.length}</span>
+                unassigned job{unassignedJobs.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <div role="tablist" aria-label="How to show the jobs" className="flex gap-4">
+                {(["table", "cards"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="tab"
+                    aria-selected={fullViewMode === mode}
+                    onClick={() => setFullViewMode(mode)}
+                    className={`inline-flex h-9 cursor-pointer items-center border-0 bg-transparent px-0 text-sm outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0B5D3B] ${
+                      fullViewMode === mode ? "font-medium text-[#12211A] shadow-[inset_0_-2px_0_#0B5D3B]" : "text-[#4A5750] hover:text-[#12211A]"
+                    }`}
+                  >
+                    {mode === "table" ? "Table" : "Cards"}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFullView(false)}
+                aria-label="Back to the side panel"
+                data-tip="Back to side panel"
+                className="tip mb-1 inline-flex h-8 w-8 cursor-pointer items-center justify-center border-0 bg-transparent text-[#626E67] hover:bg-[#EAEFEC] hover:text-[#12211A]"
+              >
+                <Minimize2 size={16} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+
+          {actionBar}
+          {reasonFilterBlock}
+          {searchSelectBlock}
+
+          <div className="custom-scrollbar min-h-0 flex-1 overflow-auto">
+            {orderedUnassignedJobCards.length === 0 ? (
+              <p className="m-0 px-5 py-8 text-center text-[13px] text-[#626E67]">No unassigned jobs match your filter.</p>
+            ) : fullViewMode === "cards" ? (
+              <div className="grid gap-3 bg-slate-50/60 p-4 [grid-template-columns:repeat(auto-fill,minmax(340px,1fr))]">
+                {orderedUnassignedJobCards.map((job, idx) => renderJobCard(job, idx))}
+              </div>
+            ) : (
+              <table className="w-full min-w-[1080px] border-collapse text-left text-[13px] text-[#12211A]">
+                <thead className="sticky top-0 z-10 bg-[#F3F6F4]">
+                  <tr className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#626E67]">
+                    <th scope="col" className="w-10 py-2.5 pl-5 pr-2"><span className="sr-only">Select</span></th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">{sortHeading("time", "Time")}</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">{sortHeading("name", "Name")}</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">From</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">To</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">{sortHeading("client", "Client")}</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">Required driver</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">{sortHeading("issue", "Issue")}</th>
+                    <th scope="col" className="py-2.5 pl-3 pr-5"><span className="sr-only">Assign</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orderedUnassignedJobCards.map((job, idx) => {
+                    const isSelected = selectedJobIds.includes(job.job_id);
+                    const { Icon: ReasonIcon, label: reasonLabel, color: reasonColor } = job.reasonMeta;
+                    return (
+                      <tr
+                        key={`${job.job_id}-${idx}`}
+                        tabIndex={0}
+                        onClick={() => setRequestedJobDetailsId(job.job_id)}
+                        onKeyDown={(event) => {
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key === "Enter") setRequestedJobDetailsId(job.job_id);
+                        }}
+                        aria-label={`Open details for ${job.candidateName}`}
+                        className={`cursor-pointer border-0 border-b border-solid border-[#E3E8E5] align-top outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#0B5D3B] ${
+                          isSelected ? "bg-[#F1F8F4] shadow-[inset_2px_0_0_#0B5D3B]" : "hover:bg-[#F8FAF9]"
+                        }`}
+                      >
+                        <td className="py-2.5 pl-5 pr-2" onClick={(event) => event.stopPropagation()}>
+                          <Checkbox
+                            aria-label={`Select ${job.candidateName}, job #${job.job_id}`}
+                            checked={isSelected}
+                            disabled={assignmentDisabled}
+                            onChange={(event) =>
+                              setSelectedJobIds((previous) =>
+                                event.target.checked ? [...new Set([...previous, job.job_id])] : previous.filter((jobId) => jobId !== job.job_id),
+                              )
+                            }
+                          />
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5">
+                          <div className="font-medium tabular-nums">{job.timeText || "No time"}</div>
+                          <div className="mt-0.5 flex items-center gap-1 text-xs text-[#626E67]">
+                            {job.direction === "RETURN" ? <ArrowLeft size={12} aria-hidden="true" /> : job.direction === "GO" ? <ArrowRight size={12} aria-hidden="true" /> : null}
+                            {job.timeMeaning}
+                          </div>
+                          {job.isNextDay && <div className="mt-0.5 text-xs text-[#626E67]">next day</div>}
+                          {job.deadlineText && <div className="mt-0.5 text-xs font-medium text-[#12211A]" title="The latest time the optimizer allowed for this job">by {job.deadlineText}</div>}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="whitespace-nowrap font-medium">{job.candidateName}</div>
+                          <div className="mt-0.5 text-xs tabular-nums text-[#626E67]">{job.hasCandidateName ? `#${job.job_id}` : "Candidate name not set"}</div>
+                        </td>
+                        <td className="max-w-[220px] px-3 py-2.5" title={job.address || undefined}>
+                          <div className="truncate">{splitAddress(job.address).main || "–"}</div>
+                          {splitAddress(job.address).rest && <div className="mt-0.5 truncate text-xs text-[#626E67]">{splitAddress(job.address).rest}</div>}
+                        </td>
+                        <td className="max-w-[220px] px-3 py-2.5" title={job.toAddress || undefined}>
+                          <div className="truncate">{splitAddress(job.toAddress).main || "–"}</div>
+                          {splitAddress(job.toAddress).rest && <div className="mt-0.5 truncate text-xs text-[#626E67]">{splitAddress(job.toAddress).rest}</div>}
+                        </td>
+                        <td className="max-w-[180px] px-3 py-2.5"><span className="line-clamp-2" title={job.hasClientName ? job.clientName : undefined}>{job.hasClientName ? job.clientName : "–"}</span></td>
+                        <td className="max-w-[160px] px-3 py-2.5 text-[#4A5750]"><span className="line-clamp-2" title={job.fixedDriver}>{job.fixedDriver || "–"}</span></td>
+                        <td className="max-w-[300px] px-3 py-2.5">
+                          <div className={`flex items-center gap-1.5 whitespace-nowrap font-medium ${reasonColor}`}>
+                            <ReasonIcon size={13} aria-hidden="true" className="shrink-0" />
+                            {reasonLabel}
+                          </div>
+                          {job.reason && <div className="mt-0.5 line-clamp-1 text-xs text-[#626E67]" title={job.reason}>{job.reasonParts.primary}</div>}
+                        </td>
+                        <td className="whitespace-nowrap py-2.5 pl-3 pr-5 text-right" onClick={(event) => event.stopPropagation()}>
+                          <Button size="small" disabled={assignmentDisabled} onClick={() => handleAssignJob(job.job_id)}>Assign…</Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Hidden drag image container */}
@@ -1107,5 +1356,13 @@ const RoutePage = () => {
     </div>
   );
 };
+
+const SMALL_SCREEN = "(max-width: 767px)";
+const subscribeSmallScreen = (onChange: () => void) => {
+  const query = window.matchMedia(SMALL_SCREEN);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+};
+const readSmallScreen = () => window.matchMedia(SMALL_SCREEN).matches;
 
 export default RoutePage;

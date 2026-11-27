@@ -193,9 +193,9 @@ const Recents = () => {
               onClose={() => setEditJobData(null)}
               title={<EditJobTitle job={editJobData} />}
               open={editJobData?.id !== undefined}
-              width={720}
+              size={720}
               placement="right"
-              destroyOnClose
+              destroyOnHidden
             >
               <JobForm
                 onSubmit={() => setEditJobData(null)}
