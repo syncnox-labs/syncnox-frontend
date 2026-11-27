@@ -251,7 +251,7 @@ export default function DashboardView() {
         <div className="mt-4 flex flex-col">
           {paletteItems.length === 0 ? (
             <div className="py-8 text-center">
-              <p className="m-0 text-sm" style={{ color: ink.subtle }}>No widget matches "{paletteSearch}".</p>
+              <p className="m-0 text-sm" style={{ color: ink.subtle }}>No widget matches &ldquo;{paletteSearch}&rdquo;.</p>
               <button type="button" onClick={() => setPaletteSearch("")} className="mt-2 cursor-pointer border-0 bg-transparent p-0 text-sm font-medium hover:underline" style={{ color: ink.accent }}>Clear search</button>
             </div>
           ) : paletteItems.map((widget) => {
