@@ -49,8 +49,8 @@ export const StopArrowSvg: React.FC<StopArrowSvgProps> = ({
       viewBox="0 0 32 38"
       className="overflow-visible pointer-events-none"
     >
-      {/* Several jobs at one visit: the same outline again, offset behind, like a small stack of cards. */}
-      {jobCount > 1 && <path d={path} transform="translate(3.5,-3)" fill="#ffffff" stroke={stroke} strokeWidth={1.25} strokeOpacity={0.55} strokeLinejoin="miter" />}
+      {/* Several jobs at one visit: the same outline again, offset behind to the lower right (as on the map pin). */}
+      {jobCount > 1 && <path d={path} transform="translate(3,3)" fill="#ffffff" stroke={stroke} strokeWidth={1.25} strokeOpacity={0.6} strokeLinejoin="miter" />}
       <path
         d={path}
         fill={fill}

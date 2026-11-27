@@ -119,24 +119,28 @@ export const createCustomMarkerIcon = (
   const ink = filled ? "#ffffff" : color;
   const ring = isNew ? "#1F845A" : color;
 
-  // Pickup arrow points up, drop-off down, both in the pin's own colour (as on the timeline).
-  const type = String(stopType || "").toLowerCase();
-  const arrow = type === "pickup" || type === "pick_up" ? "up" : type === "dropoff" || type === "drop_off" ? "down" : type === "pickup_dropoff" ? "both" : null;
-  const arrowPath = arrow === "up" ? "M12 19V5m-6 6 6-6 6 6" : arrow === "down" ? "M12 5v14m6-6-6 6-6-6" : "m7 7 5-5 5 5M12 2v20m-5-5 5 5 5-5";
-  const badge = arrow ? `<circle cx="27" cy="5" r="6.5" fill="#ffffff" stroke="${color}" stroke-width="1.5"/>
-      <g transform="translate(21.6,-0.4) scale(0.45)" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="${arrowPath}"/></g>` : "";
-  // The same dark pencil disc the timeline shows on edited stops.
-  const edited = isTimeEdited ? `<circle cx="5" cy="5" r="6" fill="#12211A" stroke="#ffffff" stroke-width="1.5"/>
-      <g transform="translate(1.4,1.4) scale(0.3)" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></g>` : "";
-
-  // Several jobs at one stop: a second pin outline behind (a stack, lower right) and a dark count tag at the lower left.
+  // Several jobs at one stop: a second pin outline behind (lower right) and a dark count tag in the top-right
+  // corner, placed exactly as on the timeline arrow. The direction badge then moves to the top-left corner.
   const many = jobCount > 1;
   const pinPath = "M16 1C9.9 1 5 5.9 5 12c0 7.4 11 23 11 23s11-15.6 11-23C27 5.9 22.1 1 16 1z";
   const stack = many ? `<path d="${pinPath}" transform="translate(3,3)" fill="#ffffff" stroke="${color}" stroke-opacity="0.6" stroke-width="1.5"/>` : "";
   const countLabel = jobCount > 99 ? "99+" : String(jobCount);
   const countWidth = 8 + countLabel.length * 5.5;
-  const count = many ? `<rect x="${7.5 - countWidth / 2}" y="23" width="${countWidth}" height="12" fill="#12211A" stroke="#ffffff" stroke-width="1.5"/>
-      <text x="7.5" y="29.3" font-family="Inter, Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle" dominant-baseline="central">${countLabel}</text>` : "";
+  const count = many ? `<rect x="${27.5 - countWidth / 2}" y="-1" width="${countWidth}" height="12" fill="#12211A" stroke="#ffffff" stroke-width="1.5"/>
+      <text x="27.5" y="5.3" font-family="Inter, Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle" dominant-baseline="central">${countLabel}</text>` : "";
+
+  // Pickup arrow points up, drop-off down, both in the pin's own colour (as on the timeline).
+  const type = String(stopType || "").toLowerCase();
+  const arrow = type === "pickup" || type === "pick_up" ? "up" : type === "dropoff" || type === "drop_off" ? "down" : type === "pickup_dropoff" ? "both" : null;
+  const arrowPath = arrow === "up" ? "M12 19V5m-6 6 6-6 6 6" : arrow === "down" ? "M12 5v14m6-6-6 6-6-6" : "m7 7 5-5 5 5M12 2v20m-5-5 5 5 5-5";
+  const bx = many ? 5 : 27; // top-right normally, top-left when the count tag takes the top-right corner
+  const badge = arrow ? `<circle cx="${bx}" cy="5" r="6.5" fill="#ffffff" stroke="${color}" stroke-width="1.5"/>
+      <g transform="translate(${bx - 5.4},-0.4) scale(0.45)" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="${arrowPath}"/></g>` : "";
+  // The same dark pencil disc the timeline shows on edited stops; it drops to the lower left when the top-left is taken.
+  const ey = many && arrow ? 22 : 5;
+  const edited = isTimeEdited ? `<circle cx="5" cy="${ey}" r="6" fill="#12211A" stroke="#ffffff" stroke-width="1.5"/>
+      <g transform="translate(1.4,${ey - 3.6}) scale(0.3)" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></g>` : "";
+
   const width = 36 * scale;
   const height = 44 * scale;
   const svg = `<svg width="${width}" height="${height}" viewBox="-2 -2 36 44" xmlns="http://www.w3.org/2000/svg"><defs>${SHADOW}</defs>
